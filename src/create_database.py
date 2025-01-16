@@ -18,6 +18,7 @@ def create_db_schema():
         status TEXT,
         balance DECIMAL(10,2),
         currency TEXT
+        fund_balance DECIMAL(10,2)
     )
     ''')
     conn.close()
