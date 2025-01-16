@@ -19,7 +19,7 @@ A tool for analyzing trading data and generating insights.
 1. Clone the repository:
 
 git clone https://github.com/yourusername/trading-analyzer.git
-
+cd trading-analyzer
 
 2. Create a virtual environment:
 python3 -m venv .venv
@@ -32,3 +32,5 @@ pip install -r requirements.txt
 
 ## Usage
 python src/main.py
+
+import the TransactionHistory.csv file and choose the date range you want to analyze from the menu.
