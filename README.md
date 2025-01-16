@@ -18,6 +18,7 @@ A tool for analyzing trading data and generating insights.
 1. Clone the repository:
 
 git clone https://github.com/lakjdfalken/trading-analyzer.git
+
 cd trading-analyzer
 
 2. Create a virtual environment:
@@ -33,3 +34,15 @@ pip install -r requirements.txt
 python src/main.py
 
 import the TransactionHistory.csv file and choose the date range you want to analyze from the menu.
+
+## Building Windows Executable
+
+To create a Windows executable on Microsoft Windows 11:
+
+1. Install PyInstaller:
+```bash
+pip install pyinstaller
+
+2. Create the executable:
+pyinstaller --onefile --windowed src/main.py
+
