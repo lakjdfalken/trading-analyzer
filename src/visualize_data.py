@@ -127,8 +127,12 @@ def create_distribution_days(df):
     # Ensure Transaction Date is datetime
     df['Transaction Date'] = pd.to_datetime(df['Transaction Date'])
     
-    trading_df = df[df['Action'] != 'Fund']
-    daily_pl = trading_df.groupby(trading_df['Transaction Date'].dt.date)['P/L'].sum()
+    # Exclude all Fund entries
+    trading_mask = ~df['Action'].str.startswith('Fund ')
+    trading_only_df = df[trading_mask].copy()
+    
+    # Calculate daily P/L from pure trading activity
+    daily_pl = trading_only_df.groupby(trading_only_df['Transaction Date'].dt.date)['P/L'].sum()
     
     data = [
         len(daily_pl[daily_pl > 0]),
@@ -166,7 +170,7 @@ def create_position_distribution(df):
             colors.append(COLORS['loss'])
     
     ax.pie(position_data, labels=labels, autopct='%1.1f%%', colors=colors)
-    apply_common_styling(ax, 'Position Distribution by Size and Currency')
+    apply_common_styling(ax, 'Long vs Short Positions')
     return fig
 
 def create_market_actions(df):
