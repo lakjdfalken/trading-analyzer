@@ -86,7 +86,7 @@ class TradingAnalyzerGUI:
     def create_treeview(self):
         columns = ("Transaction Date", "Ref. No.", "Action", "Description", 
                   "Amount", "Open Period", "Opening", "Closing", "P/L", 
-                  "Status", "Balance", "Currency")
+                  "Status", "Balance", "Currency", "Fund_Balance")
         self.tree = ttk.Treeview(self.data_frame, columns=columns, show="headings")
         
         for col in columns:
