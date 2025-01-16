@@ -18,7 +18,7 @@ A tool for analyzing trading data and generating insights.
 
 1. Clone the repository:
 
-git clone https://github.com/yourusername/trading-analyzer.git
+git clone https://github.com/lakjdfalken/trading-analyzer.git
 cd trading-analyzer
 
 2. Create a virtual environment:
