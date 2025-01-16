@@ -12,7 +12,6 @@ A tool for analyzing trading data and generating insights.
 ## Prerequisites
 
 - Python 3.7 or higher
-- pip package manager
 
 ## Installation
 
