@@ -21,11 +21,11 @@ def import_transaction_data(file_path):
         df[col] = df[col].astype(str)
     
     # Initialize Fund_Balance column with zeros as Decimal type
-    df['Fund_Balance'] = pd.Series(0, index=df.index, dtype='decimal')
+    df['Fund_Balance'] = pd.Series(0, index=df.index, dtype='float64')
     
     # Copy P/L values directly to Fund_Balance for Fund receivable entries
     fund_receivable_mask = df['Action'].str.contains('Fund receivable', case=False, na=False)
-    df.loc[fund_receivable_mask, 'Fund_Balance'] = df.loc[fund_receivable_mask, 'P/L'].astype('decimal')
+    df.loc[fund_receivable_mask, 'Fund_Balance'] = df.loc[fund_receivable_mask, 'P/L']
     
     # Save to SQLite including the Fund_Balance column with DECIMAL type
     conn = sqlite3.connect('trading.db')
