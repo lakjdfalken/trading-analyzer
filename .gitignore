@@ -9,3 +9,4 @@ trading.db
 pyvenv.cfg
 pyproject.toml
 main.spec
+logs/
