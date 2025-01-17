@@ -49,24 +49,24 @@ import the TransactionHistory.csv file and choose the date range you want to ana
 
 2. Create a virtual environment:
   
-  python -m venv .venv
+    python -m venv .venv
   
-  .venv\Scripts\activate.bat
+    .venv\Scripts\activate.bat
 
 3. Install the required packages: 
   
-  pip install -r requirements.txt
+    pip install -r requirements.txt
     
 4. Run the application:
   
-  python src/main.py
+    python src/main.py
 
 ## Building Windows Executable
 
 1. Install PyInstaller:
   
-  pip install pyinstaller
+    pip install pyinstaller
 
 2. Create the executable:
   
-  pyinstaller --onefile --windowed src/main.py
+    pyinstaller --onefile --windowed src/main.py
