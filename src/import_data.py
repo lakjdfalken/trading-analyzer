@@ -1,5 +1,8 @@
 import pandas as pd
 import sqlite3
+import logging
+
+logger = logging.getLogger(__name__)
 
 def import_transaction_data(file_path):
     # Read CSV with proper encoding
@@ -33,5 +36,6 @@ def import_transaction_data(file_path):
         'Fund_Balance': 'DECIMAL(10,2)'
     })
     conn.close()
+    logger.info("Market analysis completed")
     
     return df
