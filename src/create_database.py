@@ -1,9 +1,14 @@
 import sqlite3
+import logging
+
+logger = logging.getLogger(__name__)
 
 def create_db_schema():
     conn = sqlite3.connect('trading.db')
     cursor = conn.cursor()
-    
+
+    logger.info("Creating database.")
+
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS transactions (
         transaction_date DATETIME,
