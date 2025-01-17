@@ -13,7 +13,7 @@ A tool for analyzing trading data and generating insights.
 
 - Python 3.7 or higher
 
-## Installation on MaccOS
+## Installation on MacOS
 
 1. Clone the repository:
 
@@ -38,18 +38,8 @@ python src/main.py
 
 import the TransactionHistory.csv file and choose the date range you want to analyze from the menu.
 
-## Installing on Windows
 
-To create a Windows executable on Microsoft Windows 11:
-
-1. Install PyInstaller:
-```bash
-pip install pyinstaller
-
-2. Create the executable:
-pyinstaller --onefile --windowed src/main.py
-
-## Installaation on Windows
+## Installation on Windows
 
 1. Clone the repository:
     git clone https://github.com/lakjdfalken/trading-analyzer.git
@@ -65,3 +55,11 @@ pyinstaller --onefile --windowed src/main.py
     
 4. Run the application:
     python src/main.py
+
+## Building Windows Executable
+
+1. Install PyInstaller:
+  pip install pyinstaller
+
+2. Create the executable:
+  pyinstaller --onefile --windowed src/main.py
