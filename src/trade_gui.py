@@ -6,6 +6,11 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from import_data import import_transaction_data
 from visualize_data import create_visualization_figure
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
 class TradingAnalyzerGUI:
     def __init__(self, root):
         self.root = root
@@ -108,11 +113,19 @@ class TradingAnalyzerGUI:
         self.tree.configure(yscrollcommand=scrollbar.set)
 
     def import_csv(self):
-        file_path = filedialog.askopenfilename(
-            filetypes=[('CSV Files', '*.csv')])
+        file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
         if file_path:
-            self.df = import_transaction_data(file_path)
-            self.update_display()
+            try:
+                # First, let's see what's in the file
+                df_preview = pd.read_csv(file_path)
+                logger.debug(f"CSV columns found: {df_preview.columns.tolist()}")
+                
+                # Then proceed with import
+                self.df = import_transaction_data(file_path)
+                self.update_table()
+            except Exception as e:
+                logger.error(f"Error importing CSV: {str(e)}")
+                messagebox.showerror("Import Error", f"Failed to import CSV file: {str(e)}")
 
     def update_display(self):
         # Clear existing items

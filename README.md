@@ -38,7 +38,7 @@ python src/main.py
 
 import the TransactionHistory.csv file and choose the date range you want to analyze from the menu.
 
-## Building Windows Executable
+## Installing on Windows
 
 To create a Windows executable on Microsoft Windows 11:
 
@@ -58,7 +58,7 @@ pyinstaller --onefile --windowed src/main.py
 
 2. Create a virtual environment:
     python -m venv .venv
-    .venv\Scripts\activate
+    .venv\Scripts\activate.bat
 
 3. Install the required packages: 
     pip install -r requirements.txt
