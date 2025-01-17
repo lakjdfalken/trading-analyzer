@@ -5,9 +5,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 def import_transaction_data(file_path):
+    logger.debug(f"Attempting to import data from {file_path}")
     # Read CSV with proper encoding
     df = pd.read_csv(file_path, encoding='utf-16le')
-    
+
+
+    logger.debug(f"Columns found in file: {df.columns.tolist()}")
+
     # Convert both date fields to datetime with consistent format
     datetime_columns = ['Transaction Date', 'Open Period']
     for col in datetime_columns:

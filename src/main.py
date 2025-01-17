@@ -7,7 +7,7 @@ from logger import setup_logger
 logger = setup_logger()
 
 def main():
-    logger.info("Starting Trading Analyzer application")
+    logger.info("Main Starting Trading Analyzer application")
     try:
         # Your existing code here
         logger.debug("Initializing components...")

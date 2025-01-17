@@ -115,17 +115,8 @@ class TradingAnalyzerGUI:
     def import_csv(self):
         file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
         if file_path:
-            try:
-                # First, let's see what's in the file
-                df_preview = pd.read_csv(file_path)
-                logger.debug(f"CSV columns found: {df_preview.columns.tolist()}")
-                
-                # Then proceed with import
-                self.df = import_transaction_data(file_path)
-                self.update_table()
-            except Exception as e:
-                logger.error(f"Error importing CSV: {str(e)}")
-                messagebox.showerror("Import Error", f"Failed to import CSV file: {str(e)}")
+           self.df = import_transaction_data(file_path)
+           self.update_display()
 
     def update_display(self):
         # Clear existing items
