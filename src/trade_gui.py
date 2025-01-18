@@ -115,8 +115,11 @@ class TradingAnalyzerGUI:
     def import_csv(self):
         file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
         if file_path:
-           self.df = import_transaction_data(file_path)
-           self.update_display()
+            self.df = import_transaction_data(file_path)
+            try:
+                self.update_display()
+            except Exception as e:
+                logger.error(f"Display update failed: {e}")
 
     def update_display(self):
         # Clear existing items
