@@ -4,11 +4,50 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def clean_csv_format(file_path):
+    with open(file_path, 'r', encoding='utf-16le') as file:
+        content = file.read()
+    
+    # Remove the '=' signs and quotes
+    content = content.replace('="', '')
+    content = content.replace('"', '')
+    
+    # Replace multiple spaces with commas
+    content = ','.join(content.split())
+    
+    # Write to a temporary file
+    temp_file = file_path + '.tmp'
+    with open(temp_file, 'w', encoding='utf-8') as file:
+        file.write(content)
+    
+    return temp_file
+
+def detect_file_format(file_path):
+    """Detect if file is in Windows format (="Column") or Mac format (standard CSV)"""
+    try:
+        # Try reading first line with utf-16le (Windows format)
+        with open(file_path, 'r', encoding='utf-16le') as file:
+            first_line = file.readline()
+            if '="' in first_line:
+                return 'windows'
+    except UnicodeError:
+        pass
+    
+    # Try reading as standard CSV (Mac format)
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            first_line = file.readline()
+            if ',' in first_line and '="' not in first_line:
+                return 'mac'
+    except UnicodeError:
+        pass
+    
+    return 'unknown'
+
 def import_transaction_data(file_path):
     logger.debug(f"Attempting to import data from {file_path}")
     # Read CSV with proper encoding
     df = pd.read_csv(file_path, encoding='utf-16le')
-
 
     logger.debug(f"Columns found in file: {df.columns.tolist()}")
 
@@ -40,6 +79,5 @@ def import_transaction_data(file_path):
         'Fund_Balance': 'DECIMAL(10,2)'
     })
     conn.close()
-    logger.info("Market analysis completed")
-    
+    logger.info("Market analysis completed")    
     return df
