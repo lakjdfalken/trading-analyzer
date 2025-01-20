@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
+import logging
 from settings import (
     FIGURE_SIZES,
     COLORS,
@@ -8,6 +9,10 @@ from settings import (
     CURRENCY_SYMBOLS,
     VALID_GRAPH_TYPES
 )
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
+logging.getLogger('matplotlib.pyplot').setLevel(logging.WARNING)
+logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
+logging.getLogger('PIL.PngImagePlugin').setLevel(logging.WARNING)
 
 # Utility functions
 def format_currency(value, currency):
@@ -81,16 +86,16 @@ def create_balance_history(df):
                         color=COLORS['trading'][0])
     
     # Add single return text
-#    ax.text(0.02, 0.98,
-#           f'Total Return: {total_return:.1f}%',
-#           transform=ax.transAxes,
-#           color=COLORS['trading'][0],
-#           fontweight='bold',
-#           bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
+    ax.text(0.02, 0.98,
+           f'Total Return: {total_return:.1f}%',
+           transform=ax.transAxes,
+           color=COLORS['trading'][0],
+           fontweight='bold',
+           bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
     
     # Style the plot
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax.set_title('Trading Balance History')
+    ax.set_title('Relative Trading Balance History')
     ax.yaxis.set_major_formatter(plt.FuncFormatter(
         lambda x, p: format_currency(x, df['Currency'].iloc[0])))
     ax.grid(True, alpha=0.3)
