@@ -1,37 +1,13 @@
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
-
-# Constants
-FIGURE_SIZES = {
-    'default': (10, 6),
-    'wide': (12, 6),
-    'square': (8, 8)
-}
-
-COLORS = {
-    'profit': 'green',
-    'loss': 'red',
-    'neutral': 'gray',
-    'trading': ['blue', 'darkblue', 'navy'],
-    'funding': ['green', 'darkgreen', 'forestgreen']
-}
-
-CURRENCY_SYMBOLS = {
-    'GBP': '£',
-    'USD': '$',
-    'EUR': '€'
-}
-
-VALID_GRAPH_TYPES = [
-    'Balance History',
-    'Distribution Days',
-    'Funding',
-    'Funding Charges',
-    'Long vs Short Positions',
-    'Market Actions',
-    'Market P/L'
-]
+from settings import (
+    FIGURE_SIZES,
+    COLORS,
+    MARKET_SPREADS,
+    CURRENCY_SYMBOLS,
+    VALID_GRAPH_TYPES
+)
 
 # Utility functions
 def format_currency(value, currency):
@@ -75,6 +51,8 @@ def create_visualization_figure(df, graph_type):
         return create_market_actions(df)
     elif graph_type == 'Market P/L':
         return create_market_pl(df)
+    elif graph_type == 'Daily P/L':
+        return create_daily_pl(df)
 
 # Individual visualization functions
 def create_balance_history(df):
@@ -176,11 +154,18 @@ def create_position_distribution(df):
 def create_market_actions(df):
     fig, ax = setup_base_figure('wide')
     
-    # Use a visually distinct and pleasing color palette
-    color_palette = ['#2ecc71', '#3498db', '#9b59b6', '#f1c40f', '#e74c3c']
+    # Define color mapping for trade actions
+    action_colors = {
+        'Trade Receivable': COLORS['profit'],  # Green for receivables
+        'Trade Payable': COLORS['loss'],       # Red for payables
+        'Fund Receivable': '#3498db',          # Keep other actions with distinct colors
+        'Fund Payable': '#9b59b6',
+        'Funding charge': '#f1c40f'
+    }
     
     market_actions = df.groupby(['Description', 'Action']).size().unstack()
-    market_actions.plot(kind='bar', stacked=True, ax=ax, color=color_palette)
+    market_actions.plot(kind='bar', stacked=True, ax=ax, 
+                       color=[action_colors.get(col, '#e74c3c') for col in market_actions.columns])
     
     apply_common_styling(ax, 'Trading Actions by Market',
                         xlabel='Markets',
@@ -241,13 +226,17 @@ def create_funding_distribution(df):
     
     # Filter funding data from the prepared DataFrame
     funding_df = df[df['Action'].str.startswith('Fund ')].copy()
-    funding_in = funding_df[funding_df['P/L'] > 0]  # Receivable funding
-    funding_out = funding_df[funding_df['P/L'] < 0]  # Outgoing funding    
+    
     for i, currency in enumerate(currencies, 1):
         ax = fig.add_subplot(len(currencies), 1, i)
         currency_funding = funding_df[funding_df['Currency'] == currency]
         
         if not currency_funding.empty:
+            # Calculate totals
+            total_in = currency_funding[currency_funding['P/L'] > 0]['P/L'].sum()
+            total_out = currency_funding[currency_funding['P/L'] < 0]['P/L'].sum()
+            net_total = total_in + total_out
+            
             # Create bars and color them based on P/L value
             bars = ax.bar(range(len(currency_funding)), 
                          currency_funding['P/L'],
@@ -261,6 +250,16 @@ def create_funding_distribution(df):
                        format_currency(height, currency),
                        ha='center', va='bottom' if height >= 0 else 'top')
             
+            # Add totals text box
+            totals_text = (f"Total In: {format_currency(total_in, currency)}\n"
+                          f"Total Out: {format_currency(total_out, currency)}\n"
+                          f"Net Total: {format_currency(net_total, currency)}")
+            
+            ax.text(0.02, 0.95, totals_text,
+                   transform=ax.transAxes,
+                   bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'),
+                   verticalalignment='top')
+            
             # Set x-axis labels with dates
             dates = currency_funding['Transaction Date'].dt.strftime('%Y-%m-%d')
             ax.set_xticks(range(len(currency_funding)))
@@ -268,11 +267,9 @@ def create_funding_distribution(df):
         
         apply_common_styling(ax, f'Funding Flow Distribution ({currency})')
         
-        # Only add legend if we have data
         if not currency_funding.empty:
             ax.legend(['Funding In', 'Funding Out'])
         
-        # Format y-axis with currency
         ax.yaxis.set_major_formatter(plt.FuncFormatter(
             lambda x, p: format_currency(x, currency)))
     
@@ -328,3 +325,86 @@ def create_funding_charges(df):
     
     fig.tight_layout()
     return fig
+def create_daily_pl(df):
+    print("\n=== Starting Daily P/L Performance Visualization ===")
+    
+    # Create clean copy and prepare data
+    df_copy = df.copy()
+    df_copy['Transaction Date'] = pd.to_datetime(df_copy['Transaction Date'])
+    
+    # Get initial balance from first non-Fund entry
+    trading_mask = ~df_copy['Action'].str.startswith('Fund ')
+    initial_balance = df_copy[trading_mask]['Balance'].iloc[0]
+    print(f"Initial trading balance: {initial_balance}")
+    
+    # Calculate daily P/L excluding Fund entries
+    daily_pl = df_copy[trading_mask].groupby(df_copy['Transaction Date'].dt.date)['P/L'].sum()
+    daily_pl_pct = (daily_pl / abs(initial_balance)) * 100
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=FIGURE_SIZES['wide'])
+    
+    # Create bars
+    bars = ax.bar(range(len(daily_pl_pct)), 
+                  daily_pl_pct,
+                  color=[COLORS['profit'] if x >= 0 else COLORS['loss'] for x in daily_pl_pct])
+    
+    # Add value labels on bars
+    for idx, v in enumerate(daily_pl_pct):
+        ax.text(idx, v, f'{v:.1f}%',
+                ha='center', 
+                va='bottom' if v >= 0 else 'top')
+    
+    # Set x-axis labels with dates
+    ax.set_xticks(range(len(daily_pl_pct)))
+    ax.set_xticklabels([d.strftime('%Y-%m-%d') for d in daily_pl_pct.index],
+                        rotation=45, ha='right')
+    
+    # Add total return text
+    total_return = daily_pl_pct.sum()
+    ax.text(0.02, 0.95,
+            f'Total Return: {total_return:.1f}%',
+            transform=ax.transAxes,
+            color=COLORS['trading'][0],
+            fontweight='bold',
+            bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
+    
+    # Add horizontal line at 0%
+    ax.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+    
+    apply_common_styling(ax, 'Daily P/L Performance',
+                        xlabel='Date',
+                        ylabel='Daily P/L (%)')
+    
+    fig.tight_layout()
+    print(f"Total return: {total_return:.2f}%")
+    print("=== Visualization Complete ===")
+    return fig
+
+def get_market_spread(market_name, hour):
+    """
+    Get the spread for a market at a specific hour
+    
+    Args:
+        market_name (str): Name of the market (e.g. 'USTEC', 'Wall Street')
+        hour (int): Hour of the day (0-23)
+        
+    Returns:
+        float: Spread value for the given market and hour
+    """
+    if market_name not in MARKET_SPREADS:
+        return None
+        
+    market_data = MARKET_SPREADS[market_name]
+    
+    # Check which time period the hour falls into
+    normal_start, normal_end, normal_spread = market_data['normal_hours']
+    closing_start, closing_end, closing_spread = market_data['closing_hours']
+    off_start, off_end, off_spread = market_data['off_hours']
+    
+    if normal_start <= hour < normal_end:
+        return normal_spread
+    elif closing_start <= hour < closing_end:
+        return closing_spread
+    else:
+        return off_spread
