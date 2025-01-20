@@ -46,15 +46,30 @@ def detect_file_format(file_path):
 
 def import_transaction_data(file_path):
     logger.debug(f"Attempting to import data from {file_path}")
-    # Read CSV with proper encoding
-    df = pd.read_csv(file_path, encoding='utf-16le')
-
+    
+    file_format = detect_file_format(file_path)
+    logger.debug(f"Detected file format: {file_format}")
+    
+    if file_format == 'windows':
+        # Clean Windows format and read
+        temp_file = clean_csv_format(file_path)
+        df = pd.read_csv(temp_file)
+    elif file_format == 'mac':
+        # Read standard CSV format directly
+        df = pd.read_csv(file_path)
+    else:
+        raise ValueError("Unsupported file format")
+    
     logger.debug(f"Columns found in file: {df.columns.tolist()}")
 
     # Convert both date fields to datetime with consistent format
     datetime_columns = ['Transaction Date', 'Open Period']
     for col in datetime_columns:
-        df[col] = pd.to_datetime(df[col], format='%d/%m/%Y %H:%M:%S')
+        if col in df.columns:  # Check if column exists before processing
+            df[col] = pd.to_datetime(df[col], format='%d/%m/%Y %H:%M:%S')
+        else:
+            logger.error(f"Missing required column: {col}")
+            raise KeyError(f"Required column '{col}' not found in CSV file")
     
     # Convert numeric columns
     numeric_columns = ['Amount', 'P/L', 'Balance', 'Opening', 'Closing']
