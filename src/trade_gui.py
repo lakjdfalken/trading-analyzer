@@ -138,7 +138,8 @@ class TradingAnalyzerGUI:
                 'Amount Distribution',
                 'Status Distribution',
                 'Market Actions',
-                'Market P/L'
+                'Market P/L',
+                'Daily P/L'
             ]
             
             # Create graph selection dialog
@@ -228,7 +229,8 @@ class TradingAnalyzerGUI:
             'Funding Charges',
             'Long vs Short Positions',
             'Market Actions',
-            'Market P/L'
+            'Market P/L',
+            'Daily P/L'
         ]
         for graph_type in graph_types:
             self.graph_listbox.insert(tk.END, graph_type)
@@ -248,7 +250,8 @@ class TradingAnalyzerGUI:
                 'Funding Charges',
                 'Long vs Short Positions',
                 'Market Actions',
-                'Market P/L'
+                'Market P/L',
+                'Daily P/L'
             ]    
 
     def display_selected_graph(self):
