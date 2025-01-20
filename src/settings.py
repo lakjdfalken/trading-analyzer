@@ -14,16 +14,17 @@ COLORS = {
 }
 
 # Market Settings
+# Format: (start_hour, end_hour, spread)
 MARKET_SPREADS = {
     'USTEC': {
-        'normal_hours': (9, 17, 0.9),
+        'normal_hours': (9.5, 17, 0.9),  # 09:30 - 17:00
         'closing_hours': (17, 18, 1.4),
-        'off_hours': (18, 9, 1.5)
+        'off_hours': (18, 9.5, 1.5)
     },
     'Wall Street': {
-        'normal_hours': (9, 17, 1.5),
+        'normal_hours': (9.5, 17, 1.5),  # 09:30 - 17:00
         'closing_hours': (17, 18, 2.0),
-        'off_hours': (18, 9, 4.0)
+        'off_hours': (18, 9.5, 4.0)
     }
 }
 
