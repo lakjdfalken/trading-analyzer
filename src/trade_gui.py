@@ -17,31 +17,38 @@ class TradingAnalyzerGUI:
         self.root = root
         self.root.title("Trading Data Analyzer")
         self.root.geometry("1600x800")
-        
+    
+        # Configure root grid
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+    
         # Create main container
         self.main_frame = ttk.Frame(self.root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
+    
+        # Configure main frame grid
+        self.main_frame.grid_rowconfigure(1, weight=1)
+        self.main_frame.grid_columnconfigure(0, weight=1)
+    
         # Import button
         self.import_btn = ttk.Button(self.main_frame, text="Import CSV", 
-                                    command=self.import_csv)
+                command=self.import_csv)
         self.import_btn.grid(row=0, column=0, pady=10, padx=5)
-        
-        # Visualize button
-        self.viz_btn = ttk.Button(self.main_frame, text="Show Graphs", 
-                              command=self.show_graphs)
-        self.viz_btn.grid(row=0, column=1, pady=10, padx=5)
     
         # Create tabs for different views
         self.notebook = ttk.Notebook(self.main_frame)
-        self.notebook.grid(row=1, column=0, columnspan=2, sticky="nsew")
-        
-        # Data tab
+        self.notebook.grid(row=1, column=0, sticky="nsew")
+    
+        # Configure notebook frames
         self.data_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.data_frame, text="Data View")
-        
-        # Graphs tab with enhanced layout
+        self.data_frame.grid_rowconfigure(1, weight=1)
+        self.data_frame.grid_columnconfigure(0, weight=1)
+
         self.graph_frame = ttk.Frame(self.notebook)
+        self.graph_frame.grid_rowconfigure(0, weight=1)
+        self.graph_frame.grid_columnconfigure(1, weight=1)
+    
+        self.notebook.add(self.data_frame, text="Data View")
         self.notebook.add(self.graph_frame, text="Graphs")
         
         # Create treeview for data display
