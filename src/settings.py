@@ -10,10 +10,17 @@ COLORS = {
     'loss': 'red',
     'neutral': 'gray',
     'trading': ['blue', 'darkblue', 'navy'],
-    'funding': ['green', 'darkgreen', 'forestgreen']
+    'funding': 'white',
+    'funding_charge': 'black'
 }
 
 # Market Settings
+MARKETS = {
+    "Wall Street 30 (Dow)": 67995,
+    "NASDAQ": 70433,
+    "S&P 500": 67994
+}
+
 # Format: (start_hour, end_hour, spread)
 MARKET_SPREADS = {
     'USTEC': {
