@@ -1,7 +1,8 @@
 import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+import sv_ttk  # Separate import for the theme package
 import sqlite3
 import pandas as pd
-from tkinter import ttk, filedialog, messagebox
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from import_data import import_transaction_data
@@ -50,6 +51,7 @@ class TradingAnalyzerGUI:
     
         self.notebook.add(self.data_frame, text="Data View")
         self.notebook.add(self.graph_frame, text="Graphs")
+        self.create_settings_tab()
         
         # Create treeview for data display
         self.create_treeview()
@@ -102,6 +104,49 @@ class TradingAnalyzerGUI:
         self.search_column = ttk.Combobox(search_frame, values=self.tree["columns"])
         self.search_column.pack(side=tk.LEFT, padx=5)
         self.search_column.set("Description")  # Default search column
+
+    def search_treeview(self, event=None):
+        search_term = self.search_var.get().lower()
+
+    def create_settings_tab(self):
+        self.settings_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.settings_frame, text="Settings")
+    
+        # Theme selection using built-in ttk styles
+        theme_frame = ttk.LabelFrame(self.settings_frame, text="Theme Settings")
+        theme_frame.pack(padx=10, pady=5, fill="x")
+    
+        style = ttk.Style()
+        available_themes = style.theme_names()
+    
+        ttk.Label(theme_frame, text="Select Theme:").pack(side=tk.LEFT, padx=5)
+        self.theme_var = tk.StringVar(value=style.theme_use())
+        theme_combo = ttk.Combobox(theme_frame, 
+                                  textvariable=self.theme_var,
+                                  values=available_themes,
+                                  state="readonly")
+        theme_combo.pack(side=tk.LEFT, padx=5)
+        theme_combo.bind('<<ComboboxSelected>>', self.change_theme)
+    
+        # Transparency control
+        trans_frame = ttk.LabelFrame(self.settings_frame, text="Window Transparency")
+        trans_frame.pack(padx=10, pady=5, fill="x")
+    
+        self.trans_var = tk.DoubleVar(value=1.0)
+        trans_scale = ttk.Scale(trans_frame, 
+                                from_=0.1, 
+                                to=1.0,
+                                variable=self.trans_var,
+                                command=self.update_transparency)
+        trans_scale.pack(fill="x", padx=5)
+
+    def change_theme(self, event=None):
+        style = ttk.Style()
+        style.theme_use(self.theme_var.get())
+
+    def update_transparency(self, event=None):
+        alpha = self.trans_var.get()
+        self.root.attributes('-alpha', alpha)
 
     def search_treeview(self, event=None):
         search_term = self.search_var.get().lower()
@@ -363,6 +408,46 @@ class TradingAnalyzerGUI:
         except Exception as e:
             logger.error(f"Error displaying graph: {str(e)}")
             messagebox.showerror("Error", f"Failed to create visualization: {str(e)}")
+
+    def create_settings_tab(self):
+        self.settings_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.settings_frame, text="Settings")
+    
+        # Theme selection using built-in ttk styles
+        theme_frame = ttk.LabelFrame(self.settings_frame, text="Theme Settings")
+        theme_frame.pack(padx=10, pady=5, fill="x")
+    
+        style = ttk.Style()
+        available_themes = style.theme_names()
+    
+        ttk.Label(theme_frame, text="Select Theme:").pack(side=tk.LEFT, padx=5)
+        self.theme_var = tk.StringVar(value=style.theme_use())
+        theme_combo = ttk.Combobox(theme_frame, 
+                                  textvariable=self.theme_var,
+                                  values=available_themes,
+                                  state="readonly")
+        theme_combo.pack(side=tk.LEFT, padx=5)
+        theme_combo.bind('<<ComboboxSelected>>', self.change_theme)
+    
+        # Transparency control
+        trans_frame = ttk.LabelFrame(self.settings_frame, text="Window Transparency")
+        trans_frame.pack(padx=10, pady=5, fill="x")
+    
+        self.trans_var = tk.DoubleVar(value=1.0)
+        trans_scale = ttk.Scale(trans_frame, 
+                                from_=0.1, 
+                                to=1.0,
+                                variable=self.trans_var,
+                                command=self.update_transparency)
+        trans_scale.pack(fill="x", padx=5)
+
+    def change_theme(self, event=None):
+        style = ttk.Style()
+        style.theme_use(self.theme_var.get())
+
+    def update_transparency(self, event=None):
+        alpha = self.trans_var.get()
+        self.root.attributes('-alpha', alpha)
 
 def reset_date_range(self):
     if hasattr(self, 'df'):
