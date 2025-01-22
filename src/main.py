@@ -1,21 +1,43 @@
+import signal
 import sys
-from trade_gui import TradingAnalyzerGUI
+import logging
+import os
+import matplotlib.pyplot as plt
 import tkinter as tk
-from logger import setup_logger
+from trade_gui import TradingAnalyzerGUI
 
-# Setup logger at application startup
-logger = setup_logger()
+logger = logging.getLogger(__name__)
+
+def signal_handler(signum, frame):
+    """Handle CTRL-C signal"""
+    logger.info("CTRL-C detected, initiating shutdown")
+    try:
+        # Close all matplotlib figures
+        plt.close('all')
+        
+        # If root exists, destroy it
+        if 'root' in globals():
+            global root
+            root.destroy()
+            
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"Error during CTRL-C shutdown: {e}")
+        os._exit(1)
 
 def main():
-    logger.info("Main Starting Trading Analyzer application")
+    # Register CTRL-C handler
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    logger.info("Starting Trading Analyzer application")
+    root = tk.Tk()
+    app = TradingAnalyzerGUI(root)
+    
     try:
-        # Your existing code here
-        logger.debug("Initializing components...")
-        root = tk.Tk()
-        app = TradingAnalyzerGUI(root)
         root.mainloop()
-    except Exception as e:
-        logger.error(f"Application error: {str(e)}", exc_info=True)
+    except KeyboardInterrupt:
+        logger.info("KeyboardInterrupt received")
+        signal_handler(signal.SIGINT, None)
 
 if __name__ == "__main__":
     main()
