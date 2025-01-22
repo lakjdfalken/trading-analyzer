@@ -44,5 +44,7 @@ VALID_GRAPH_TYPES = [
     'Long vs Short Positions',
     'Market Actions',
     'Market P/L',
-    'Daily P/L'
+    'Daily P/L',
+    'Daily Trades',
+    'Daily P/L vs Trades'
 ]

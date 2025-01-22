@@ -52,6 +52,37 @@ class TradingAnalyzerGUI:
         # Load existing data if available
         self.load_existing_data()
 
+        # Bind search entry to search function
+        self.search_var.trace_add('write', lambda name, index, mode: self.search_treeview())
+
+
+    def create_search_frame(self):
+        search_frame = ttk.Frame(self.data_frame)
+        search_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+    
+        ttk.Label(search_frame, text="Search:").pack(side=tk.LEFT, padx=5)
+        self.search_var = tk.StringVar()
+        self.search_entry = ttk.Entry(search_frame, textvariable=self.search_var)
+        self.search_entry.pack(side=tk.LEFT, padx=5)
+    
+        # Add search field dropdown
+        self.search_column = ttk.Combobox(search_frame, values=self.tree["columns"])
+        self.search_column.pack(side=tk.LEFT, padx=5)
+        self.search_column.set("Description")  # Default search column
+
+    def search_treeview(self, event=None):
+        search_term = self.search_var.get().lower()
+        search_column = self.search_column.get()
+    
+        # Clear tree
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+    
+        # Repopulate with filtered data
+        for idx, row in self.df.iterrows():
+            if search_term in str(row[search_column]).lower():
+                self.tree.insert("", "end", values=tuple(row))
+
     def reset_date_range(self):
         if hasattr(self, 'df'):
             self.start_date.delete(0, tk.END)
@@ -87,30 +118,52 @@ class TradingAnalyzerGUI:
                 return None
                 
         return filtered_df
-
     def create_treeview(self):
+        # First create the tree
         columns = ("Transaction Date", "Ref. No.", "Action", "Description", 
                   "Amount", "Open Period", "Opening", "Closing", "P/L", 
                   "Status", "Balance", "Currency", "Fund_Balance")
-        self.tree = ttk.Treeview(self.data_frame, columns=columns, show="headings")
+        self.tree = ttk.Treeview(self.data_frame, columns=columns, show="headings", height=20)
         
+        # Set up column headings and widths
         for col in columns:
             self.tree.heading(col, text=col)
-            # Set column width based on content type
-            if col in ["Transaction Date", "Open Period"]:
+            if col in ["Transaction Date", "Action", "Open Period"]:
                 self.tree.column(col, width=150)  # Wider for datetime
+            elif col in ["Description"]:
+                self.tree.column(col, width=200)  # Medium for numbers
             elif col in ["Amount", "Opening", "Closing", "P/L", "Balance"]:
                 self.tree.column(col, width=100)  # Medium for numbers
+            elif col in ["Status", "Currency"]:
+                self.tree.column(col, width=50)  # Narrow for text
             else:
-                self.tree.column(col, width=120)  # Default for text
+                self.tree.column(col, width=80)  # Default for text
+
+        # Now create search frame since tree exists
+        self.create_search_frame()
         
-        self.tree.grid(row=0, column=0, sticky="nsew")
+        # Finally set up layout
+        self.tree.grid(row=1, column=0, sticky="nsew")
         
         # Add scrollbar
         scrollbar = ttk.Scrollbar(self.data_frame, orient="vertical", 
                                 command=self.tree.yview)
-        scrollbar.grid(row=0, column=1, sticky="ns")
+        scrollbar.grid(row=1, column=1, sticky="ns")
         self.tree.configure(yscrollcommand=scrollbar.set)
+
+    def create_search_frame(self):
+        search_frame = ttk.Frame(self.data_frame)
+        search_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        
+        ttk.Label(search_frame, text="Search:").pack(side=tk.LEFT, padx=5)
+        self.search_var = tk.StringVar()
+        self.search_entry = ttk.Entry(search_frame, textvariable=self.search_var)
+        self.search_entry.pack(side=tk.LEFT, padx=5)
+        
+        # Now we can safely access self.tree["columns"]
+        self.search_column = ttk.Combobox(search_frame, values=self.tree["columns"])
+        self.search_column.pack(side=tk.LEFT, padx=5)
+        self.search_column.set("Description")
 
     def import_csv(self):
         file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
@@ -216,23 +269,14 @@ class TradingAnalyzerGUI:
         ttk.Button(quick_select_frame, text="All", 
                command=self.reset_date_range).pack(side=tk.LEFT, padx=2)
     
-        # Rest of your existing code...
+        # Graph type selection
         ttk.Label(selection_frame, text="Select Graph Type:").pack(pady=5)
         self.graph_listbox = tk.Listbox(selection_frame, height=10)
         self.graph_listbox.pack(pady=5)
     
-        # Add graph types
-        graph_types = [
-            'Balance History',
-            'Distribution Days',
-            'Funding',
-            'Funding Charges',
-            'Long vs Short Positions',
-            'Market Actions',
-            'Market P/L',
-            'Daily P/L'
-        ]
-        for graph_type in graph_types:
+        # Use VALID_GRAPH_TYPES from settings
+        from settings import VALID_GRAPH_TYPES
+        for graph_type in VALID_GRAPH_TYPES:
             self.graph_listbox.insert(tk.END, graph_type)
     
         ttk.Button(selection_frame, text="Display Graph", 
@@ -255,28 +299,37 @@ class TradingAnalyzerGUI:
             ]    
 
     def display_selected_graph(self):
-        if not hasattr(self, 'df'):
-            messagebox.showinfo("Info", "Please import data first")
-            return
+        try:
+            if not hasattr(self, 'df'):
+                logger.warning("Attempted to display graph without data")
+                messagebox.showinfo("Info", "Please import data first")
+                return
+                
+            if not self.graph_listbox.curselection():
+                logger.warning("No graph type selected")
+                messagebox.showinfo("Info", "Please select a graph type")
+                return
+                
+            filtered_data = self.get_filtered_data()
+            if filtered_data is None or filtered_data.empty:
+                logger.warning("No data available after filtering")
+                messagebox.showinfo("Info", "No data available for selected date range")
+                return
+                
+            selection = self.graph_listbox.get(self.graph_listbox.curselection())
             
-        if not self.graph_listbox.curselection():
-            messagebox.showinfo("Info", "Please select a graph type")
-            return
+            # Clear previous graph
+            for widget in self.graph_display_frame.winfo_children():
+                widget.destroy()
             
-        filtered_data = self.get_filtered_data()
-        if filtered_data is None:
-            return
+            fig = create_visualization_figure(filtered_data, selection)
+            canvas = FigureCanvasTkAgg(fig, self.graph_display_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
             
-        selection = self.graph_listbox.get(self.graph_listbox.curselection())
-        
-        # Clear previous graph
-        for widget in self.graph_display_frame.winfo_children():
-            widget.destroy()
-        
-        fig = create_visualization_figure(filtered_data, selection)
-        canvas = FigureCanvasTkAgg(fig, self.graph_display_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        except Exception as e:
+            logger.error(f"Error displaying graph: {str(e)}")
+            messagebox.showerror("Error", f"Failed to create visualization: {str(e)}")
 
 def reset_date_range(self):
     if hasattr(self, 'df'):

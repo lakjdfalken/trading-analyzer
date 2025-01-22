@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import logging
+
 from settings import (
     FIGURE_SIZES,
     COLORS,
@@ -9,6 +10,10 @@ from settings import (
     CURRENCY_SYMBOLS,
     VALID_GRAPH_TYPES
 )
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 logging.getLogger('matplotlib.pyplot').setLevel(logging.WARNING)
 logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
@@ -36,29 +41,40 @@ def apply_common_styling(ax, title, xlabel=None, ylabel=None):
 
 # Main visualization function
 def create_visualization_figure(df, graph_type):
-    if df.empty:
-        raise ValueError("DataFrame is empty")
-    
-    if graph_type not in VALID_GRAPH_TYPES:
-        raise ValueError(f"Invalid graph type: {graph_type}")
-    
-    if graph_type == 'Balance History':
-        return create_balance_history(df)
-    elif graph_type == 'Distribution Days':
-        return create_distribution_days(df)
-    elif graph_type == 'Funding':
-        return create_funding_distribution(df)
-    elif graph_type == 'Funding Charges':
-        return create_funding_charges(df)
-    elif graph_type == 'Long vs Short Positions':
-        return create_position_distribution(df)
-    elif graph_type == 'Market Actions':
-        return create_market_actions(df)
-    elif graph_type == 'Market P/L':
-        return create_market_pl(df)
-    elif graph_type == 'Daily P/L':
-        return create_daily_pl(df)
-
+    try:
+        if df.empty:
+            logger.error("Attempted to create visualization with empty DataFrame")
+            raise ValueError("No data available for visualization")
+        
+        if graph_type not in VALID_GRAPH_TYPES:
+            logger.error(f"Invalid graph type requested: {graph_type}")
+            raise ValueError(f"Unsupported graph type: {graph_type}")
+        
+        # Wrap individual visualization functions in try-except
+        if graph_type == 'Balance History':
+            return create_balance_history(df)
+        elif graph_type == 'Distribution Days':
+            return create_distribution_days(df)
+        elif graph_type == 'Funding':
+            return create_funding_distribution(df)
+        elif graph_type == 'Funding Charges':
+            return create_funding_charges(df)
+        elif graph_type == 'Long vs Short Positions':
+            return create_position_distribution(df)
+        elif graph_type == 'Market Actions':
+            return create_market_actions(df)
+        elif graph_type == 'Market P/L':
+            return create_market_pl(df)
+        elif graph_type == 'Daily P/L':
+            return create_daily_pl(df)
+        elif graph_type == 'Daily Trades':
+            return create_daily_trade_count(df)
+        elif graph_type == 'Daily P/L vs Trades':
+            return create_daily_pl_vs_trades(df)
+            
+    except Exception as e:
+        logger.error(f"Error creating {graph_type} visualization: {str(e)}")
+        raise
 # Individual visualization functions
 def create_balance_history(df):
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -85,13 +101,13 @@ def create_balance_history(df):
                         label=f'Trading Balance ({currency})',
                         color=COLORS['trading'][0])
     
-    # Add single return text
-    ax.text(0.02, 0.98,
-           f'Total Return: {total_return:.1f}%',
-           transform=ax.transAxes,
-           color=COLORS['trading'][0],
-           fontweight='bold',
-           bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
+#    # Add single return text
+#    ax.text(0.02, 0.98,
+#           f'Relative Return for the selected period: {total_return:.1f}%',
+#           transform=ax.transAxes,
+#           color=COLORS['trading'][0],
+#           fontweight='bold',
+#           bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
     
     # Style the plot
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -413,3 +429,117 @@ def get_market_spread(market_name, hour):
         return closing_spread
     else:
         return off_spread
+
+def create_daily_trade_count(df):
+    fig, ax = setup_base_figure('wide')
+    
+    # Filter out non-trade entries and group by date
+    trade_df = df[df['Action'].str.contains('Trade', case=False)].copy()
+    trade_df['Transaction Date'] = pd.to_datetime(trade_df['Transaction Date'])
+    daily_counts = trade_df.groupby(trade_df['Transaction Date'].dt.date).size()
+    
+    # Calculate average trades per day
+    avg_trades = daily_counts.mean()
+    
+    # Create bars
+    bars = ax.bar(range(len(daily_counts)), daily_counts, 
+                 color=COLORS['trading'][0], alpha=0.6,
+                 label='Daily Trades')
+    
+    # Add average line
+    ax.axhline(y=avg_trades, color=COLORS['trading'][1], 
+               linestyle='--', label=f'Average ({avg_trades:.1f} trades/day)')
+    
+    # Set x-axis labels with dates
+    ax.set_xticks(range(len(daily_counts)))
+    ax.set_xticklabels([d.strftime('%Y-%m-%d') for d in daily_counts.index],
+                       rotation=45, ha='right')
+    
+    # Add value labels on bars
+    for idx, v in enumerate(daily_counts):
+        ax.text(idx, v, str(v), ha='center', va='bottom')
+    
+    apply_common_styling(ax, 'Daily Trading Volume',
+                        xlabel='Date',
+                        ylabel='Number of Trades')
+    
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+def create_daily_pl_vs_trades(df):
+    fig, ax1 = plt.subplots(figsize=FIGURE_SIZES['wide'])
+    
+    # Create second y-axis for trade count
+    ax2 = ax1.twinx()
+    
+    # Prepare P/L data
+    df_copy = df.copy()
+    df_copy['Transaction Date'] = pd.to_datetime(df_copy['Transaction Date'])
+    trading_mask = ~df_copy['Action'].str.startswith('Fund ')
+    initial_balance = df_copy[trading_mask]['Balance'].iloc[0]
+    
+    # Calculate daily P/L percentage
+    daily_pl = df_copy[trading_mask].groupby(df_copy['Transaction Date'].dt.date)['P/L'].sum()
+    daily_pl_pct = (daily_pl / abs(initial_balance)) * 100
+    
+    # Prepare trade count data
+    trade_df = df[df['Action'].str.contains('Trade', case=False)]
+    daily_trades = trade_df.groupby(trade_df['Transaction Date'].dt.date).size()
+    
+    # Align dates for both metrics
+    all_dates = sorted(set(daily_pl_pct.index) | set(daily_trades.index))
+    
+    # Plot P/L bars
+    bars = ax1.bar(range(len(all_dates)), 
+                   [daily_pl_pct.get(date, 0) for date in all_dates],
+                   alpha=0.6,
+                   color=[COLORS['profit'] if x >= 0 else COLORS['loss'] 
+                         for x in [daily_pl_pct.get(date, 0) for date in all_dates]],
+                   label='Daily P/L %')
+    
+    # Plot trade count line
+    line = ax2.plot(range(len(all_dates)), 
+                    [daily_trades.get(date, 0) for date in all_dates],
+                    color=COLORS['trading'][1],
+                    linewidth=2,
+                    marker='o',
+                    label='Number of Trades')
+    
+    # Add value labels
+    for idx, v in enumerate(daily_pl_pct):
+        ax1.text(idx, v, f'{v:.1f}%',
+                ha='center', 
+                va='bottom' if v >= 0 else 'top')
+    
+    # Styling
+    ax1.set_xlabel('Date')
+    ax1.set_ylabel('Daily P/L (%)')
+    ax2.set_ylabel('Number of Trades')
+    
+    # Set x-axis labels
+    ax1.set_xticks(range(len(all_dates)))
+    ax1.set_xticklabels([d.strftime('%Y-%m-%d') for d in all_dates],
+                        rotation=45, ha='right')
+    
+    # Add horizontal line at 0% for P/L
+    ax1.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+    
+    # Add legends for both axes
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
+    
+    # Calculate and display correlation
+    correlation = pd.Series([daily_pl_pct.get(date, 0) for date in all_dates]).corr(
+        pd.Series([daily_trades.get(date, 0) for date in all_dates]))
+    
+    ax1.text(0.95, 0.95,
+             f'Correlation: {correlation:.2f}',
+             transform=ax1.transAxes,
+             horizontalalignment='right',
+             verticalalignment='top',
+             bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
+    
+    fig.tight_layout()
+    return fig
