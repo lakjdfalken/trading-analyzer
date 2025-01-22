@@ -21,6 +21,7 @@ def clean_csv_format(file_path):
         raw_fields = line.split('="')
         cleaned_fields = []
         found_funding_charges = False  # Track if we found Funding Charges in this line
+        found_trading_adjustment = False  # Track if we found Trading Adjustment in this line
 
         for i, field in enumerate(raw_fields):
             if i == 0:
@@ -41,11 +42,17 @@ def clean_csv_format(file_path):
                     if current_field.startswith('Fund'):
                         found_funding_charges = True
                     
+                    if current_field.startswith('Trading Adjustment'):
+                        found_trading_adjustment = True
+
                     # If this is the Description field (comes right after Action)
                     # and we found Funding Charges, add the '0'
                     if found_funding_charges and len(cleaned_fields) == 4:
                         cleaned_fields.append('0.0')
                         found_funding_charges = False  # Reset the flag
+                    if found_trading_adjustment and len(cleaned_fields) == 4:
+                        cleaned_fields.append('0.0')
+                        found_trading_adjustment = False  # Reset the flag
                     else:
                         # Add any remaining numeric fields
                         remaining = parts[1].strip()
