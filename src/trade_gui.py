@@ -7,6 +7,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from import_data import import_transaction_data
 from visualize_data import create_visualization_figure
 import logging
+import os, sys
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -54,6 +55,31 @@ class TradingAnalyzerGUI:
 
         # Bind search entry to search function
         self.search_var.trace_add('write', lambda name, index, mode: self.search_treeview())
+
+        # Bind window close event
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def on_closing(self):
+        """Handle application shutdown cleanly"""
+        logger.info("Shutting down application")
+        try:
+            # Clean up any open database connections
+            if hasattr(self, 'db_connection'):
+                self.db_connection.close()
+            
+            # Destroy all matplotlib figures
+            plt.close('all')
+            
+            # Destroy the root window
+            self.root.destroy()
+            
+            # Force exit the program
+            sys.exit(0)
+            
+        except Exception as e:
+            logger.error(f"Error during shutdown: {e}")
+            # Ensure program exits even if cleanup fails
+            os._exit(1)
 
 
     def create_search_frame(self):
