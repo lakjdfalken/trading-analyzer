@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-import sv_ttk  # Separate import for the theme package
 import sqlite3
 import pandas as pd
 import matplotlib.pyplot as plt
