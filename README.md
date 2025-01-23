@@ -12,6 +12,9 @@ A tool for analyzing trading data and generating insights.
 ## Prerequisites
 
 - Python 3.7 or higher
+- pandas >= 1.3.0
+- matplotlib >= 3.4.0
+- numpy >= 1.20.0
 
 ## Installation on MacOS
 
@@ -32,18 +35,6 @@ source .venv/bin/activate
 4. Install the required packages:
 
 pip install -r requirements.txt
-
-## Usage
-
-1. Create a virtual environment:
-  python -m venv .venv
-2. Activate the virtual environment:
-  source .venv/bin/activate
-3. Run the application:
-  python src/main.py
-4. Import the TransactionHistory.csv file 
-  Choose the date range you want to analyze from the menu.
-5. Laugh or cry.
 
 
 ## Installation on Windows
@@ -67,3 +58,30 @@ pip install -r requirements.txt
 4. Run the application:
   
     python src/main.py
+
+## Usage
+
+1. Create a virtual environment:
+
+    python -m venv .venv
+
+2. Activate the virtual environment:
+
+    source .venv/bin/activate
+
+3. Run the application:
+
+    python src/main.py
+
+4. Import the TransactionHistory.csv file 
+
+    Choose the date range you want to analyze from the menu.
+
+5. Laugh or cry.
+
+## License
+MIT License - See LICENSE file for details
+
+## Support
+
+You are on your own. I know nothing.
