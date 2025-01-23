@@ -34,9 +34,16 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 ## Usage
-python src/main.py
 
-import the TransactionHistory.csv file and choose the date range you want to analyze from the menu.
+1. Create a virtual environment:
+  python -m venv .venv
+2. Activate the virtual environment:
+  source .venv/bin/activate
+3. Run the application:
+  python src/main.py
+4. Import the TransactionHistory.csv file 
+  Choose the date range you want to analyze from the menu.
+5. Laugh or cry.
 
 
 ## Installation on Windows
@@ -60,13 +67,3 @@ import the TransactionHistory.csv file and choose the date range you want to ana
 4. Run the application:
   
     python src/main.py
-
-## Building Windows Executable
-
-1. Install PyInstaller:
-  
-    pip install pyinstaller
-
-2. Create the executable:
-  
-    pyinstaller --onefile --windowed src/main.py
