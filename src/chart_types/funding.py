@@ -4,11 +4,18 @@ from .base import format_currency, setup_base_figure, apply_common_styling
 from settings import FIGURE_SIZES, COLORS
 
 def create_funding_distribution(df):
+    # Create clean copy and ensure datetime type
+    df_copy = df.copy()
+    df_copy['Transaction Date'] = pd.to_datetime(df_copy['Transaction Date'])
+    
+    # Filter funding transactions
+    funding_df = df_copy[df_copy['Action'].str.startswith('Fund')]
+    
+    # Group by date for funding analysis
+    daily_funding = funding_df.groupby(funding_df['Transaction Date'].dt.date)['Amount'].sum()
+
     fig = plt.Figure(figsize=FIGURE_SIZES['wide'])
     currencies = df['Currency'].unique()
-    
-    # Filter funding data
-    funding_df = df[df['Action'].str.startswith('Fund ')].copy()
     
     for i, currency in enumerate(currencies, 1):
         ax = fig.add_subplot(len(currencies), 1, i)
@@ -60,7 +67,6 @@ def create_funding_distribution(df):
     
     fig.tight_layout()
     return fig
-
 def create_funding_charges(df):
     # Funding charges implementation
     fig = plt.Figure(figsize=FIGURE_SIZES['wide'])

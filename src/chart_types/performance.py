@@ -4,18 +4,23 @@ import pandas as pd
 from settings import FIGURE_SIZES, COLORS
 
 def create_daily_pl_vs_trades(df):
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=FIGURE_SIZES['wide'], 
-                                  gridspec_kw={'height_ratios': [3, 1]})
+    # Create clean copy and ensure datetime type
+    df_copy = df.copy()
+    df_copy['Transaction Date'] = pd.to_datetime(df_copy['Transaction Date'])
     
-    trading_mask = ~df['Action'].str.startswith('Fund ')
-    initial_balance = df[trading_mask]['Balance'].iloc[0]
+    trading_mask = ~df_copy['Action'].str.startswith('Fund ')
+    initial_balance = df_copy[trading_mask]['Balance'].iloc[0]
     
-    # Prepare data with dates
-    daily_pl = df[trading_mask].groupby(df['Transaction Date'].dt.date)['P/L'].sum()
+    # Now we can safely use .dt accessor for grouping
+    daily_pl = df_copy[trading_mask].groupby(df_copy['Transaction Date'].dt.date)['P/L'].sum()
     daily_pl_pct = (daily_pl / abs(initial_balance)) * 100
-    trade_df = df[df['Action'].str.contains('Trade', case=False)]
+    
+    trade_df = df_copy[df_copy['Action'].str.contains('Trade', case=False)]
     daily_trades = trade_df.groupby(trade_df['Transaction Date'].dt.date).size()
     
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=FIGURE_SIZES['wide'], 
+                                  gridspec_kw={'height_ratios': [3, 1]})
+
     # Get dates for x-axis
     dates = [d.strftime('%m-%d') for d in daily_pl.index]  # Short date format MM-DD
     

@@ -8,6 +8,7 @@ from import_data import import_transaction_data
 from visualize_data import create_visualization_figure
 import logging
 import os, sys
+from logger import setup_logger
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -110,14 +111,27 @@ class TradingAnalyzerGUI:
     def create_settings_tab(self):
         self.settings_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.settings_frame, text="Settings")
-    
-        # Theme selection using built-in ttk styles
+
+        # Debug Mode Control
+        debug_frame = ttk.LabelFrame(self.settings_frame, text="Debug Settings")
+        debug_frame.pack(padx=10, pady=5, fill="x")
+
+        self.debug_var = tk.BooleanVar(value=False)
+        debug_checkbox = ttk.Checkbutton(
+            debug_frame,
+            text="Enable Debug Mode",
+            variable=self.debug_var,
+            command=self.toggle_debug_mode
+        )
+        debug_checkbox.pack(side=tk.LEFT, padx=5)
+
+        # Existing theme selection code...
         theme_frame = ttk.LabelFrame(self.settings_frame, text="Theme Settings")
         theme_frame.pack(padx=10, pady=5, fill="x")
-    
+
         style = ttk.Style()
         available_themes = style.theme_names()
-    
+
         ttk.Label(theme_frame, text="Select Theme:").pack(side=tk.LEFT, padx=5)
         self.theme_var = tk.StringVar(value=style.theme_use())
         theme_combo = ttk.Combobox(theme_frame, 
@@ -126,11 +140,11 @@ class TradingAnalyzerGUI:
                                   state="readonly")
         theme_combo.pack(side=tk.LEFT, padx=5)
         theme_combo.bind('<<ComboboxSelected>>', self.change_theme)
-    
+
         # Transparency control
         trans_frame = ttk.LabelFrame(self.settings_frame, text="Window Transparency")
         trans_frame.pack(padx=10, pady=5, fill="x")
-    
+
         self.trans_var = tk.DoubleVar(value=1.0)
         trans_scale = ttk.Scale(trans_frame, 
                                 from_=0.1, 
@@ -138,7 +152,6 @@ class TradingAnalyzerGUI:
                                 variable=self.trans_var,
                                 command=self.update_transparency)
         trans_scale.pack(fill="x", padx=5)
-
     def change_theme(self, event=None):
         style = ttk.Style()
         style.theme_use(self.theme_var.get())
@@ -196,26 +209,26 @@ class TradingAnalyzerGUI:
                 
         return filtered_df
     def create_treeview(self):
-        # First create the tree
         columns = ("Transaction Date", "Ref. No.", "Action", "Description", 
                   "Amount", "Open Period", "Opening", "Closing", "P/L", 
-                  "Status", "Balance", "Currency", "Fund_Balance")
+                  "Status", "Balance", "Currency", "Fund_Balance", "sl", "tp")
+    
         self.tree = ttk.Treeview(self.data_frame, columns=columns, show="headings", height=20)
-        
-        # Set up column headings and widths
+    
+        # Set up column headings with sort functionality
         for col in columns:
-            self.tree.heading(col, text=col)
+            self.tree.heading(col, text=col, 
+                             command=lambda c=col: self.sort_treeview(c))
             if col in ["Transaction Date", "Action", "Open Period"]:
                 self.tree.column(col, width=150)  # Wider for datetime
             elif col in ["Description"]:
                 self.tree.column(col, width=200)  # Medium for numbers
-            elif col in ["Amount", "Opening", "Closing", "P/L", "Balance"]:
+            elif col in ["Amount", "Opening", "Closing", "P/L", "Balance", "sl", "tp"]:
                 self.tree.column(col, width=100)  # Medium for numbers
             elif col in ["Status", "Currency"]:
                 self.tree.column(col, width=50)  # Narrow for text
             else:
                 self.tree.column(col, width=80)  # Default for text
-
         # Now create search frame since tree exists
         self.create_search_frame()
         
@@ -411,14 +424,27 @@ class TradingAnalyzerGUI:
     def create_settings_tab(self):
         self.settings_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.settings_frame, text="Settings")
-    
+
+        # Debug Mode Control
+        debug_frame = ttk.LabelFrame(self.settings_frame, text="Debug Settings")
+        debug_frame.pack(padx=10, pady=5, fill="x")
+
+        self.debug_var = tk.BooleanVar(value=False)
+        debug_checkbox = ttk.Checkbutton(
+            debug_frame,
+            text="Enable Debug Mode",
+            variable=self.debug_var,
+            command=self.toggle_debug_mode
+        )
+        debug_checkbox.pack(side=tk.LEFT, padx=5)
+
         # Theme selection using built-in ttk styles
         theme_frame = ttk.LabelFrame(self.settings_frame, text="Theme Settings")
         theme_frame.pack(padx=10, pady=5, fill="x")
-    
+
         style = ttk.Style()
         available_themes = style.theme_names()
-    
+
         ttk.Label(theme_frame, text="Select Theme:").pack(side=tk.LEFT, padx=5)
         self.theme_var = tk.StringVar(value=style.theme_use())
         theme_combo = ttk.Combobox(theme_frame, 
@@ -427,11 +453,11 @@ class TradingAnalyzerGUI:
                                   state="readonly")
         theme_combo.pack(side=tk.LEFT, padx=5)
         theme_combo.bind('<<ComboboxSelected>>', self.change_theme)
-    
+
         # Transparency control
         trans_frame = ttk.LabelFrame(self.settings_frame, text="Window Transparency")
         trans_frame.pack(padx=10, pady=5, fill="x")
-    
+
         self.trans_var = tk.DoubleVar(value=1.0)
         trans_scale = ttk.Scale(trans_frame, 
                                 from_=0.1, 
@@ -447,6 +473,53 @@ class TradingAnalyzerGUI:
     def update_transparency(self, event=None):
         alpha = self.trans_var.get()
         self.root.attributes('-alpha', alpha)
+
+    def toggle_debug_mode(self):
+        debug_enabled = self.debug_var.get()
+        logger = setup_logger()  # Get our configured logger
+        
+        if debug_enabled:
+            logger.setLevel(logging.DEBUG)
+            logger.debug("Debug mode enabled - Detailed logging active")
+        else:
+            logger.setLevel(logging.INFO)
+            logger.info("Debug mode disabled - Normal logging level")
+    def sort_treeview(self, col):
+        """Sort treeview data when column header is clicked"""
+        
+        # Get all items from treeview
+        items = [(self.tree.set(item, col), item) for item in self.tree.get_children('')]
+        
+        # Toggle sort direction
+        if not hasattr(self, 'sort_direction'):
+            self.sort_direction = {}
+        
+        # Initialize or toggle direction for this column
+        if col not in self.sort_direction:
+            self.sort_direction[col] = 'asc'
+        else:
+            self.sort_direction[col] = 'desc' if self.sort_direction[col] == 'asc' else 'asc'
+        
+        # Sort based on data type
+        if col in ["Amount", "P/L", "Balance", "Opening", "Closing", "Fund_Balance", "sl", "tp"]:
+            # Numeric sorting
+            items.sort(key=lambda x: float(x[0]) if x[0] != '' else 0)
+        elif col in ["Transaction Date", "Open Period"]:
+            # Date sorting
+            items.sort(key=lambda x: pd.to_datetime(x[0]) if x[0] != '' else pd.Timestamp.min)
+        else:
+            # Text sorting
+            items.sort(key=lambda x: x[0].lower())
+        
+        # Reverse if descending
+        if self.sort_direction[col] == 'desc':
+            items.reverse()
+        
+        # Rearrange items in sorted positions
+        for index, (val, item) in enumerate(items):
+            self.tree.move(item, '', index)
+
+
 
 def reset_date_range(self):
     if hasattr(self, 'df'):
@@ -483,3 +556,5 @@ def get_filtered_data(self):
             return None
             
     return filtered_df
+
+

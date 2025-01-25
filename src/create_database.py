@@ -22,8 +22,10 @@ def create_db_schema():
         pl DECIMAL(10,2),
         status TEXT,
         balance DECIMAL(10,2),
-        currency TEXT
-        fund_balance DECIMAL(10,2)
+        currency TEXT,
+        fund_balance DECIMAL(10,2),
+        sl DECIMAL(10,2),
+        tp DECIMAL(10,2)
     )
     ''')
     conn.close()
