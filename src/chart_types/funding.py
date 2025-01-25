@@ -1,17 +1,14 @@
-import matplotlib.pyplot as plt
-import pandas as pd
-from .base import format_currency, setup_base_figure, apply_common_styling
+from .base import prepare_dataframe, format_currency, setup_base_figure, apply_common_styling
 from settings import FIGURE_SIZES, COLORS
+import matplotlib.pyplot as plt
+
+def get_funding_data(df):
+    """Returns dataframe filtered for funding transactions"""
+    df_copy = prepare_dataframe(df)
+    return df_copy[df_copy['Action'].str.startswith('Fund')]
 
 def create_funding_distribution(df):
-    # Create clean copy and ensure datetime type
-    df_copy = df.copy()
-    df_copy['Transaction Date'] = pd.to_datetime(df_copy['Transaction Date'])
-    
-    # Filter funding transactions
-    funding_df = df_copy[df_copy['Action'].str.startswith('Fund')]
-    
-    # Group by date for funding analysis
+    funding_df = get_funding_data(df)
     daily_funding = funding_df.groupby(funding_df['Transaction Date'].dt.date)['Amount'].sum()
 
     fig = plt.Figure(figsize=FIGURE_SIZES['wide'])
@@ -67,31 +64,23 @@ def create_funding_distribution(df):
     
     fig.tight_layout()
     return fig
+
 def create_funding_charges(df):
-    # Funding charges implementation
+    df_copy = prepare_dataframe(df)
+    funding_c_df = df_copy[df_copy['Action'].str.contains('Funding charge', case=False, na=False)]
+    
     fig = plt.Figure(figsize=FIGURE_SIZES['wide'])
-    currencies = df['Currency'].unique()
-    
-    # Create a clean copy and prepare data
-    df = df.copy()
-    df['Transaction Date'] = pd.to_datetime(df['Transaction Date'])
-    
-    # Filter for funding charges - checking both Description and Action fields
-    funding_c_df = df[
-        (df['Action'].str.contains('Funding charge', case=False, na=False)) ].copy()
-    funding_charges_in = funding_c_df[funding_c_df['P/L'] > 0]  # Receivable funding
-    funding_charges_out = funding_c_df[funding_c_df['P/L'] < 0]  # Outgoing funding  
+    currencies = df_copy['Currency'].unique()
 
     for i, currency in enumerate(currencies, 1):
         ax = fig.add_subplot(len(currencies), 1, i)
         currency_charges = funding_c_df[funding_c_df['Currency'] == currency]
         
         if not currency_charges.empty:
-            # Create bars with consistent coloring for charges
             bars = ax.bar(range(len(currency_charges)), 
                          currency_charges['P/L'],
                          color=[COLORS['profit'] if x > 0 else COLORS['loss'] 
-                               for x in currency_charges['P/L']]) 
+                               for x in currency_charges['P/L']])
 
             # Add value labels on bars
             for idx, bar in enumerate(bars):
@@ -105,11 +94,10 @@ def create_funding_charges(df):
             ax.set_xticks(range(len(currency_charges)))
             ax.set_xticklabels(dates, rotation=45, ha='right')
         
-        apply_common_styling(ax, f'Funding Charges ({currency})')
-
-        # Only add legend if we have data
-        if not currency_charges.empty:
+            # Add legend if we have data
             ax.legend(['Funding Charge In', 'Funding Charge Out'])
+        
+        apply_common_styling(ax, f'Funding Charges ({currency})')
         
         # Format y-axis with currency
         ax.yaxis.set_major_formatter(plt.FuncFormatter(

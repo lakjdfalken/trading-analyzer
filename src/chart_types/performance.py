@@ -1,21 +1,16 @@
-from .base import format_currency, setup_base_figure, apply_common_styling
+from .base import get_trading_data, apply_common_styling
 import matplotlib.pyplot as plt
 import pandas as pd
 from settings import FIGURE_SIZES, COLORS
 
 def create_daily_pl_vs_trades(df):
-    # Create clean copy and ensure datetime type
-    df_copy = df.copy()
-    df_copy['Transaction Date'] = pd.to_datetime(df_copy['Transaction Date'])
+    trading_df = get_trading_data(df)
+    initial_balance = trading_df['Balance'].iloc[0]
     
-    trading_mask = ~df_copy['Action'].str.startswith('Fund ')
-    initial_balance = df_copy[trading_mask]['Balance'].iloc[0]
-    
-    # Now we can safely use .dt accessor for grouping
-    daily_pl = df_copy[trading_mask].groupby(df_copy['Transaction Date'].dt.date)['P/L'].sum()
+    daily_pl = trading_df.groupby(trading_df['Transaction Date'].dt.date)['P/L'].sum()
     daily_pl_pct = (daily_pl / abs(initial_balance)) * 100
     
-    trade_df = df_copy[df_copy['Action'].str.contains('Trade', case=False)]
+    trade_df = trading_df[trading_df['Action'].str.contains('Trade', case=False)]
     daily_trades = trade_df.groupby(trade_df['Transaction Date'].dt.date).size()
     
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=FIGURE_SIZES['wide'], 
@@ -68,17 +63,10 @@ def create_daily_pl_vs_trades(df):
     return fig
 
 def create_daily_pl(df):
-    # Create clean copy and prepare data
-    df_copy = df.copy()
-    df_copy['Transaction Date'] = pd.to_datetime(df_copy['Transaction Date'])
-    
-    # Filter trading transactions and get initial balance
-    trading_mask = ~df_copy['Action'].str.startswith('Fund')  # Changed from Fund ' to Fund
-    trading_df = df_copy[trading_mask]
+    trading_df = get_trading_data(df)
     initial_balance = trading_df['Balance'].iloc[0]
     
-    # Calculate daily P/L for long and short positions separately
-    # Use .gt(0) and .lt(0) instead of direct comparison
+    # Calculate daily P/L for long and short positions separately using .gt() and .lt()
     long_pl = trading_df[trading_df['Amount'].gt(0)].groupby(
         trading_df['Transaction Date'].dt.date)['P/L'].sum()
     short_pl = trading_df[trading_df['Amount'].lt(0)].groupby(
@@ -144,80 +132,3 @@ def create_daily_pl(df):
     
     fig.tight_layout()
     return fig
-
-#def create_daily_pl_vs_trades(df):
-# fig, ax1 = plt.subplots(figsize=FIGURE_SIZES['wide'])
-    
-#     # Create second y-axis for trade count
-#     ax2 = ax1.twinx()
-    
-#     # Prepare P/L data
-#     df_copy = df.copy()
-#     df_copy['Transaction Date'] = pd.to_datetime(df_copy['Transaction Date'])
-#     trading_mask = ~df_copy['Action'].str.startswith('Fund ')
-#     initial_balance = df_copy[trading_mask]['Balance'].iloc[0]
-    
-#     # Calculate daily P/L percentage
-#     daily_pl = df_copy[trading_mask].groupby(df_copy['Transaction Date'].dt.date)['P/L'].sum()
-#     daily_pl_pct = (daily_pl / abs(initial_balance)) * 100
-    
-#     # Prepare trade count data
-#     trade_df = df[df['Action'].str.contains('Trade', case=False)]
-#     daily_trades = trade_df.groupby(trade_df['Transaction Date'].dt.date).size()
-    
-#     # Align dates for both metrics
-#     all_dates = sorted(set(daily_pl_pct.index) | set(daily_trades.index))
-    
-#     # Plot P/L bars
-#     bars = ax1.bar(range(len(all_dates)), 
-#                    [daily_pl_pct.get(date, 0) for date in all_dates],
-#                    alpha=0.6,
-#                    color=[COLORS['profit'] if x >= 0 else COLORS['loss'] 
-#                          for x in [daily_pl_pct.get(date, 0) for date in all_dates]],
-#                    label='Daily P/L %')
-    
-#     # Plot trade count line
-#     line = ax2.plot(range(len(all_dates)), 
-#                     [daily_trades.get(date, 0) for date in all_dates],
-#                     color=COLORS['trading'][1],
-#                     linewidth=2,
-#                     marker='o',
-#                     label='Number of Trades')
-    
-#     # Add value labels
-#     for idx, v in enumerate(daily_pl_pct):
-#         ax1.text(idx, v, f'{v:.1f}%',
-#                 ha='center', 
-#                 va='bottom' if v >= 0 else 'top')
-    
-#     # Styling
-#     ax1.set_xlabel('Date')
-#     ax1.set_ylabel('Daily P/L (%)')
-#     ax2.set_ylabel('Number of Trades')
-    
-#     # Set x-axis labels
-#     ax1.set_xticks(range(len(all_dates)))
-#     ax1.set_xticklabels([d.strftime('%Y-%m-%d') for d in all_dates],
-#                         rotation=45, ha='right')
-    
-#     # Add horizontal line at 0% for P/L
-#     ax1.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
-    
-#     # Add legends for both axes
-#     lines1, labels1 = ax1.get_legend_handles_labels()
-#     lines2, labels2 = ax2.get_legend_handles_labels()
-#     ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
-    
-#     # Calculate and display correlation
-#     correlation = pd.Series([daily_pl_pct.get(date, 0) for date in all_dates]).corr(
-#         pd.Series([daily_trades.get(date, 0) for date in all_dates]))
-    
-#     ax1.text(0.95, 0.95,
-#              f'Correlation: {correlation:.2f}',
-#              transform=ax1.transAxes,
-#              horizontalalignment='right',
-#              verticalalignment='top',
-#              bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
-    
-#     fig.tight_layout()
-#     return fig

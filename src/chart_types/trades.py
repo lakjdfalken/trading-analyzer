@@ -1,24 +1,27 @@
-from .base import format_currency, setup_base_figure, apply_common_styling
+from .base import prepare_dataframe, format_currency, setup_base_figure, apply_common_styling
 from settings import COLORS
 import pandas as pd
 
+def get_trade_distribution(df):
+    """Returns trading day performance metrics"""
+    trading_df = prepare_dataframe(df)
+    trading_df = trading_df[~trading_df['Action'].str.startswith('Fund')]
+    daily_pl = trading_df.groupby(trading_df['Transaction Date'].dt.date)['P/L'].sum()
+    
+    return {
+        'winning_days': len(daily_pl[daily_pl > 0]),
+        'losing_days': len(daily_pl[daily_pl < 0]),
+        'breakeven_days': len(daily_pl[daily_pl == 0])
+    }
+
 def create_distribution_days(df):
-    # Convert Transaction Date to datetime explicitly
-    df['Transaction Date'] = pd.to_datetime(df['Transaction Date'])
-    
-    # Now we can safely use .dt accessor
-    trading_days = df['Transaction Date'].dt.date.unique()
-    
-    # Rest of your distribution days calculation
+    distribution = get_trade_distribution(df)
     fig, ax = setup_base_figure('square')
-    trading_mask = ~df['Action'].str.startswith('Fund ')
-    trading_only_df = df[trading_mask].copy()
-    daily_pl = trading_only_df.groupby(trading_only_df['Transaction Date'].dt.date)['P/L'].sum()
     
     data = [
-        len(daily_pl[daily_pl > 0]),
-        len(daily_pl[daily_pl < 0]),
-        len(daily_pl[daily_pl == 0])
+        distribution['winning_days'],
+        distribution['losing_days'],
+        distribution['breakeven_days']
     ]
     
     ax.pie(data, 
@@ -28,15 +31,10 @@ def create_distribution_days(df):
     
     apply_common_styling(ax, 'Trading Day Performance Distribution')
     return fig
+
 def create_daily_trade_count(df):
-    # Create clean copy and ensure datetime type
-    df_copy = df.copy()
-    df_copy['Transaction Date'] = pd.to_datetime(df_copy['Transaction Date'])
-    
-    # Filter for trade transactions
+    df_copy = prepare_dataframe(df)
     trade_df = df_copy[df_copy['Action'].str.contains('Trade', case=False)]
-    
-    # Group by date and count trades
     daily_trades = trade_df.groupby(trade_df['Transaction Date'].dt.date).size()
     
     fig, ax = setup_base_figure('wide')

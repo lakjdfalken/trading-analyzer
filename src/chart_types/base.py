@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import pandas as pd
 # Base utilities used across all chart types
 from settings import FIGURE_SIZES, COLORS, CURRENCY_SYMBOLS
 
@@ -20,3 +21,28 @@ def apply_common_styling(ax, title, xlabel=None, ylabel=None):
         ax.set_ylabel(ylabel, fontsize=12)
     ax.tick_params(axis='x', rotation=45)
     ax.grid(True, alpha=0.3)
+
+def prepare_dataframe(df):
+    """
+    Prepares dataframe with proper datetime handling and returns a clean copy
+    """
+    df_copy = df.copy()
+    df_copy['Transaction Date'] = pd.to_datetime(df_copy['Transaction Date'])
+    df_copy['Open Period'] = pd.to_datetime(df_copy['Open Period'])
+    return df_copy
+
+def get_trading_data(df):
+    """
+    Returns dataframe filtered for trading transactions
+    """
+    df_copy = prepare_dataframe(df)
+    trading_mask = ~df_copy['Action'].str.startswith('Fund')
+    return df_copy[trading_mask]
+
+def get_trade_counts(df):
+    """
+    Returns daily trade counts
+    """
+    df_copy = prepare_dataframe(df)
+    trade_df = df_copy[df_copy['Action'].str.contains('Trade', case=False)]
+    return trade_df.groupby(trade_df['Transaction Date'].dt.date).size()

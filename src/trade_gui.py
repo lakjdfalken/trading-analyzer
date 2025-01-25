@@ -519,8 +519,6 @@ class TradingAnalyzerGUI:
         for index, (val, item) in enumerate(items):
             self.tree.move(item, '', index)
 
-
-
 def reset_date_range(self):
     if hasattr(self, 'df'):
         self.start_date.delete(0, tk.END)

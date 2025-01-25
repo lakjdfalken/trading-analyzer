@@ -1,20 +1,17 @@
 import matplotlib.pyplot as plt
 import seaborn as sns
-from .base import format_currency, setup_base_figure, apply_common_styling
-from settings import (
-    COLORS,
-)
+from .base import prepare_dataframe, get_trading_data, format_currency, setup_base_figure, apply_common_styling
+from settings import COLORS
 
 def create_balance_history(df):
-    fig, ax = plt.subplots(figsize=(12, 6))
-    
-    # Create clean copy and filter out Fund entries
-    trading_df = df[~df['Action'].str.startswith('Fund')].copy()
+    trading_df = get_trading_data(df)
     
     # Calculate total P/L for each currency
     total_pl = trading_df.groupby('Currency')['P/L'].sum()
     
-    # Plot balance lines
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    # Plot balance lines for each currency
     for currency in trading_df['Currency'].unique():
         currency_df = trading_df[trading_df['Currency'] == currency]
         if not currency_df.empty:
