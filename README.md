@@ -85,3 +85,15 @@ MIT License - See LICENSE file for details
 ## Support
 
 You are on your own. I know nothing.
+
+## Contributing
+
+Code enhancements are welcome. Here's how you can contribute:
+
+- Open an issue to discuss proposed changes
+- Submit a pull request with improvements
+- Share bug reports or feature requests
+- Suggest code optimizations
+
+This project benefits from contributions by:
+- Sourcegraph Cody - Code refactoring, optimization suggestions, and documentation improvements
