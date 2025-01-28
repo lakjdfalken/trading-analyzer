@@ -7,8 +7,8 @@ from logger import setup_logger
 logger = setup_logger()
 logger = logging.getLogger(__name__)
 
-def import_transaction_data(file_path):
-    logger.debug(f"Attempting to import data from {file_path}")
+def import_transaction_data(file_path, broker_name='default'):
+    logger.debug(f"Attempting to import data from {file_path} for broker: {broker_name}")
     
     # Detect and handle file format
     file_format = detect_file_format(file_path)
@@ -22,6 +22,18 @@ def import_transaction_data(file_path):
         new_df = pd.read_csv(file_path, encoding='utf-16le')
     else:
         raise ValueError("Unsupported file format")
+
+    # Print columns before modification
+    print("Columns before:", new_df.columns.tolist())
+    
+    # Create broker_name column without using insert
+    new_df = pd.concat([pd.Series(broker_name, index=new_df.index, name='broker_name'), new_df], axis=1)
+    
+    # Print columns after modification
+    print("Columns after:", new_df.columns.tolist())
+    
+    # Ensure the broker name is a string
+    new_df['broker_name'] = new_df['broker_name'].astype(str)
     
     # Process datetime columns with error tracking
     datetime_columns = ['Transaction Date', 'Open Period']
@@ -63,12 +75,14 @@ def import_transaction_data(file_path):
     # Connect to database and check for existing records
     conn = sqlite3.connect('trading.db')
     try:
-        existing_df = pd.read_sql('SELECT * FROM transactions', conn)
+        existing_df = pd.read_sql('SELECT * FROM broker_transactions', conn)
         logger.info(f"Found {len(existing_df)} existing records")
         
-        # Create unique IDs for comparison
-        existing_df['unique_id'] = existing_df.apply(get_unique_transaction_id, axis=1)
-        new_df['unique_id'] = new_df.apply(get_unique_transaction_id, axis=1)
+        # Create unique IDs for comparison including broker name
+        existing_df['unique_id'] = existing_df.apply(
+            lambda x: f"{x['broker_name']}_{get_unique_transaction_id(x)}", axis=1)
+        new_df['unique_id'] = new_df.apply(
+            lambda x: f"{x['broker_name']}_{get_unique_transaction_id(x)}", axis=1)
         
         # Identify and add only new records
         new_records = new_df[~new_df['unique_id'].isin(existing_df['unique_id'])]
@@ -76,20 +90,14 @@ def import_transaction_data(file_path):
         
         if not new_records.empty:
             new_records = new_records.drop('unique_id', axis=1)
-            new_records.to_sql('transactions', conn, if_exists='append', index=False,
-                                        dtype={
-                                            'Fund_Balance': 'DECIMAL(10,2)',
-                                            'sl': 'DECIMAL(10,2)',
-                                            'tp': 'DECIMAL(10,2)'
-                                        })
+            new_records.to_sql('broker_transactions', conn, if_exists='append', index=False)
             logger.info(f"Successfully imported {len(new_records)} new records")
     except pd.io.sql.DatabaseError:
         logger.info("No existing database found, creating new one")
-        new_df.to_sql('transactions', conn, if_exists='replace', index=False,
-                      dtype={'Fund_Balance': 'DECIMAL(10,2)'})
+        new_df.to_sql('broker_transactions', conn, if_exists='replace', index=False)
     
     # Read final combined dataset
-    final_df = pd.read_sql('SELECT * FROM transactions', conn)
+    final_df = pd.read_sql('SELECT * FROM broker_transactions', conn)
     conn.close()
     
     logger.info("Import process completed successfully")

@@ -10,7 +10,8 @@ def create_db_schema():
     logger.info("Creating database.")
 
     cursor.execute('''
-    CREATE TABLE IF NOT EXISTS transactions (
+    CREATE TABLE IF NOT EXISTS broker_transactions (
+        broker_name TEXT,
         transaction_date DATETIME,
         ref_no TEXT,
         action TEXT,

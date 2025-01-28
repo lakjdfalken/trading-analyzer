@@ -1,48 +1,48 @@
-import matplotlib.pyplot as plt
-import seaborn as sns
-from .base import prepare_dataframe, get_trading_data, format_currency, setup_base_figure, apply_common_styling
-from settings import COLORS
+import plotly.graph_objects as go
+from .base import get_trading_data, setup_base_figure, apply_common_styling
+import logging
+
+logger = logging.getLogger(__name__)
 
 def create_balance_history(df):
-    trading_df = get_trading_data(df)
+    fig = setup_base_figure()
+    trading_data = get_trading_data(df)
     
-    # Calculate total P/L for each currency
-    total_pl = trading_df.groupby('Currency')['P/L'].sum()
+    trading_data = trading_data.sort_values('Transaction Date')
     
-    fig, ax = plt.subplots(figsize=(12, 6))
+    # Calculate metrics
+    total_pl = trading_data['P/L'].sum()
+    days_traded = len(trading_data['Transaction Date'].dt.date.unique())
+    daily_average = total_pl / days_traded if days_traded > 0 else 0
     
-    # Plot balance lines for each currency
-    for currency in trading_df['Currency'].unique():
-        currency_df = trading_df[trading_df['Currency'] == currency]
-        if not currency_df.empty:
-            # Sort and calculate cumulative balance
-            currency_df = currency_df.sort_values('Transaction Date')
-            currency_df['Trading_Balance'] = currency_df['P/L'].cumsum()
-            
-            # Plot trading balance
-            sns.lineplot(data=currency_df, x='Transaction Date', y='Trading_Balance', 
-                        linewidth=3, ax=ax, 
-                        label=f'Trading Balance ({currency})',
-                        color=COLORS['trading'][0])
+    # Calculate cumulative P/L
+    trading_data['Cumulative P/L'] = trading_data['P/L'].cumsum()
     
-    # Add total P/L text in top left corner
-    pl_text = "Total P/L:\n" + "\n".join(
-        [f"{curr}: {format_currency(pl, curr)}" for curr, pl in total_pl.items()]
+    # Add metrics to plot
+    fig.add_trace(go.Scatter(
+        x=trading_data['Transaction Date'],
+        y=trading_data['Cumulative P/L'],
+        mode='lines+markers',
+        name='Cumulative P/L',
+        hovertemplate='Date: %{x}<br>Cumulative P/L: %{y:.2f}<extra></extra>'
+    ))
+    
+    # Add annotations for metrics
+    fig.add_annotation(
+        text=f'Total P/L: {total_pl:.2f}<br>Daily Average: {daily_average:.2f}',
+        xref='paper', yref='paper',
+        x=0.02, y=0.98,
+        showarrow=False,
+        bgcolor='white',
+        bordercolor='black',
+        borderwidth=1
     )
-    ax.text(0.02, 0.95,
-            pl_text,
-            transform=ax.transAxes,
-            color=COLORS['trading'][0],
-            fontweight='bold',
-            bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
     
-    # Style the plot
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax.set_title('Trading Balance History')
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(
-        lambda x, p: format_currency(x, df['Currency'].iloc[0])))
-    ax.grid(True, alpha=0.3)
-    ax.tick_params(axis='x', rotation=45)
+    apply_common_styling(
+        fig,
+        title='Trading P/L Progress',
+        xlabel='Date',
+        ylabel='Cumulative P/L'
+    )
     
-    fig.tight_layout()
     return fig

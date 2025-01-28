@@ -12,4 +12,5 @@ pyproject.toml
 main.spec
 logs/
 CACHEDIR.TAG
-
+temp_graphs/
+TODO

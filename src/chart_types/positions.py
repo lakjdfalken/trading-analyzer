@@ -1,10 +1,10 @@
-from .base import prepare_dataframe, format_currency, setup_base_figure, apply_common_styling
+from .base import prepare_dataframe, get_trading_data, format_currency, setup_base_figure, apply_common_styling
+import plotly.graph_objects as go
 from settings import COLORS
 
 def get_position_data(df, currency):
     """Returns position data for a specific currency"""
-    df_copy = prepare_dataframe(df)
-    trading_df = df_copy[~df_copy['Action'].str.startswith('Fund')]
+    trading_df = get_trading_data(df)
     currency_df = trading_df[trading_df['Currency'] == currency]
     
     long_pos = currency_df[currency_df['Amount'] > 0]['Amount'].sum()
@@ -20,41 +20,65 @@ def get_position_data(df, currency):
     }
 
 def create_position_distribution(df):
-    fig, ax = setup_base_figure('square')
+    fig = setup_base_figure()
     position_data = []
     labels = []
     colors = []
     pl_text = []
     
-    # Filter out Fund transactions and get trading data
-    trading_df = prepare_dataframe(df)
-    trading_df = trading_df[~trading_df['Action'].str.startswith('Fund')]
+    trading_df = get_trading_data(df)
     
     for currency in trading_df['Currency'].unique():
         pos_data = get_position_data(df, currency)
         
         if pos_data['long_pos'] > 0:
             position_data.append(pos_data['long_pos'])
-            labels.append(f'Long ({currency})\nP/L: {format_currency(pos_data["long_pl"], currency)}')
+            labels.append(f'Long ({currency})')
             colors.append(COLORS['profit'])
             pl_text.append(f'Long P/L: {format_currency(pos_data["long_pl"], currency)}')
             
         if pos_data['short_pos'] > 0:
             position_data.append(pos_data['short_pos'])
-            labels.append(f'Short ({currency})\nP/L: {format_currency(pos_data["short_pl"], currency)}')
+            labels.append(f'Short ({currency})')
             colors.append(COLORS['loss'])
             pl_text.append(f'Short P/L: {format_currency(pos_data["short_pl"], currency)}')
     
-    # Create pie chart with position distribution
-    wedges, texts, autotexts = ax.pie(position_data, labels=labels, 
-                                     autopct='%1.1f%%', colors=colors)
+    # Create pie chart
+    fig.add_trace(go.Pie(
+        values=position_data,
+        labels=labels,
+        marker_colors=colors,
+        textinfo='percent+label',
+        hovertemplate='%{label}<br>Amount: %{value:.2f}<br>%{percent}<extra></extra>'
+    ))
     
-    # Add combined P/L text box
+    # Add P/L summary
     total_pl = trading_df['P/L'].sum()
-    pl_summary = f'Total P/L: {format_currency(total_pl, trading_df["Currency"].iloc[0])}'
-    ax.text(1.2, -1.1, pl_summary, 
-            bbox=dict(facecolor='white', edgecolor='gray', alpha=0.8),
-            ha='center')
+    pl_summary = '<br>'.join(pl_text + [f'Total P/L: {format_currency(total_pl, trading_df["Currency"].iloc[0])}'])
     
-    apply_common_styling(ax, 'Long vs Short Positions')
+    fig.add_annotation(
+        text=pl_summary,
+        xref='paper', yref='paper',
+        x=1.2, y=0,
+        showarrow=False,
+        bgcolor='white',
+        bordercolor='gray',
+        borderwidth=1
+    )
+    
+    # Update layout for better pie chart display
+    fig.update_layout(
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        margin=dict(t=100, b=100, r=200)  # Increased right margin for P/L text
+    )
+    
+    apply_common_styling(fig, title='Long vs Short Positions')
+    
     return fig

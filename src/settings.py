@@ -55,3 +55,10 @@ VALID_GRAPH_TYPES = [
     'Daily Trades',
     'Daily P/L vs Trades'
 ]
+
+# Add to existing settings
+BROKERS = {
+    'none': 'Select Broker',
+    'trade_nation': 'Trade Nation',
+    'td365': 'TD365'
+}
