@@ -12,13 +12,19 @@ def create_daily_pl_vs_trades(df):
     daily_pl_pct = (daily_pl / abs(initial_balance)) * 100
     daily_trades = trading_df.groupby(trading_df['Transaction Date'].dt.date).size()
     
-    # Calculate correlation
+    # Calculate totals
+    total_pl_pct = daily_pl_pct.sum()
+    total_trades = daily_trades.sum()
     correlation = daily_pl_pct.corr(daily_trades)
     
-    # Create figure with secondary y-axis
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig = make_subplots(
+        rows=2, 
+        cols=1,
+        subplot_titles=('Daily P/L %', 'Daily Trade Count'),
+        vertical_spacing=0.12
+    )
     
-    # Add P/L bars
+    # Add P/L bars with auto-adjusting text
     fig.add_trace(
         go.Bar(
             x=daily_pl_pct.index,
@@ -26,49 +32,75 @@ def create_daily_pl_vs_trades(df):
             name="Daily P/L %",
             marker_color=[COLORS['profit'] if x >= 0 else COLORS['loss'] for x in daily_pl_pct],
             text=[f"{x:.1f}%" for x in daily_pl_pct],
-            textposition='outside'
+            textposition='auto',
+            cliponaxis=False
         ),
-        secondary_y=False
+        row=1, col=1
     )
     
-    # Add trade count line
+    # Add trade count bars
     fig.add_trace(
-        go.Scatter(
+        go.Bar(
             x=daily_trades.index,
             y=daily_trades.values,
             name="Trade Count",
-            line=dict(color=COLORS['trading'][1]),
+            marker_color=COLORS['trading'][1],
             text=daily_trades.values,
-            textposition='top center'
+            textposition='auto',
+            cliponaxis=False
         ),
-        secondary_y=True
+        row=2, col=1
     )
     
-    # Add correlation annotation
-    fig.add_annotation(
-        text=f'Correlation: {correlation:.2f}',
-        xref='paper', yref='paper',
-        x=0.02, y=0.98,
-        showarrow=False,
-        bgcolor='white',
-        bordercolor='gray',
-        borderwidth=1
-    )
+    # Add annotations for totals and correlation
+    annotations = [
+        dict(
+            text=f'Total P/L: {total_pl_pct:.1f}%',
+            xref='paper', 
+            yref='paper',
+            x=0.02, 
+            y=0.98,
+            showarrow=False,
+            bgcolor='white',
+            bordercolor='gray',
+            borderwidth=1
+        ),
+        dict(
+            text=f'Correlation: {correlation:.2f}',
+            xref='paper', 
+            yref='paper',
+            x=0.02, 
+            y=0.90,
+            showarrow=False,
+            bgcolor='white',
+            bordercolor='gray',
+            borderwidth=1
+        ),
+        dict(
+            text=f'Total Trades: {total_trades}',
+            xref='paper', 
+            yref='paper',
+            x=0.02, 
+            y=0.45,
+            showarrow=False,
+            bgcolor='white',
+            bordercolor='gray',
+            borderwidth=1
+        )
+    ]
     
-    # Update layout
     fig.update_layout(
-        title='Daily P/L vs Trade Count',
-        xaxis_title='Date',
-        margin=dict(t=100, b=100),
-        barmode='group'
+        showlegend=False,
+        margin=dict(t=50, b=50, l=50, r=50),
+        bargap=0.15,
+        autosize=True,
+        annotations=annotations
     )
     
-    # Update y-axes labels
-    fig.update_yaxes(title_text="Daily P/L (%)", secondary_y=False)
-    fig.update_yaxes(title_text="Trade Count", secondary_y=True)
+    fig.update_yaxes(title_text="P/L (%)", row=1, col=1, automargin=True)
+    fig.update_yaxes(title_text="Number of Trades", row=2, col=1, automargin=True)
     
     return fig
-
 def create_daily_pl(df):
     trading_df = get_trading_data(df)
     initial_balance = trading_df['Balance'].iloc[0]
@@ -79,16 +111,20 @@ def create_daily_pl(df):
     short_pl = trading_df[trading_df['Amount'] < 0].groupby(
         trading_df['Transaction Date'].dt.date)['P/L'].sum()
     
-    # Convert to percentage of initial balance
-    long_pl_pct = (long_pl / abs(initial_balance)) * 100
-    short_pl_pct = (short_pl / abs(initial_balance)) * 100
+    # Calculate total P/L first (actual profit/loss)
+    total_pl = long_pl.sum() + short_pl.sum()
+    total_pl_pct = (total_pl / abs(initial_balance)) * 100
     
-    # Get all unique dates
+    # Convert to percentage for display
+    long_pl_pct = (long_pl / abs(initial_balance)) * 100
+    short_pl_pct = abs((short_pl / abs(initial_balance)) * 100)
+    total_long_pct = long_pl_pct.sum()
+    total_short_pct = short_pl_pct.sum()
+    
     all_dates = sorted(set(long_pl_pct.index) | set(short_pl_pct.index))
     
-    # Create figure
-    fig = setup_base_figure()
-    
+    fig = go.Figure()
+
     # Add long position bars
     fig.add_trace(go.Bar(
         x=all_dates,
@@ -96,7 +132,8 @@ def create_daily_pl(df):
         name='Long P/L',
         marker_color=COLORS['profit'],
         text=[f"{long_pl_pct.get(date, 0):.1f}%" for date in all_dates],
-        textposition='outside'
+        textposition='auto',
+        cliponaxis=False
     ))
     
     # Add short position bars
@@ -106,38 +143,56 @@ def create_daily_pl(df):
         name='Short P/L',
         marker_color=COLORS['loss'],
         text=[f"{short_pl_pct.get(date, 0):.1f}%" for date in all_dates],
-        textposition='outside'
+        textposition='auto',
+        cliponaxis=False
     ))
-    
-    # Calculate and add summary statistics
-    total_long = sum(long_pl_pct)
-    total_short = sum(short_pl_pct)
-    total_return = total_long + total_short
-    
-    summary_text = (
-        f'Total Return: {total_return:.1f}%<br>'
-        f'Long: {total_long:.1f}%<br>'
-        f'Short: {total_short:.1f}%'
-    )
-    
-    fig.add_annotation(
-        text=summary_text,
-        xref='paper', yref='paper',
-        x=0.02, y=0.98,
-        showarrow=False,
-        bgcolor='white',
-        bordercolor='gray',
-        borderwidth=1
-    )
-    
-    # Update layout
+
+    # Updated annotations to show true P/L
+    annotations = [
+        dict(
+            text=f'Total Long: {total_long_pct:.1f}%',
+            xref='paper', 
+            yref='paper',
+            x=0.02, 
+            y=0.98,
+            showarrow=False,
+            bgcolor='white',
+            bordercolor='gray',
+            borderwidth=1
+        ),
+        dict(
+            text=f'Total Short: {total_short_pct:.1f}%',
+            xref='paper', 
+            yref='paper',
+            x=0.02, 
+            y=0.90,
+            showarrow=False,
+            bgcolor='white',
+            bordercolor='gray',
+            borderwidth=1
+        ),
+        dict(
+            text=f'Total P/L: {total_pl_pct:.1f}%',
+            xref='paper', 
+            yref='paper',
+            x=0.02, 
+            y=0.82,
+            showarrow=False,
+            bgcolor='white',
+            bordercolor='gray',
+            borderwidth=1,
+            font=dict(size=13, weight='bold')
+        )
+    ]
+
     fig.update_layout(
-        barmode='relative',
-        title='Daily P/L Performance - Long vs Short',
-        xaxis_title='Date',
-        yaxis_title='Daily P/L (%)',
-        margin=dict(t=100, b=100),
-        xaxis_tickangle=45
+        barmode='group',
+        bargap=0.15,
+        bargroupgap=0.05,
+        showlegend=True,
+        xaxis=dict(showgrid=False, zeroline=False),
+        margin=dict(t=50, b=50),
+        annotations=annotations
     )
-    
+
     return fig
