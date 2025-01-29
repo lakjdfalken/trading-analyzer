@@ -13,7 +13,6 @@ from visualize_data import create_visualization_figure
 from settings import BROKERS, VALID_GRAPH_TYPES
 
 logger = logging.getLogger(__name__)
-
 class TradingAnalyzerGUI(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -48,6 +47,8 @@ class TradingAnalyzerGUI(QMainWindow):
         
         # Load existing data
         self.load_existing_data()
+
+        self.sort_order = {}  # Track sort order per column
 
     def create_import_frame(self):
         import_frame = QFrame()
@@ -94,9 +95,34 @@ class TradingAnalyzerGUI(QMainWindow):
         data_layout.addWidget(search_frame)
         data_layout.addWidget(self.tree)
 
+        # Enable sorting and connect header clicks
+        self.tree.setSortingEnabled(True)
+        self.tree.header().sectionClicked.connect(self.sort_treeview)
+        
+        # Set custom sort roles for date columns
+        self.tree.setColumnCount(len(columns))
+        for col, name in enumerate(columns):
+            if name in ["Transaction Date", "Open Period"]:
+                self.tree.headerItem().setData(col, Qt.ItemDataRole.UserRole, "date")
+
     def filter_data(self):
         search_text = self.search_entry.text().lower()
+
+    def sort_treeview(self, column):
+        # Initialize or toggle sort order for this column
+        if column not in self.sort_order:
+            self.sort_order[column] = Qt.SortOrder.AscendingOrder
+        else:
+            self.sort_order[column] = (Qt.SortOrder.DescendingOrder 
+                                      if self.sort_order[column] == Qt.SortOrder.AscendingOrder 
+                                      else Qt.SortOrder.AscendingOrder)
+        
+        # Apply the sort
+        self.tree.sortItems(column, self.sort_order[column])
         selected_column = self.search_column.currentText()
+        
+        # Get the current search text
+        search_text = self.search_entry.text().lower()
         
         # Temporarily disable sorting to improve performance
         self.tree.setSortingEnabled(False)
@@ -119,7 +145,6 @@ class TradingAnalyzerGUI(QMainWindow):
         
         # Re-enable sorting
         self.tree.setSortingEnabled(True)
-
     def setup_graph_tab(self):
         graph_layout = QHBoxLayout(self.graph_tab)
 
@@ -264,96 +289,87 @@ class TradingAnalyzerGUI(QMainWindow):
         # Create search frame
         search_frame = QFrame()
         search_layout = QHBoxLayout(search_frame)
-        search_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)  # Align contents left
+        search_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
     
-        # Add search label
+        # Add search label and field
         search_layout.addWidget(QLabel("Search:"))
-    
-        # Add search field
         self.search_entry = QLineEdit()
         self.search_entry.setFixedWidth(200)
         self.search_entry.textChanged.connect(self.filter_data)
         search_layout.addWidget(self.search_entry)
     
-        # Add column dropdown
-        self.search_column = QComboBox()
+        # Set up columns
         columns = ["broker_name", "Transaction Date", "Ref. No.", "Action", "Description", 
                   "Amount", "Open Period", "Opening", "Closing", "P/L", 
                   "Status", "Balance", "Currency", "Fund_Balance", "sl", "tp"]
-        self.search_column.addItems(columns)
-        self.search_column.setFixedWidth(150)
-        search_layout.addWidget(self.search_column)
     
-        # Add stretch to push everything to the left
-        search_layout.addStretch()
+        # Add column selection for search
+        self.search_column = QComboBox()
+        self.search_column.addItems(["All Columns"] + columns)
+        search_layout.addWidget(self.search_column)
     
         data_layout.addWidget(search_frame)
     
-        # Add tree widget for data display
+        # Create and configure tree widget
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(columns)
-        data_layout.addWidget(self.tree)
-
-    def filter_data(self):
-        search_text = self.search_entry.text().lower()
-    
-        # Temporarily disable sorting to improve performance
-        self.tree.setSortingEnabled(False)
-    
-        # Single column search
-        column_index = self.search_column.currentIndex()
-    
-        # Batch process visibility changes
-        for i in range(self.tree.topLevelItemCount()):
-            item = self.tree.topLevelItem(i)
-            item_text = item.text(column_index).lower()
-            show_item = search_text in item_text
-            item.setHidden(not show_item)
-    
-        # Re-enable sorting
         self.tree.setSortingEnabled(True)
-
+        self.tree.header().sectionClicked.connect(self.sort_treeview)
+        data_layout.addWidget(self.tree)    
     def update_display(self):
-        # Clear existing items
         self.tree.clear()
         
-        # Get column names to maintain correct order
-        treeview_columns = [self.tree.headerItem().text(i) for i in range(self.tree.columnCount())]
+        # Get column names from tree widget
+        treeview_columns = [self.tree.headerItem().text(i) 
+                           for i in range(self.tree.columnCount())]
         
-        # Add new data using DataFrame column order with iloc
+        # Debug logging to verify columns
+        logger.debug(f"TreeView columns: {treeview_columns}")
+        logger.debug(f"DataFrame columns: {self.df.columns.tolist()}")
+        
+        # Add data row by row
         for idx, row in self.df.iterrows():
             item = QTreeWidgetItem()
             for col, column_name in enumerate(treeview_columns):
                 value = row[column_name]  # Use column name to get correct value
                 item.setText(col, str(value))
+                
+                # Special handling for date columns
                 if column_name in ["Transaction Date", "Open Period"]:
                     try:
                         date_value = pd.to_datetime(value)
                         item.setData(col, Qt.ItemDataRole.UserRole, date_value.timestamp())
                     except:
                         item.setData(col, Qt.ItemDataRole.UserRole, 0)
+                
+                # Special handling for numeric columns
+                elif column_name in ["Amount", "Opening", "Closing", "P/L", "Balance", "Fund_Balance"]:
+                    try:
+                        num_value = float(str(value).replace(',', ''))
+                        item.setData(col, Qt.ItemDataRole.UserRole, num_value)
+                    except:
+                        item.setData(col, Qt.ItemDataRole.UserRole, 0)
+                    
             self.tree.addTopLevelItem(item)
 
         # Adjust column widths based on content
         for column in range(self.tree.columnCount()):
             self.tree.resizeColumnToContents(column)
-
-
     def sort_treeview(self, column):
         # Initialize or toggle sort order for this column
-      if column not in self.sort_order:
-        self.sort_order[column] = Qt.SortOrder.AscendingOrder
-      else:
-        # Toggle between ascending and descending
-        self.sort_order[column] = (Qt.SortOrder.DescendingOrder 
-                                 if self.sort_order[column] == Qt.SortOrder.AscendingOrder 
-                                 else Qt.SortOrder.AscendingOrder)
-    
-      # Apply the sort
-      self.tree.sortItems(column, self.sort_order[column])
+        if column not in self.sort_order:
+            self.sort_order[column] = Qt.SortOrder.AscendingOrder
+        else:
+            # Toggle between ascending and descending
+            self.sort_order[column] = (Qt.SortOrder.DescendingOrder 
+                                     if self.sort_order[column] == Qt.SortOrder.AscendingOrder 
+                                     else Qt.SortOrder.AscendingOrder)
+        
+        # Apply the sort
+        self.tree.sortItems(column, self.sort_order[column])
 
     def display_selected_graph(self):
-        try:
+          try:
             filtered_data = self.get_filtered_data()
             if filtered_data is None or filtered_data.empty:
                 logger.warning("No data available after filtering")
@@ -384,7 +400,7 @@ class TradingAnalyzerGUI(QMainWindow):
             fig.write_html(temp_path, include_plotlyjs=True, full_html=True)
             webview.load(QUrl.fromLocalFile(temp_path))
             
-        except Exception as e:
+          except Exception as e:
             logger.error(f"Error displaying graph: {str(e)}")
             QMessageBox.critical(self, "Error", f"Failed to create visualization: {str(e)}")
     def get_filtered_data(self):
@@ -415,3 +431,38 @@ class TradingAnalyzerGUI(QMainWindow):
                 return None
                 
         return filtered_df
+    def display_selected_graph(self):
+      try:
+        filtered_data = self.get_filtered_data()
+        if filtered_data is None or filtered_data.empty:
+            logger.warning("No data available after filtering")
+            QMessageBox.warning(self, "Info", "No data available for selected date range")
+            return
+                
+        selection = self.graph_list.currentItem().text(0)
+    
+        # Create temp directory for HTML files
+        temp_dir = os.path.join(os.getcwd(), 'temp_graphs')
+        os.makedirs(temp_dir, exist_ok=True)
+
+        # Clear any existing layout
+        if self.graph_display_frame.layout():
+            QWidget().setLayout(self.graph_display_frame.layout())
+        
+        # Create new layout
+        layout = QVBoxLayout()
+        self.graph_display_frame.setLayout(layout)
+    
+        # Create webview
+        webview = QWebEngineView()
+        layout.addWidget(webview)
+    
+        # Generate and display graph
+        fig = create_visualization_figure(filtered_data, selection)
+        temp_path = os.path.join(temp_dir, 'graph.html')
+        fig.write_html(temp_path, include_plotlyjs=True, full_html=True)
+        webview.load(QUrl.fromLocalFile(temp_path))
+        
+      except Exception as e:
+        logger.error(f"Error displaying graph: {str(e)}")
+        QMessageBox.critical(self, "Error", f"Failed to create visualization: {str(e)}")
