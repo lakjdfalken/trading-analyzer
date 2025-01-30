@@ -15,6 +15,13 @@ A tool for analyzing trading data and generating insights.
 - pandas >= 1.3.0
 - matplotlib >= 3.4.0
 - numpy >= 1.20.0
+- PyQt6 >= 6.6.0
+- PyQt6-WebEngine >= 6.6.0 (for x86_64 systems)
+- Microsoft Visual C++ 14.0 or greater Build Tools (Windows only)
+
+For Windows systems:
+- x86_64 architecture: All packages supported
+- ARM64 architecture: Use matplotlib backend instead of WebEngine - in short, it doesn't work.
 
 ## Installation on MacOS
 
@@ -39,6 +46,10 @@ pip install -r requirements.txt
 
 ## Installation on Windows
 
+0. Start a power shell as an administrator.
+
+    winget install Microsoft.VisualStudio.2022.BuildTools
+
 1. Clone the repository:
     
     git clone https://github.com/lakjdfalken/trading-analyzer.git
@@ -52,7 +63,7 @@ pip install -r requirements.txt
     .venv\Scripts\activate.bat
 
 3. Install the required packages: 
-  
+
     pip install -r requirements.txt
     
 4. Run the application:
@@ -68,6 +79,8 @@ pip install -r requirements.txt
 2. Activate the virtual environment:
 
     source .venv/bin/activate
+    .venv/bin/activate.bat # for Windows
+    
 
 3. Run the application:
 
