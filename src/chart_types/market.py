@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from .base import prepare_dataframe, format_currency, setup_base_figure, apply_common_styling
+from .base import prepare_dataframe, format_currency, setup_base_figure, apply_standard_layout, get_trading_data
 from settings import COLORS
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -11,11 +11,18 @@ def get_market_data(df):
     return df_copy[~df_copy['Description'].str.contains('Online Transfer Cash', case=False, na=False)]
 
 def create_market_actions(df):
+    trading_df = get_trading_data(df)
+    
+    # Convert to datetime if needed
+    if not pd.api.types.is_datetime64_any_dtype(trading_df['Transaction Date']):
+        trading_df['Transaction Date'] = pd.to_datetime(trading_df['Transaction Date'])
+    
+
     # Get base figure with fluid layout
     fig = setup_base_figure()
     
     # Process and add data
-    daily_actions = df.groupby([df['Transaction Date'].dt.date, 'Action']).size().unstack(fill_value=0)
+    daily_actions = trading_df.groupby([trading_df['Transaction Date'].dt.date, 'Action']).size().unstack(fill_value=0)
     averages = daily_actions.mean()
     
     for action in daily_actions.columns:
@@ -27,25 +34,10 @@ def create_market_actions(df):
             textposition='auto',
         ))
         
-        fig.add_trace(go.Scatter(
-            name=f'Avg {action}',
-            x=daily_actions.index,
-            y=[averages[action]] * len(daily_actions),
-            mode='lines',
-            line=dict(dash='dash'),
-            opacity=0.7
-        ))
-    
     # Apply common styling
-    apply_common_styling(
-        fig, 
-        title='Daily Market Actions with Averages',
-        xlabel='Date',
-        ylabel='Number of Actions'
-    )
+    fig = apply_standard_layout(fig, "Market Actions")
     
     return fig
-
 def create_market_pl(df):
     market_df = get_market_data(df)
     # Group by Description and Currency, maintaining sign for P/L values

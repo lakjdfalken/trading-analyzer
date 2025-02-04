@@ -1,5 +1,5 @@
 import plotly.graph_objects as go
-from .base import get_trading_data, setup_base_figure, apply_common_styling
+from .base import get_trading_data, setup_base_figure, apply_standard_layout
 import logging
 
 logger = logging.getLogger(__name__)
@@ -31,18 +31,13 @@ def create_balance_history(df):
     fig.add_annotation(
         text=f'Total P/L: {total_pl:.2f}<br>Daily Average: {daily_average:.2f}',
         xref='paper', yref='paper',
-        x=0.02, y=0.98,
+        x=0.92, y=0.08,
         showarrow=False,
         bgcolor='white',
         bordercolor='black',
         borderwidth=1
     )
     
-    apply_common_styling(
-        fig,
-        title='Trading P/L Progress',
-        xlabel='Date',
-        ylabel='Cumulative P/L'
-    )
+    fig = apply_standard_layout(fig, "Relative P/L Over Time")
     
     return fig

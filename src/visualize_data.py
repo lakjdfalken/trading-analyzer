@@ -8,6 +8,7 @@ from chart_types import (
     trades,
     positions,
     market,
+    winrate,
     performance
 )
 from settings import (
@@ -61,7 +62,7 @@ def create_visualization_figure(df, graph_type):
             'Balance History': balance.create_balance_history,
         
             # Trade analysis charts
-            'Distribution Days': trades.create_distribution_days,
+            'Win Rate': winrate.create_distribution_days,
             'Daily Trades': trades.create_daily_trade_count,
         
             # Position analysis

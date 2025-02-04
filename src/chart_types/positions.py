@@ -1,4 +1,4 @@
-from .base import prepare_dataframe, get_trading_data, format_currency, setup_base_figure, apply_common_styling
+from .base import prepare_dataframe, get_trading_data, format_currency, setup_base_figure, apply_standard_layout
 import plotly.graph_objects as go
 from settings import COLORS
 
@@ -79,6 +79,6 @@ def create_position_distribution(df):
         margin=dict(t=100, b=100, r=200)  # Increased right margin for P/L text
     )
     
-    apply_common_styling(fig, title='Long vs Short Positions')
+    fig = apply_standard_layout(fig, "Long vs Short Positions")
     
     return fig

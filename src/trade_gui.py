@@ -11,11 +11,15 @@ import webview
 from import_data import import_transaction_data
 from visualize_data import create_visualization_figure
 from settings import BROKERS, VALID_GRAPH_TYPES
+#from signals import TradeSignals
 
 logger = logging.getLogger(__name__)
+
+
 class TradingAnalyzerGUI(QMainWindow):
     def __init__(self):
         super().__init__()
+        #self.signals = TradeSignals()
         self.setWindowTitle("Trading Data Analyzer")
         self.resize(1600, 800)
     
@@ -23,8 +27,7 @@ class TradingAnalyzerGUI(QMainWindow):
         self.broker_combo = QComboBox()
         self.current_sort_column = -1
         self.current_sort_order = Qt.SortOrder.AscendingOrder
-        self.sort_states = {}  # Add this to track sort states per column
-    
+        self.sort_states = {}  # Add this to track sort states per column    
         # Create central widget and main layout
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -143,32 +146,66 @@ class TradingAnalyzerGUI(QMainWindow):
         if hasattr(self, 'df'):
             self.start_date.clear()
             self.end_date.clear()
+
     def setup_settings_tab(self):
         settings_layout = QVBoxLayout(self.settings_tab)
-        
+    
         # Debug mode control
         debug_frame = QFrame()
         debug_layout = QHBoxLayout(debug_frame)
         debug_layout.addWidget(QLabel("Enable Debug Mode"))
         self.debug_checkbox = QCheckBox()
+        self.debug_checkbox.setFixedWidth(30)
+        self.debug_checkbox.stateChanged.connect(self.toggle_debug_mode)
         debug_layout.addWidget(self.debug_checkbox)
+        debug_layout.addStretch()
         settings_layout.addWidget(debug_frame)
-        
+    
         # Theme selection
         theme_frame = QFrame()
         theme_layout = QHBoxLayout(theme_frame)
         theme_layout.addWidget(QLabel("Select Theme:"))
         self.theme_combo = QComboBox()
+        self.theme_combo.addItems(['Light', 'Dark'])
+        self.theme_combo.setFixedWidth(100)
+        self.theme_combo.currentTextChanged.connect(self.change_theme)
         theme_layout.addWidget(self.theme_combo)
+        theme_layout.addStretch()
         settings_layout.addWidget(theme_frame)
-        
+    
         # Transparency control
         trans_frame = QFrame()
         trans_layout = QVBoxLayout(trans_frame)
         trans_layout.addWidget(QLabel("Window Transparency"))
         self.trans_slider = QSlider(Qt.Orientation.Horizontal)
+        self.trans_slider.setRange(50, 100)
+        self.trans_slider.setValue(100)
+        self.trans_slider.setFixedWidth(200)
+        self.trans_slider.valueChanged.connect(self.change_transparency)
         trans_layout.addWidget(self.trans_slider)
         settings_layout.addWidget(trans_frame)
+    
+        settings_layout.addStretch()
+
+    def toggle_debug_mode(self, state):
+        if state == Qt.CheckState.Checked.value:
+            logging.getLogger().setLevel(logging.DEBUG)
+        else:
+            logging.getLogger().setLevel(logging.INFO)
+
+    def change_theme(self, theme):
+        if theme == 'Dark':
+            self.setStyleSheet("""
+                QMainWindow, QWidget { background-color: #2b2b2b; color: #ffffff; }
+                QTreeWidget { background-color: #363636; color: #ffffff; }
+                QHeaderView::section { background-color: #404040; color: #ffffff; }
+                QComboBox, QPushButton { background-color: #404040; color: #ffffff; }
+            """)
+        else:
+            self.setStyleSheet("")
+
+    def change_transparency(self, value):
+        self.setWindowOpacity(value / 100)
 
     def load_existing_data(self):
         try:
@@ -334,3 +371,15 @@ class TradingAnalyzerGUI(QMainWindow):
       
       # Apply the sort
       self.tree.sortByColumn(column, self.sort_states[column])
+
+    def closeEvent(self, event):
+        """Handle proper cleanup when closing the application"""
+        # Clear any existing layout
+        if self.graph_display_frame.layout():
+            QWidget().setLayout(self.graph_display_frame.layout())
+        
+        # Close database connections if any
+        if hasattr(self, 'db_connection'):
+            self.db_connection.close()
+        
+        event.accept()

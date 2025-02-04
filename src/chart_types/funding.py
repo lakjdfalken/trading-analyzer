@@ -1,64 +1,109 @@
-from .base import prepare_dataframe, get_trading_data, format_currency, setup_base_figure, apply_common_styling
+from .base import prepare_dataframe, get_trading_data, format_currency, setup_base_figure, apply_standard_layout
 import plotly.graph_objects as go
 from settings import COLORS
+import pandas as pd
 
 def get_funding_data(df):
     """Returns dataframe filtered for funding transactions"""
     df_copy = prepare_dataframe(df)
-    return df_copy[df_copy['Action'].str.startswith('Fund')]
+#    print("Unique Action values:", df_copy['Action'].unique())
+    
+    # Try case-insensitive matching for funding transactions
+    funding_mask = df_copy['Action'].str.contains('fund', case=False, na=False)
+    funding_df = df_copy[funding_mask]
+    
+#    print("Number of funding transactions found:", len(funding_df))
+#    if not funding_df.empty:
+#        print("Sample of funding data:\n", funding_df[['Transaction Date', 'Action', 'P/L']].head())
+    
+    return funding_df
 
 def create_funding_distribution(df):
     funding_df = get_funding_data(df)
+    
+    # Calculate totals at the start
+    total_deposits = funding_df[funding_df['Action'] == 'Fund receivable']['P/L'].sum()
+    total_withdrawals = funding_df[funding_df['Action'] == 'Fund payable']['P/L'].sum()
+    total_charges = funding_df[funding_df['Action'] == 'Funding Charges']['P/L'].sum()
+    net_total = total_deposits + total_withdrawals + total_charges
+
+    funding_df['Transaction Date'] = pd.to_datetime(funding_df['Transaction Date'])
+    funding_df = funding_df.sort_values('Transaction Date', ascending=True)
+    
     fig = setup_base_figure()
     
     for currency in funding_df['Currency'].unique():
         currency_funding = funding_df[funding_df['Currency'] == currency]
         
-        if not currency_funding.empty:
-            # Calculate totals
-            total_in = currency_funding[currency_funding['P/L'] > 0]['P/L'].sum()
-            total_out = currency_funding[currency_funding['P/L'] < 0]['P/L'].sum()
-            net_total = total_in + total_out
-            
-            # Create pie chart
-            values = [abs(total_in), abs(total_out)]
-            labels = ['Funding In', 'Funding Out']
-            
-            fig.add_trace(go.Pie(
-                values=values,
-                labels=labels,
-                name=currency,
-                domain={'x': [0, 0.7]},  # Position pie chart on left side
-                marker_colors=[COLORS['profit'], COLORS['loss']],
-                textinfo='percent+value',
-                hovertemplate="%{label}<br>Amount: %{value:,.2f}<br>Percentage: %{percent}<extra></extra>"
-            ))
-            
-            # Add totals annotation
-            totals_text = (
-                f"Currency: {currency}<br>"
-                f"Total In: {format_currency(total_in, currency)}<br>"
-                f"Total Out: {format_currency(total_out, currency)}<br>"
-                f"Net Total: {format_currency(net_total, currency)}"
-            )
-            
-            fig.add_annotation(
-                text=totals_text,
-                xref='paper', yref='paper',
-                x=0.85, y=0.5,
-                showarrow=False,
-                bgcolor='white',
-                bordercolor='gray',
-                borderwidth=1
-            )
+        funding_types = {
+            'Fund receivable': {'name': 'Deposits', 'color': COLORS['profit']},
+            'Fund payable': {'name': 'Withdrawals', 'color': COLORS['loss']},
+            'Funding Charges': {'name': 'Charges', 'color': 'orange'}
+        }
+        
+        for action, props in funding_types.items():
+            action_data = currency_funding[currency_funding['Action'] == action]
+            if not action_data.empty:
+                # Convert datetime to string format for Plotly
+                x_dates = action_data['Transaction Date'].dt.strftime('%Y-%m-%d')
+                
+                fig.add_trace(go.Bar(
+                    name=f"{props['name']} ({currency})",
+                    x=x_dates,
+                    y=abs(action_data['P/L']),
+                    marker_color=props['color'],
+                    text=[f"{val:.0f}" for val in action_data['P/L']],
+                    textposition='inside',  # Places text inside the bars
+                    textfont=dict(
+                        color='white',      # White text for better contrast
+                        size=12             # Consistent text size
+                    )
+                ))
+    
+    # Set explicit x-axis range
+    min_date = funding_df['Transaction Date'].min()
+    max_date = funding_df['Transaction Date'].max()
     
     fig.update_layout(
-        title='Funding Distribution',
+        title='Funding Transactions Over Time',
+        xaxis=dict(
+            title='Date',
+            type='category',
+        ),
+        yaxis_title='Amount (Absolute Value)',
+        barmode='group',
+        bargap=0.15,
+        bargroupgap=0.1,
         showlegend=True,
-        margin=dict(t=100, b=100, r=200)
+        legend=dict(
+            x=0.0,
+            y=1.0,
+            xanchor='left',
+            yanchor='top'
+        ),
+        autosize=True
+#        height=600
     )
     
-    return fig
+    fig.add_annotation(
+        text=(f"Total Deposits: {total_deposits:,.0f}<br>"
+              f"Total Withdrawals: {abs(total_withdrawals):,.0f}<br>"
+              f"Total Charges: {abs(total_charges):,.0f}<br>"
+              f"Net Total: {net_total:,.0f}"),
+        xref='paper',
+        yref='paper',
+        x=0.85,
+        y=0.90,
+        showarrow=False,
+        font=dict(size=12),
+        bgcolor='white',
+        bordercolor='black',
+        borderwidth=1,
+        xanchor='left',
+        yanchor='bottom'
+    )
+
+    return fig    
 
 def create_funding_charges(df):
     df_copy = prepare_dataframe(df)
@@ -112,5 +157,6 @@ def create_funding_charges(df):
         margin=dict(t=100, b=100, r=300),
         xaxis_tickangle=45
     )
-    
+    fig = apply_standard_layout(fig, "Funding Charges History") 
+
     return fig

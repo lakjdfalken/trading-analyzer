@@ -45,7 +45,7 @@ CURRENCY_SYMBOLS = {
 # Graph Types
 VALID_GRAPH_TYPES = [
     'Balance History',
-    'Distribution Days',
+    'Win Rate',
     'Funding',
     'Funding Charges',
     'Long vs Short Positions',

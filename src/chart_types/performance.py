@@ -1,4 +1,4 @@
-from .base import get_trading_data, apply_common_styling, setup_base_figure, format_currency
+from .base import get_trading_data, apply_standard_layout, setup_base_figure, format_currency
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from settings import COLORS
@@ -94,11 +94,14 @@ def create_daily_pl_vs_trades(df):
         margin=dict(t=50, b=50, l=50, r=50),
         bargap=0.15,
         autosize=True,
+        plot_bgcolor='white',    # Set plot background to white
+        paper_bgcolor='white',
         annotations=annotations
     )
     
-    fig.update_yaxes(title_text="P/L (%)", row=1, col=1, automargin=True)
-    fig.update_yaxes(title_text="Number of Trades", row=2, col=1, automargin=True)
+    fig.update_yaxes(title_text="P/L (%)", row=1, col=1, automargin=True, showgrid=True, gridwidth=1, gridcolor='LightGray')
+    fig.update_yaxes(title_text="Number of Trades", row=2, col=1, automargin=True, showgrid=True, gridwidth=1, gridcolor='LightGray')
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
     
     return fig
 def create_daily_pl(df):
@@ -185,6 +188,9 @@ def create_daily_pl(df):
         )
     ]
 
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+
     fig.update_layout(
         barmode='group',
         bargap=0.15,
@@ -192,7 +198,9 @@ def create_daily_pl(df):
         showlegend=True,
         xaxis=dict(showgrid=False, zeroline=False),
         margin=dict(t=50, b=50),
-        annotations=annotations
+        annotations=annotations,
+        plot_bgcolor='white',    # Set plot background to white
+        paper_bgcolor='white'
     )
 
     return fig

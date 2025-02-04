@@ -28,16 +28,33 @@ def setup_base_figure(figsize='default'):
     )
     return fig
 
-def apply_common_styling(fig, title, xlabel=None, ylabel=None):
+def apply_standard_layout(fig, title):
     fig.update_layout(
         title=title,
-        xaxis_title=xlabel,
-        yaxis_title=ylabel,
-        font=dict(size=12),
-        # Ensure fluid sizing is maintained
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        showlegend=True,
+        legend=dict(
+            x=0.0,
+            y=1.0,
+            xanchor='left',
+            yanchor='top'
+        ),
+        margin=dict(
+            l=150,    # Left margin for legend
+            r=50,     # Right margin
+            t=100,    # Top margin
+            b=50,     # Bottom margin
+            pad=4     # Padding
+        ),
         autosize=True
     )
-
+    
+    # Add consistent grid styling
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+    
+    return fig
 def prepare_dataframe(df):
     """
     Prepares dataframe with proper datetime handling and returns a clean copy
@@ -49,11 +66,11 @@ def prepare_dataframe(df):
 
 def get_trading_data(df):
     df_copy = prepare_dataframe(df)
-    df_filtered = df_copy[~df_copy['Action'].str.startswith('Fund')]
-    # Debug data before plotting
-    logger.debug(f"Data shape in base.py: {df_filtered.shape}")
-    logger.debug(f"Unique Fund in base.py: {df_filtered['Action'].str.contains('Fund', case=False).unique()}") 
-    return df_filtered
+    trading_mask = df_copy['Action'].str.contains('Trade', case=False, na=False)
+    trading_data = df_copy[trading_mask].copy()  # Create explicit copy
+    trading_data['Transaction Date'] = pd.to_datetime(trading_data['Transaction Date'])
+    return trading_data
+
 def get_trade_counts(df):
     """
     Returns daily trade counts
