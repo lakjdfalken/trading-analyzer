@@ -53,7 +53,8 @@ VALID_GRAPH_TYPES = [
     'Market P/L',
     'Daily P/L',
     'Daily Trades',
-    'Daily P/L vs Trades'
+    'Daily P/L vs Trades',
+    'Monthly P/L'
 ]
 
 # Add to existing settings

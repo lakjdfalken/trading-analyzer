@@ -21,15 +21,16 @@ def get_funding_data(df):
 def create_funding_distribution(df):
     funding_df = get_funding_data(df)
     
-    # Calculate totals at the start
+    # Convert dates and sort all data at once
+    funding_df['Transaction Date'] = pd.to_datetime(funding_df['Transaction Date'])
+    funding_df = funding_df.sort_values('Transaction Date', ascending=True)
+    
+    # Calculate totals
     total_deposits = funding_df[funding_df['Action'] == 'Fund receivable']['P/L'].sum()
     total_withdrawals = funding_df[funding_df['Action'] == 'Fund payable']['P/L'].sum()
     total_charges = funding_df[funding_df['Action'] == 'Funding Charges']['P/L'].sum()
     net_total = total_deposits + total_withdrawals + total_charges
 
-    funding_df['Transaction Date'] = pd.to_datetime(funding_df['Transaction Date'])
-    funding_df = funding_df.sort_values('Transaction Date', ascending=True)
-    
     fig = setup_base_figure()
     
     for currency in funding_df['Currency'].unique():
@@ -37,8 +38,7 @@ def create_funding_distribution(df):
         
         funding_types = {
             'Fund receivable': {'name': 'Deposits', 'color': COLORS['profit']},
-            'Fund payable': {'name': 'Withdrawals', 'color': COLORS['loss']},
-            'Funding Charges': {'name': 'Charges', 'color': 'orange'}
+            'Fund payable': {'name': 'Withdrawals', 'color': COLORS['loss']}
         }
         
         for action, props in funding_types.items():
@@ -53,13 +53,12 @@ def create_funding_distribution(df):
                     y=abs(action_data['P/L']),
                     marker_color=props['color'],
                     text=[f"{val:.0f}" for val in action_data['P/L']],
-                    textposition='inside',  # Places text inside the bars
+                    textposition='inside',
                     textfont=dict(
-                        color='white',      # White text for better contrast
-                        size=12             # Consistent text size
+                        color='white',
+                        size=12
                     )
-                ))
-    
+                ))    
     # Set explicit x-axis range
     min_date = funding_df['Transaction Date'].min()
     max_date = funding_df['Transaction Date'].max()
