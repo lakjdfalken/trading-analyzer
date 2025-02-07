@@ -2,6 +2,10 @@ from .base import prepare_dataframe, get_trading_data, format_currency, setup_ba
 import plotly.graph_objects as go
 from settings import COLORS
 import pandas as pd
+import logging
+from logger import setup_logger
+
+logger = logging.getLogger(__name__)
 
 def get_funding_data(df):
     """Returns dataframe filtered for funding transactions"""
@@ -105,57 +109,76 @@ def create_funding_distribution(df):
     return fig    
 
 def create_funding_charges(df):
-    df_copy = prepare_dataframe(df)
-    funding_c_df = df_copy[df_copy['Action'].str.contains('Funding charge', case=False, na=False)]
+    logger.debug("Starting funding charges analysis")
+    
+    df_copy = prepare_dataframe(df).copy()
+    df_copy['Transaction Date'] = pd.to_datetime(df_copy['Transaction Date'])
+    # Sort by date and P/L in reverse order to stack largest values first
+    #df_copy = df_copy.sort_values(['Transaction Date', 'P/L'], ascending=[True, False])
+    
+    funding_mask = df_copy['Action'].str.contains('Funding charge', case=False, na=False)
+    funding_c_df = df_copy[funding_mask]
+
+    #funding_c_df = funding_c_df.sort_values(['Transaction Date', 'P/L'], ascending=[True, True])
+    # Sort by date first, then by absolute value of P/L in descending order
+    
+    logger.debug(f"Found {len(funding_c_df)} funding charge entries")
     
     fig = setup_base_figure()
+    y_position = 0.95
     
+    # Sort by exact timestamp and P/L to ensure consistent display
+    #funding_c_df = funding_c_df.sort_values(['Transaction Date', 'P/L'], ascending=[True, False])
+    
+    # Calculate date range and adjust bar width accordingly
+    date_range = (funding_c_df['Transaction Date'].max() - funding_c_df['Transaction Date'].min()).days
+    bar_width = max(8*60*60*1000, date_range*24*60*60*1000/100)  # Minimum 8 hours, or 1% of total range
+
+    for idx, row in funding_c_df.iterrows():
+        fig.add_trace(go.Bar(
+            x=[row['Transaction Date']],
+            y=[row['P/L']],
+            name=f"{row['Currency']} {row['Transaction Date'].strftime('%Y-%m-%d')}",
+            marker=dict(
+                color=COLORS['loss'],
+                line=dict(color='white', width=1)
+            ),
+            text=[format_currency(row['P/L'], row['Currency'])],
+            textposition='auto',
+            width=bar_width,
+            offset=-bar_width/2,
+            showlegend=False
+        ))
+    
+    # Add total annotations per currency
     for currency in funding_c_df['Currency'].unique():
-        currency_charges = funding_c_df[funding_c_df['Currency'] == currency]
-        
-        if not currency_charges.empty:
-            # Sort by date for chronological display
-            currency_charges = currency_charges.sort_values('Transaction Date')
-            
-            # Add bar chart
-            fig.add_trace(go.Bar(
-                x=currency_charges['Transaction Date'],
-                y=currency_charges['P/L'],
-                name=f'{currency} Charges',
-                marker_color=[COLORS['profit'] if x > 0 else COLORS['loss'] for x in currency_charges['P/L']],
-                text=[format_currency(x, currency) for x in currency_charges['P/L']],
-                textposition='outside',
-                hovertemplate="Date: %{x}<br>Amount: %{text}<extra></extra>"
-            ))
-            
-            # Calculate and add summary statistics
-            total_charges = currency_charges['P/L'].sum()
-            avg_charge = currency_charges['P/L'].mean()
-            
-            summary_text = (
-                f"{currency} Summary<br>"
-                f"Total Charges: {format_currency(total_charges, currency)}<br>"
-                f"Average Charge: {format_currency(avg_charge, currency)}"
-            )
-            
-            fig.add_annotation(
-                text=summary_text,
-                xref='paper', yref='paper',
-                x=1.02, y=0.95,
-                showarrow=False,
-                bgcolor='white',
-                bordercolor='gray',
-                borderwidth=1
-            )
+        currency_total = funding_c_df[funding_c_df['Currency'] == currency]['P/L'].sum()
+        fig.add_annotation(
+            text=f"Total {currency} Charges: {format_currency(currency_total, currency)}",
+            xref='paper', yref='paper',
+            x=1.02, y=y_position,
+            showarrow=False,
+            bgcolor='white',
+            bordercolor='gray',
+            borderwidth=1
+        )
+        y_position -= 0.05
+    
+    # Calculate total range for y-axis
+    total_min = funding_c_df['P/L'].sum()
+    logger.debug(f"total_min: {total_min} funding charge entries")
+    logger.debug(f"Total {currency} Charges: {format_currency(currency_total, currency)}")
     
     fig.update_layout(
-        title='Funding Charges History',
-        xaxis_title='Date',
-        yaxis_title='Charge Amount',
-        showlegend=True,
-        margin=dict(t=100, b=100, r=300),
-        xaxis_tickangle=45
+        barmode='stack',
+        bargap=0.3,
+        showlegend=False,
+        yaxis=dict(
+            #range=[total_min * 1.1, 0],  # Set range from total sum to zero
+            range=[total_min, 0],  # Set range from total sum to zero
+            title="Cumulative Charges"
+        )
     )
-    fig = apply_standard_layout(fig, "Funding Charges History") 
-
+    
+    fig = apply_standard_layout(fig, "Funding Charges History")
     return fig

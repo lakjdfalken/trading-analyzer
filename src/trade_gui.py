@@ -194,12 +194,22 @@ class TradingAnalyzerGUI(QMainWindow):
         settings_layout.addStretch()
 
     def toggle_debug_mode(self, state):
+        root_logger = logging.getLogger()
         if state == Qt.CheckState.Checked.value:
-            logging.getLogger().setLevel(logging.DEBUG)
-            print("Debug mode enabled")  # Direct console output
+            root_logger.setLevel(logging.DEBUG)
+            # Set all existing loggers to DEBUG
+            for name in logging.root.manager.loggerDict:
+                logger = logging.getLogger(name)
+                logger.setLevel(logging.DEBUG)
+            print("Debug mode enabled")
+            logger.debug("Debug logging activated")
         else:
-            logging.getLogger().setLevel(logging.INFO)
-            print("Debug mode disabled")  # Direct console output
+            root_logger.setLevel(logging.INFO)
+            # Set all existing loggers to INFO
+            for name in logging.root.manager.loggerDict:
+                logger = logging.getLogger(name)
+                logger.setLevel(logging.INFO)
+            print("Debug mode disabled")
 
     def change_theme(self, theme):
         if theme == 'Dark':

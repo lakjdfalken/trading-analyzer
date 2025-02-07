@@ -63,17 +63,16 @@ def create_points_analysis(df):
     return fig
 
 def calculate_points(open_price, close_price, action):
-#    print(f"Calculating points for: Open={open_price}, Close={close_price}, Action={action}")
     try:
         open_price = float(str(open_price).replace(',', ''))
         close_price = float(str(close_price).replace(',', ''))
         
         if action == 'Trade Receivable':
-            points = close_price - open_price
+            points = abs(close_price - open_price)
         elif action == 'Trade Payable':    
-            points = -(open_price - close_price)
+            points = -(open_price - close_price)  # Subtract points for Trade Payable
             
-#        print(f"Calculated points: {points}")
+        logger.debug(f"Calculated points: {points} for {action} open: {open_price} close: {close_price}")
         return points
     except:
-        return 0 
+        return 0
