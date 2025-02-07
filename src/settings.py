@@ -54,7 +54,8 @@ VALID_GRAPH_TYPES = [
     'Daily P/L',
     'Daily Trades',
     'Daily P/L vs Trades',
-    'Monthly P/L'
+    'Monthly P/L',
+    'Points Won/Lost'
 ]
 
 # Add to existing settings

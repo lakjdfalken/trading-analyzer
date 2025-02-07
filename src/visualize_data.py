@@ -10,7 +10,8 @@ from chart_types import (
     market,
     winrate,
     monthly,
-    performance
+    performance,
+    points_analysis
 )
 from settings import (
     FIGURE_SIZES,
@@ -81,7 +82,8 @@ def create_visualization_figure(df, graph_type):
             'Daily P/L': performance.create_daily_pl,
             'Daily P/L vs Trades': performance.create_daily_pl_vs_trades,
 
-            'Monthly P/L': monthly.create_monthly_distribution
+            'Monthly P/L': monthly.create_monthly_distribution,
+            'Points Won/Lost': points_analysis.create_points_analysis
         }
         return GRAPH_IMPLEMENTATIONS[graph_type](df)
             

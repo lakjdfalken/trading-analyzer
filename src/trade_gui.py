@@ -196,8 +196,10 @@ class TradingAnalyzerGUI(QMainWindow):
     def toggle_debug_mode(self, state):
         if state == Qt.CheckState.Checked.value:
             logging.getLogger().setLevel(logging.DEBUG)
+            print("Debug mode enabled")  # Direct console output
         else:
             logging.getLogger().setLevel(logging.INFO)
+            print("Debug mode disabled")  # Direct console output
 
     def change_theme(self, theme):
         if theme == 'Dark':
