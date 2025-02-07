@@ -1,13 +1,14 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                            QComboBox, QPushButton, QLabel, QFrame, QTabWidget,
                            QTreeWidget, QTreeWidgetItem, QSlider, QLineEdit, QCheckBox,
-                           QFileDialog, QMessageBox, QSizePolicy)
-from PyQt6.QtCore import Qt, QTimer, QUrl
+                           QFileDialog, QMessageBox, QSizePolicy, QDialog)
+from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtGui import QAction, QKeySequence
 import pandas as pd
 import sqlite3, os
 import logging
-import webview
+import platform
 from import_data import import_transaction_data
 from visualize_data import create_visualization_figure
 from settings import BROKERS, VALID_GRAPH_TYPES
@@ -19,9 +20,12 @@ logger = logging.getLogger(__name__)
 class TradingAnalyzerGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        #self.signals = TradeSignals()
         self.setWindowTitle("Trading Data Analyzer")
         self.resize(1600, 800)
+        self.webview = None # Store reference to webview for cleanup
+    
+        # Create the menu bar before other UI elements
+        self.create_menu_bar()  # This line ensures menus are created
     
         # Initialize attributes
         self.broker_combo = QComboBox()
@@ -50,7 +54,6 @@ class TradingAnalyzerGUI(QMainWindow):
         self.setup_graph_tab()
         self.setup_settings_tab()
         self.load_existing_data()
-
     def create_import_frame(self):        
         import_frame = QFrame()
         import_layout = QHBoxLayout(import_frame)
@@ -190,6 +193,17 @@ class TradingAnalyzerGUI(QMainWindow):
         self.trans_slider.valueChanged.connect(self.change_transparency)
         trans_layout.addWidget(self.trans_slider)
         settings_layout.addWidget(trans_frame)
+
+        # About button in matching frame
+        about_frame = QFrame()
+        about_layout = QHBoxLayout(about_frame)
+        about_layout.addWidget(QLabel("Application Info:"))
+        about_button = QPushButton("About")
+        about_button.setFixedWidth(100)
+        about_button.clicked.connect(self.show_about)
+        about_layout.addWidget(about_button)
+        about_layout.addStretch()
+        settings_layout.addWidget(about_frame)
     
         settings_layout.addStretch()
 
@@ -336,14 +350,14 @@ class TradingAnalyzerGUI(QMainWindow):
             self.graph_display_frame.setLayout(layout)
         
             # Create webview
-            webview = QWebEngineView()
-            layout.addWidget(webview)
+            self.webview = QWebEngineView()
+            layout.addWidget(self.webview)
         
             # Generate and display graph
             fig = create_visualization_figure(filtered_data, selection)
             temp_path = os.path.join(temp_dir, 'graph.html')
             fig.write_html(temp_path, include_plotlyjs=True, full_html=True)
-            webview.load(QUrl.fromLocalFile(temp_path))
+            self.webview.load(QUrl.fromLocalFile(temp_path))
             
           except Exception as e:
             logger.error(f"Error displaying graph: {str(e)}")
@@ -392,8 +406,16 @@ class TradingAnalyzerGUI(QMainWindow):
 
     def closeEvent(self, event):
         """Handle proper cleanup when closing the application"""
+        # Store reference to webview before clearing layout
+        if hasattr(self, 'webview'):
+            self.webview = None
+        
         # Clear any existing layout
         if self.graph_display_frame.layout():
+            while self.graph_display_frame.layout().count():
+                item = self.graph_display_frame.layout().takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
             QWidget().setLayout(self.graph_display_frame.layout())
         
         # Close database connections if any
@@ -401,3 +423,74 @@ class TradingAnalyzerGUI(QMainWindow):
             self.db_connection.close()
         
         event.accept()
+
+    def create_menu_bar(self):
+        menubar = self.menuBar()
+        
+        # Add Settings menu
+        settings_menu = menubar.addMenu('Settings')
+        preferences_action = QAction('Preferences...', self)
+        # Use platform-independent shortcut
+        # Replace the existing preferences shortcut with explicit platform-specific ones
+        if platform.system() == 'Darwin':  # macOS
+            preferences_action.setShortcut(QKeySequence("Cmd+,"))
+        elif platform.system() == 'Windows':
+            preferences_action.setShortcut(QKeySequence("Ctrl+P"))
+        else:  # Linux and others
+            preferences_action.setShortcut(QKeySequence("Ctrl+,"))
+
+        preferences_action.triggered.connect(self.show_preferences)
+        settings_menu.addAction(preferences_action)
+        
+        
+
+    def show_preferences(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle('Preferences')
+        layout = QVBoxLayout()
+
+        # Theme settings
+        theme_layout = QHBoxLayout()
+        theme_layout.addWidget(QLabel("Theme:"))
+        theme_combo = QComboBox()
+        theme_combo.addItems(['Light', 'Dark'])
+        theme_combo.currentTextChanged.connect(self.change_theme)
+        theme_layout.addWidget(theme_combo)
+        layout.addLayout(theme_layout)
+
+        # Debug mode settings
+        debug_layout = QHBoxLayout()
+        debug_layout.addWidget(QLabel("Debug Mode:"))
+        debug_checkbox = QCheckBox()
+        debug_checkbox.setChecked(self.debug_checkbox.isChecked())
+        debug_checkbox.stateChanged.connect(self.toggle_debug_mode)
+        debug_layout.addWidget(debug_checkbox)
+        layout.addLayout(debug_layout)
+
+        # Transparency settings
+        trans_layout = QVBoxLayout()
+        trans_layout.addWidget(QLabel("Window Transparency"))
+        trans_slider = QSlider(Qt.Orientation.Horizontal)
+        trans_slider.setRange(50, 100)
+        trans_slider.setValue(self.trans_slider.value())
+        trans_slider.valueChanged.connect(self.change_transparency)
+        trans_layout.addWidget(trans_slider)
+        layout.addLayout(trans_layout)
+
+        dialog.setLayout(layout)
+        dialog.exec()
+
+    def show_about(self):
+        about_text = """
+        Trading Analyzer
+        Version 1.0
+        
+        A tool for analyzing trading data and generating insights.
+        
+        Features:
+        - Trade data analysis
+        - Performance metrics
+        - Visual analytics
+        - Custom reporting
+        """
+        QMessageBox.about(self, "About Trading Analyzer", about_text)
