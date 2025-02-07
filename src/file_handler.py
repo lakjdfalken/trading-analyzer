@@ -7,11 +7,11 @@ def clean_csv_format(file_path):
         content = file.read()
     
     # Print content end for verification
-    print(f"Last few characters before cleaning: {repr(content[-10:])}")
+    logger.debug(f"Last few characters before cleaning: {repr(content[-10:])}")
     
     # Remove tab characters and newlines
     content = content.replace('\t', ' ').rstrip('\n')
-    print(f"Last few characters after cleaning: {repr(content[-10:])}")
+    logger.debug(f"Last few characters after cleaning: {repr(content[-10:])}")
 
     # Split into lines
     lines = content.split('\n')
