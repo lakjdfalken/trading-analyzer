@@ -8,16 +8,21 @@ def create_monthly_distribution(df):
     
     # Calculate monthly metrics
     monthly_stats = {}
+    total_pl = 0
     for month in sorted(trading_data['Month'].unique()):
         month_data = trading_data[trading_data['Month'] == month]
         wins = month_data[month_data['P/L'] > 0]
         losses = month_data[month_data['P/L'] < 0]
         
+        win_pl = wins['P/L'].sum()
+        loss_pl = losses['P/L'].sum()
+        total_pl += win_pl + loss_pl
+        
         monthly_stats[month] = {
             'win_count': len(wins),
             'loss_count': len(losses),
-            'win_pl': wins['P/L'].sum(),
-            'loss_pl': losses['P/L'].sum()
+            'win_pl': win_pl,
+            'loss_pl': loss_pl
         }
     
     months = sorted(monthly_stats.keys())
@@ -45,6 +50,19 @@ def create_monthly_distribution(df):
         textposition='inside',
         textfont=dict(color='white', size=12)
     ))
+    
+    # Add total annotation
+    fig.add_annotation(
+        text=f"Total P/L: {total_pl:,.0f}",
+        xref='paper',
+        yref='paper',
+        x=1.02,
+        y=0.95,
+        showarrow=False,
+        bgcolor='white',
+        bordercolor='gray',
+        borderwidth=1
+    )
     
     fig.update_layout(barmode='group')
     fig = apply_standard_layout(fig, "Monthly Win/Loss Distribution")
