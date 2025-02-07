@@ -114,6 +114,7 @@ class TradingAnalyzerGUI(QMainWindow):
         self.graph_list = QTreeWidget()
         self.graph_list.setHeaderLabels(["Graph Types"])
         self.graph_list.setFixedWidth(230)  # Slightly smaller than frame
+        self.graph_list.itemDoubleClicked.connect(self.on_graph_double_click)
 
         for graph_type in VALID_GRAPH_TYPES:
             item = QTreeWidgetItem([graph_type])
@@ -134,6 +135,11 @@ class TradingAnalyzerGUI(QMainWindow):
             QSizePolicy.Policy.Expanding
         )
         graph_layout.addWidget(self.graph_display_frame)
+
+    def on_graph_double_click(self, item, column):
+        """Handle double-click on graph type to display it immediately"""
+        self.graph_list.setCurrentItem(item)  # Ensure the clicked item is selected
+        self.display_selected_graph()  # Reuse existing display logic
 
     def set_date_range(self, days):
         if hasattr(self, 'df'):
