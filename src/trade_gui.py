@@ -9,19 +9,21 @@ import pandas as pd
 import sqlite3, os
 import logging
 import platform
+import shutil
+from datetime import datetime, timedelta
 from import_data import import_transaction_data
 from visualize_data import create_visualization_figure
-from settings import BROKERS, VALID_GRAPH_TYPES
+from settings import BROKERS, VALID_GRAPH_TYPES, WINDOW_CONFIG, UI_SETTINGS, DATA_COLUMNS
 #from signals import TradeSignals
-
 logger = logging.getLogger(__name__)
 
 
 class TradingAnalyzerGUI(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.cleanup_temp_graphs()  # Initial cleanup on startup
         self.setWindowTitle("Trading Data Analyzer")
-        self.resize(1600, 800)
+        self.resize(WINDOW_CONFIG['default_width'], WINDOW_CONFIG['default_height'])
         self.webview = None # Store reference to webview for cleanup
     
         # Create the menu bar before other UI elements
@@ -59,11 +61,11 @@ class TradingAnalyzerGUI(QMainWindow):
         import_layout = QHBoxLayout(import_frame)
         
         self.broker_combo.addItems(list(BROKERS.values()))
-        self.broker_combo.setFixedWidth(120)
+        self.broker_combo.setFixedWidth(UI_SETTINGS['broker_combo_width'])
         import_layout.addWidget(self.broker_combo)
         
         import_button = QPushButton("Import CSV")
-        import_button.setFixedWidth(80)
+        import_button.setFixedWidth(UI_SETTINGS['import_button_width'])
         import_button.clicked.connect(self.import_csv)
         import_layout.addWidget(import_button)
         
@@ -77,7 +79,7 @@ class TradingAnalyzerGUI(QMainWindow):
 
         # Add selection frame with fixed width
         selection_frame = QFrame()
-        selection_frame.setFixedWidth(250)
+        selection_frame.setFixedWidth(UI_SETTINGS['graph_selection_width'])
         selection_layout = QVBoxLayout(selection_frame)
 
         # Broker selection populated from settings
@@ -116,7 +118,7 @@ class TradingAnalyzerGUI(QMainWindow):
         selection_layout.addWidget(QLabel("Select Graph Type:"))
         self.graph_list = QTreeWidget()
         self.graph_list.setHeaderLabels(["Graph Types"])
-        self.graph_list.setFixedWidth(230)  # Slightly smaller than frame
+        self.graph_list.setFixedWidth(UI_SETTINGS['graph_list_width'])  # Slightly smaller than frame
         self.graph_list.itemDoubleClicked.connect(self.on_graph_double_click)
 
         for graph_type in VALID_GRAPH_TYPES:
@@ -207,6 +209,17 @@ class TradingAnalyzerGUI(QMainWindow):
     
         settings_layout.addStretch()
 
+    def cleanup_temp_graphs(self):
+        """Clean up graph files older than 24 hours"""
+        temp_dir = os.path.join(os.getcwd(), 'temp_graphs')
+        if os.path.exists(temp_dir):
+            current_time = datetime.now()
+            for filename in os.listdir(temp_dir):
+                filepath = os.path.join(temp_dir, filename)
+                file_modified = datetime.fromtimestamp(os.path.getmtime(filepath))
+                if current_time - file_modified > timedelta(hours=24):
+                    os.remove(filepath)
+    
     def toggle_debug_mode(self, state):
         root_logger = logging.getLogger()
         if state == Qt.CheckState.Checked.value:
@@ -294,32 +307,29 @@ class TradingAnalyzerGUI(QMainWindow):
     def update_display(self):
         self.tree.clear()
         # Get column names from tree widget
-        treeview_columns = [self.tree.headerItem().text(i) 
-                          for i in range(self.tree.columnCount())]
+        treeview_columns = DATA_COLUMNS
         
-        # Add data row by row
         for idx, row in self.df.iterrows():
             item = QTreeWidgetItem()
             for col, column_name in enumerate(treeview_columns):
-                value = row[column_name]  # Use column name to get correct value
-                item.setText(col, str(value))
+                value = row[column_name]
                 
-                # Special handling for date columns
-                if column_name in ["Transaction Date", "Open Period"]:
-                    try:
-                        date_value = pd.to_datetime(value)
-                        item.setData(col, Qt.ItemDataRole.UserRole, date_value.timestamp())
-                    except:
+                # Handle numeric fields with nan values
+                if column_name in ["Amount", "Opening", "Closing", "P/L", "Balance", "Fund_Balance"]:
+                    if pd.isna(value):
+                        item.setText(col, "")  # Display empty string for nan
                         item.setData(col, Qt.ItemDataRole.UserRole, 0)
-                
-                # Special handling for numeric columns
-                elif column_name in ["Amount", "Opening", "Closing", "P/L", "Balance", "Fund_Balance"]:
-                    try:
-                        num_value = float(str(value).replace(',', ''))
-                        item.setData(col, Qt.ItemDataRole.UserRole, num_value)
-                    except:
-                        item.setData(col, Qt.ItemDataRole.UserRole, 0)
-                        
+                    else:
+                        try:
+                            num_value = float(str(value).replace(',', ''))
+                            item.setText(col, str(value))
+                            item.setData(col, Qt.ItemDataRole.UserRole, num_value)
+                        except:
+                            item.setText(col, "0")
+                            item.setData(col, Qt.ItemDataRole.UserRole, 0)
+                else:
+                    item.setText(col, str(value))
+                    
             self.tree.addTopLevelItem(item)
 
         # Adjust column widths based on content
@@ -329,6 +339,7 @@ class TradingAnalyzerGUI(QMainWindow):
 
     def display_selected_graph(self):
           try:
+            self.cleanup_temp_graphs()  # Cleanup before generating new graph
             filtered_data = self.get_filtered_data()
             if filtered_data is None or filtered_data.empty:
                 logger.warning("No data available after filtering")
@@ -375,6 +386,10 @@ class TradingAnalyzerGUI(QMainWindow):
             broker_key = [k for k, v in BROKERS.items() if v == selected_broker][0]
             filtered_df = filtered_df[filtered_df['broker_name'] == broker_key]
         
+        # Validate and apply date range filter
+        if not self.validate_date_range():
+          return None
+
         start = self.start_date.text()
         end = self.end_date.text()
         
@@ -407,6 +422,9 @@ class TradingAnalyzerGUI(QMainWindow):
     def closeEvent(self, event):
         """Handle proper cleanup when closing the application"""
         # Store reference to webview before clearing layout
+        temp_dir = os.path.join(os.getcwd(), 'temp_graphs')
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)  # Remove entire temp directory on exit
         if hasattr(self, 'webview'):
             self.webview = None
         
@@ -471,14 +489,46 @@ class TradingAnalyzerGUI(QMainWindow):
         trans_layout = QVBoxLayout()
         trans_layout.addWidget(QLabel("Window Transparency"))
         trans_slider = QSlider(Qt.Orientation.Horizontal)
-        trans_slider.setRange(50, 100)
-        trans_slider.setValue(self.trans_slider.value())
+        trans_slider.setRange(
+          UI_SETTINGS['transparency_slider']['min'],
+          UI_SETTINGS['transparency_slider']['max']
+        )
+        trans_slider.setValue(UI_SETTINGS['transparency_slider']['default'])
         trans_slider.valueChanged.connect(self.change_transparency)
         trans_layout.addWidget(trans_slider)
         layout.addLayout(trans_layout)
 
         dialog.setLayout(layout)
         dialog.exec()
+
+    def validate_date_range(self):
+      """Validate date range inputs"""
+      start = self.start_date.text()
+      end = self.end_date.text()
+      
+      if not start or not end:
+          return True  # Empty dates are valid (show all data)
+          
+      try:
+          start_date = datetime.strptime(start, '%Y-%m-%d')
+          end_date = datetime.strptime(end, '%Y-%m-%d')
+          
+          if start_date > end_date:
+              QMessageBox.warning(self, "Invalid Date Range", 
+                                "Start date must be before end date")
+              return False
+              
+          if end_date > datetime.now():
+              QMessageBox.warning(self, "Invalid Date Range", 
+                                "End date cannot be in the future")
+              return False
+              
+          return True
+          
+      except ValueError:
+          QMessageBox.warning(self, "Invalid Date Format", 
+                            "Please use YYYY-MM-DD format")
+          return False
 
     def show_about(self):
         about_text = """

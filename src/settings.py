@@ -64,3 +64,49 @@ BROKERS = {
     'trade_nation': 'Trade Nation',
     'td365': 'TD365'
 }
+
+# Add these new configuration sections
+
+# Window Settings
+WINDOW_CONFIG = {
+    'default_width': 1600,
+    'default_height': 800,
+    'min_width': 800,
+    'min_height': 600
+}
+
+# UI Component Settings
+UI_SETTINGS = {
+    'broker_combo_width': 120,
+    'import_button_width': 80,
+    'theme_combo_width': 100,
+    'debug_checkbox_width': 30,
+    'transparency_slider': {
+        'min': 50,
+        'max': 100,
+        'default': 100,
+        'width': 200
+    },
+    'graph_selection_width': 250,
+    'graph_list_width': 230
+}
+
+# Data View Columns
+DATA_COLUMNS = [
+    "broker_name", 
+    "Transaction Date", 
+    "Ref. No.", 
+    "Action", 
+    "Description",
+    "Amount", 
+    "Open Period", 
+    "Opening", 
+    "Closing", 
+    "P/L",
+    "Status", 
+    "Balance", 
+    "Currency", 
+    "Fund_Balance", 
+    "sl", 
+    "tp"
+]

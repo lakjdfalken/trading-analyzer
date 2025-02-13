@@ -22,13 +22,13 @@ def import_transaction_data(file_path, broker_name='default'):
         raise ValueError("Unsupported file format")
 
     # Print columns before modification
-    logger.debug("Columns before:", new_df.columns.tolist())
+    logger.debug("Columns before: %s", new_df.columns.tolist())
     
     # Create broker_name column without using insert
     new_df = pd.concat([pd.Series(broker_name, index=new_df.index, name='broker_name'), new_df], axis=1)
     
     # Print columns after modification
-    logger.debug("Columns after:", new_df.columns.tolist())
+    logger.debug("Columns after: %s", new_df.columns.tolist())
     
     # Ensure the broker name is a string
     new_df['broker_name'] = new_df['broker_name'].astype(str)
