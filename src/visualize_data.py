@@ -4,6 +4,7 @@ import pandas as pd
 import logging
 from chart_types import (
     balance,
+    balance_pl,
     funding,
     trades,
     positions,
@@ -62,6 +63,7 @@ def create_visualization_figure(df, graph_type):
         GRAPH_IMPLEMENTATIONS = {
             # Balance charts
             'Balance History': balance.create_balance_history,
+            'P/L History': balance_pl.create_relative_balance_history,
         
             # Trade analysis charts
             'Win Rate': winrate.create_distribution_days,

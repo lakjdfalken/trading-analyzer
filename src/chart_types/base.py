@@ -8,6 +8,7 @@ import base64
 logger = logging.getLogger(__name__)
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import sqlite3
 
 def format_currency(value, currency):
     symbol = CURRENCY_SYMBOLS.get(currency, '')
@@ -106,3 +107,21 @@ def get_trading_pl_without_funding(df):
     logger.debug(f"Trading data after funding adjustment:\n{df_copy[trading_mask][['Transaction Date', 'Action', 'Description', 'Balance', 'P/L']]}")
     
     return df_copy[trading_mask].copy()
+
+def get_all_data():
+    try:
+        conn = sqlite3.connect('trading_data.db')
+        query = """
+            SELECT * FROM transactions 
+            ORDER BY "Transaction Date" ASC
+        """
+        df = pd.read_sql_query(query, conn)
+        conn.close()
+        
+        # Convert date column to datetime
+        df['Transaction Date'] = pd.to_datetime(df['Transaction Date'])
+        return df
+        
+    except Exception as e:
+        logger.error(f"Error fetching data from database: {str(e)}")
+        raise
