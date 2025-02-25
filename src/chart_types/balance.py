@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 def create_balance_history(df):
     fig = setup_base_figure()
-    trading_data = prepare_dataframe(df)
+    trading_data = prepare_dataframe(df).copy()  # Create explicit copy
     
     # Sort by date and group by broker
     trading_data = trading_data.sort_values('Transaction Date')
@@ -14,16 +14,16 @@ def create_balance_history(df):
     
     # Calculate and plot for each broker
     for broker in brokers:
-        broker_data = trading_data[trading_data['broker_name'] == broker]
+        # Create explicit copy of filtered data
+        broker_data = trading_data[trading_data['broker_name'] == broker].copy()
         
         # Calculate metrics per broker
         total_pl = broker_data['P/L'].sum()
         days_traded = len(broker_data['Transaction Date'].dt.date.unique())
         daily_average = total_pl / days_traded if days_traded > 0 else 0
         
-        # Calculate cumulative P/L per broker
-        broker_data['Cumulative P/L'] = broker_data['P/L'].cumsum()
-        
+        # Calculate cumulative P/L using loc
+        broker_data.loc[:, 'Cumulative P/L'] = broker_data['P/L'].cumsum()        
         # Add trace for each broker
         fig.add_trace(go.Scatter(
             x=broker_data['Transaction Date'],

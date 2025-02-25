@@ -71,7 +71,8 @@ def create_funding_distribution(df):
         title='Funding Transactions Over Time',
         xaxis=dict(
             title='Date',
-            type='category',
+            type='date',
+            tickformat='%Y-%m-%d'
         ),
         yaxis_title='Amount (Absolute Value)',
         barmode='group',
@@ -106,23 +107,30 @@ def create_funding_distribution(df):
         yanchor='bottom'
     )
 
-    return fig    
+    return fig 
+
 
 def create_funding_charges(df):
     logger.debug("Starting funding charges analysis")
     
     df_copy = prepare_dataframe(df).copy()
-    df_copy['Transaction Date'] = pd.to_datetime(df_copy['Transaction Date'])
+    df_copy['Transaction Date'] = pd.to_datetime(df_copy['Transaction Date'], format='%Y-%m-%d')
+    
     # Sort by date and P/L in reverse order to stack largest values first
     #df_copy = df_copy.sort_values(['Transaction Date', 'P/L'], ascending=[True, False])
     
     funding_mask = df_copy['Action'].str.contains('Funding charge', case=False, na=False)
     funding_c_df = df_copy[funding_mask]
 
-    #funding_c_df = funding_c_df.sort_values(['Transaction Date', 'P/L'], ascending=[True, True])
+    # Reset index after filtering to ensure proper sorting
+    funding_c_df = funding_c_df.reset_index(drop=True)
+
     # Sort by date first, then by absolute value of P/L in descending order
+    #funding_c_df = funding_c_df.sort_values(['Transaction Date', 'P/L'], ascending=[True, True])
+    funding_c_df = funding_c_df.sort_values(by='Transaction Date', ascending=True)
     
     logger.debug(f"Found {len(funding_c_df)} funding charge entries")
+    logger.debug(f"Date range: {funding_c_df['Transaction Date'].min()} to {funding_c_df['Transaction Date'].max()}")
     
     fig = setup_base_figure()
     y_position = 0.95
@@ -177,6 +185,11 @@ def create_funding_charges(df):
             #range=[total_min * 1.1, 0],  # Set range from total sum to zero
             range=[total_min, 0],  # Set range from total sum to zero
             title="Cumulative Charges"
+        ),
+        xaxis=dict(
+            title='Date',
+            type='date',
+            tickformat='%Y-%m-%d',
         )
     )
     

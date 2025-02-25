@@ -80,6 +80,15 @@ def create_relative_balance_history(df):
                 bordercolor='black',
                 borderwidth=1,
                 visible=False
+            ),
+            dict(
+              text=f'Total P/L: {total_pl:.2f}<br>Daily Average: {daily_average:.2f}',
+              xref='paper', yref='paper',
+              x=0.92, y=0.08,
+              showarrow=False,
+              bgcolor='white',
+              bordercolor='black',
+              borderwidth=1
             )
         ]
     )
