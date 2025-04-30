@@ -111,3 +111,24 @@ DATA_COLUMNS = [
     "sl", 
     "tp"
 ]
+
+# Column Mappings for CSV Imports
+COLUMN_MAPPINGS = {
+    'default': {
+        'transaction_date': ['Transaction Date'],
+        'open_period': ['Open Period', 'Open date'],  # Support both old and new names
+        'reference': ['Ref. No.', 'Serial'],  # Support both old and new reference field names
+        'action': ['Action'],
+        'description': ['Description'],
+        'amount': ['Amount'],
+        'pl': ['P/L'],
+        'balance': ['Balance'],
+        'opening': ['Opening'],
+        'closing': ['Closing'],
+        'status': ['Status'],
+        'currency': ['Currency']
+    }
+    # You can add broker-specific mappings if needed
+    # 'trade_nation': { ... },
+    # 'td365': { ... }
+}
