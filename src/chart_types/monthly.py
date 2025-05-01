@@ -35,7 +35,7 @@ def create_monthly_distribution(df):
         x=months,
         y=[monthly_stats[m]['win_count'] for m in months],
         marker_color=COLORS['profit'],
-        text=[f"{monthly_stats[m]['win_count']}<br>(+{monthly_stats[m]['win_pl']:.0f})" for m in months],
+        text=[f"Trades: <br>{monthly_stats[m]['win_count']}<br>(+{monthly_stats[m]['win_pl']:.0f})" for m in months],
         textposition='inside',
         textfont=dict(color='white', size=12)
     ))
@@ -46,7 +46,7 @@ def create_monthly_distribution(df):
         x=months,
         y=[monthly_stats[m]['loss_count'] for m in months],
         marker_color=COLORS['loss'],
-        text=[f"{monthly_stats[m]['loss_count']}<br>({monthly_stats[m]['loss_pl']:.0f})" for m in months],
+        text=[f"Trades: <br>{monthly_stats[m]['loss_count']}<br>({monthly_stats[m]['loss_pl']:.0f})" for m in months],
         textposition='inside',
         textfont=dict(color='white', size=12)
     ))
@@ -65,6 +65,6 @@ def create_monthly_distribution(df):
     )
     
     fig.update_layout(barmode='group')
-    fig = apply_standard_layout(fig, "Monthly Win/Loss Distribution")
+    fig = apply_standard_layout(fig, "Monthly Win/Loss trades")
     
     return fig
