@@ -5,15 +5,16 @@ import logging
 from chart_types import (
     balance,
     funding,
+    pl_market,
     pl_relative,
+    pl_vs_trades,
     trades,
     positions,
-    market,
     winrate,
     monthly,
-    performance,
     points_daily,
     points_monthly,
+    points_per_market,
 )
 from settings import (
     FIGURE_SIZES,
@@ -74,20 +75,21 @@ def create_visualization_figure(df, graph_type):
             'Long vs Short Positions': positions.create_position_distribution,
         
             # Market analysis
-            'Market Actions': market.create_market_actions,
-            'Market P/L': market.create_market_pl,
+            'Market Actions': pl_market.create_market_actions,
+            'Market P/L': pl_market.create_market_pl,
         
             # Funding analysis
             'Funding': funding.create_funding_distribution,
             'Funding Charges': funding.create_funding_charges,
         
             # Performance analysis
-            'Daily P/L': performance.create_daily_pl,
-            'Daily P/L vs Trades': performance.create_daily_pl_vs_trades,
+            'Daily P/L': pl_vs_trades.create_daily_pl,
+            'Daily P/L vs Trades': pl_vs_trades.create_daily_pl_vs_trades,
 
             'Monthly P/L': monthly.create_monthly_distribution,
             'Points Daily': points_daily.create_points_daily,
             'Points Monthly': points_monthly.create_points_monthly,
+            'Points per Market': points_per_market.create_points_per_market,
         }
         return GRAPH_IMPLEMENTATIONS[graph_type](df)
             

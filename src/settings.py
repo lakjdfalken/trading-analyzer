@@ -16,7 +16,7 @@ COLORS = {
 
 # Market Settings
 MARKETS = {
-    "Wall Street 30 (Dow)": 67995,
+    "Wall Street 30": 67995,
     "NASDAQ": 70433,
     "S&P 500": 67994
 }
@@ -57,7 +57,8 @@ VALID_GRAPH_TYPES = [
     'Daily P/L vs Trades',
     'Monthly P/L',
     'Points Daily',
-    'Points Monthly'
+    'Points Monthly',
+    'Points per market',
 ]
 
 # Add to existing settings
