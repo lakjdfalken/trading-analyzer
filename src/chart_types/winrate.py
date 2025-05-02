@@ -28,7 +28,7 @@ def create_distribution_days(df):
         x=['Wins', 'Losses'],
         y=[wins, losses],
         marker_color=[COLORS['profit'], COLORS['loss']],
-        text=[f"{wins}<br>(P/L: {total_win:.0f})", f"{losses}<br>(P/L: {total_loss:.0f})"],
+        text=[f"Trades: <br>{wins}<br>(P/L: {total_win:.0f})", f"{losses}<br>(P/L: {total_loss:.0f})"],
         textposition='inside',
         textfont=dict(color='white', size=12)
     ))
@@ -45,6 +45,6 @@ def create_distribution_days(df):
         borderwidth=1
     )
     
-    fig = apply_standard_layout(fig, "Winn/Loss Distribution")
+    fig = apply_standard_layout(fig, "Trades Win/Loss")
     
     return fig

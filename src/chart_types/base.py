@@ -89,24 +89,30 @@ def get_trading_pl_without_funding(df):
     """
     Returns trading data with correct balance progression and pure trading P/L
     """
-    df_copy = prepare_dataframe(df)
+    df_copy = prepare_dataframe(df).copy()
     df_copy = df_copy.sort_values('Transaction Date')
     
-    # Identify funding entries and adjust balances
+    # Identify funding entries and trading entries
     funding_mask = df_copy['Action'].str.contains('Fund', case=False, na=False)
     trading_mask = df_copy['Action'].str.contains('Trade', case=False, na=False)
     
-    # Adjust all balances after each funding entry
-    balance_adjustment = 0
+    # Create a new column for adjusted balance
+    df_copy['Adjusted_Balance'] = df_copy['Balance'].copy()
+    
+    # Process each funding entry
     for idx in df_copy[funding_mask].index:
         funding_pl = df_copy.loc[idx, 'P/L']
-        balance_adjustment += funding_pl
-        # Adjust all subsequent balances
-        df_copy.loc[idx:, 'Balance'] -= balance_adjustment
+        # Only adjust balances after this specific funding entry
+        df_copy.loc[idx:, 'Adjusted_Balance'] -= funding_pl
+    
+    # Replace original Balance with adjusted balance
+    df_copy['Balance'] = df_copy['Adjusted_Balance']
+    df_copy.drop('Adjusted_Balance', axis=1, inplace=True)
     
     logger.debug(f"Trading data after funding adjustment:\n{df_copy[trading_mask][['Transaction Date', 'Action', 'Description', 'Balance', 'P/L']]}")
     
     return df_copy[trading_mask].copy()
+
 
 def get_all_data():
     try:

@@ -36,20 +36,11 @@ def create_relative_balance_history(df):
         hovertemplate='Date: %{x}<br>Cumulative P/L: %{y:.2f}<extra></extra>'
     ))
     
-    # Add annotations for metrics
-    fig.add_annotation(
-        text=f'Total P/L: {total_pl:.2f}<br>Daily Average: {daily_average:.2f}',
-        xref='paper', yref='paper',
-        x=0.92, y=0.08,
-        showarrow=False,
-        bgcolor='white',
-        bordercolor='black',
-        borderwidth=1
-    )
+    # DO NOT add the first annotation here - we'll do it in update_layout
     
     fig = apply_standard_layout(fig, "Relative P/L Over Time")
 
-    # Add the info text annotation
+    # Add all annotations in the update_layout call
     fig.update_layout(
         updatemenus=[dict(
             type="buttons",
@@ -59,7 +50,7 @@ def create_relative_balance_history(df):
                 args=[{"annotations[0].visible": True}],
                 args2=[{"annotations[0].visible": False}],
                 label="ⓘ",
-                method="relayout"
+                method="relayout"  # Either update or relayout should work
             )],
             x=0.98,
             y=1.05,
@@ -74,21 +65,21 @@ def create_relative_balance_history(df):
             dict(
                 text=info_text,
                 xref='paper', yref='paper',
-                x=0.02, y=0.92,
+                x=0.5, y=0.5,
                 showarrow=False,
                 bgcolor='white',
                 bordercolor='black',
                 borderwidth=1,
-                visible=False
+                visible=False  # Start as invisible
             ),
             dict(
-              text=f'Total P/L: {total_pl:.2f}<br>Daily Average: {daily_average:.2f}',
-              xref='paper', yref='paper',
-              x=0.92, y=0.08,
-              showarrow=False,
-              bgcolor='white',
-              bordercolor='black',
-              borderwidth=1
+                text=f'Total P/L: {total_pl:.2f}<br>Daily Average: {daily_average:.2f}',
+                xref='paper', yref='paper',
+                x=0.92, y=0.08,
+                showarrow=False,
+                bgcolor='white',
+                bordercolor='black',
+                borderwidth=1
             )
         ]
     )
