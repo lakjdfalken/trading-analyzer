@@ -1,6 +1,6 @@
 from .base import get_trading_data, setup_base_figure, apply_standard_layout
 import plotly.graph_objects as go
-from settings import COLORS, MARKETS
+from settings import COLORS, MARKETS, MARKET_ID_MAPPING, MARKET_MAPPINGS
 import logging
 import pandas as pd
 import re
@@ -15,9 +15,18 @@ def create_points_per_market(df):
     trading_data['Points'] = trading_data.apply(lambda row: 
         calculate_points(row['Opening'], row['Closing'], row['Action']), axis=1)
     
-    # Extract market information from Description
-    trading_data['Market'] = trading_data['Description'].apply(extract_market)
+    # Extract market information with broker context if available
+    if 'broker_name' in trading_data.columns:
+        trading_data['Market'] = trading_data.apply(
+            lambda row: extract_market(row['Description'], row['broker_name']), axis=1)
+    else:
+        trading_data['Market'] = trading_data['Description'].apply(extract_market)
     
+    # Count unidentified markets
+    other_count = (trading_data['Market'] == 'Other').sum()
+    if other_count > 0:
+        logger.info(f"Found {other_count} trades categorized as 'Other' market")
+        
     # Convert transaction date to datetime if it's not already
     trading_data['Transaction Date'] = pd.to_datetime(trading_data['Transaction Date'])
     
@@ -43,35 +52,24 @@ def create_points_per_market(df):
         for i, market in enumerate(markets)
     }
     
-    # Add traces for each market
+    # Add traces for each market - bar charts only (no cumulative lines)
     for market in markets:
         market_data = market_monthly_points[market_monthly_points['Market'] == market]
         
-        # Calculate cumulative points for this market
-        market_cumulative = market_data.sort_values('Month')['Points'].cumsum()
-        total_market_points = market_cumulative.iloc[-1] if not market_cumulative.empty else 0
+        # Calculate total points for this market (for annotation)
+        total_market_points = market_data['Points'].sum()
         
         # Add bar chart for this market
         fig.add_trace(go.Bar(
             x=market_data['Month'],
             y=market_data['Points'],
-            name=f'{market} Monthly',
+            name=f'{market}',  # Simplified name without "Monthly"
             marker=dict(
                 color=market_data['Points'].apply(
                     lambda x: COLORS['profit'] if x > 0 else COLORS['loss']
                 )
             ),
             hovertemplate='Month: %{x}<br>Points: %{y:.2f}<br>Market: ' + market + '<extra></extra>'
-        ))
-        
-        # Also add line for cumulative points per market
-        fig.add_trace(go.Scatter(
-            x=market_data['Month'],
-            y=market_cumulative,
-            mode='lines+markers',
-            name=f'{market} Cumulative',
-            line=dict(color=market_colors.get(market, COLORS['neutral'])),
-            hovertemplate='Month: %{x}<br>Cumulative Points: %{y:.2f}<br>Market: ' + market + '<extra></extra>'
         ))
     
     # Calculate overall points statistics
@@ -138,33 +136,66 @@ def calculate_points(open_price, close_price, action):
     except:
         return 0
 
-def extract_market(description):
-    """Extract market name from trade description"""
-    # Common market patterns in the description
-    market_patterns = {
-        r'(?i)wall\s*street': 'Wall Street',
-        r'(?i)nasdaq': 'NASDAQ',
-        r'(?i)nasdaq\s*100': 'NASDAQ 100',
-        r'(?i)us\s*tech': 'US Tech',
-        r'(?i)ustec': 'US Tech',
-        r'(?i)s\s*&\s*p': 'S&P 500',
-        r'(?i)gold': 'Gold',
-        r'(?i)oil': 'Oil',
-        r'(?i)forex': 'Forex',
-        r'(?i)eur\s*usd': 'EUR/USD',
-        r'(?i)gbp\s*usd': 'GBP/USD',
-        r'(?i)usd\s*jpy': 'USD/JPY'
-    }
+def extract_market(description, broker_name='standard'):
+    """
+    Extract market name from trade description with broker-specific customization
     
-    # Check description against patterns
-    for pattern, market_name in market_patterns.items():
-        if re.search(pattern, str(description)):
-            return market_name
+    Args:
+        description: The trade description text
+        broker_name: The broker name for broker-specific mappings
     
-    # Try to match known market IDs if they're in the description
-    for market_name, market_id in MARKETS.items():
-        if str(market_id) in str(description):
-            return market_name
+    Returns:
+        Standardized market name
+    """
+    # Convert description to string to handle non-string inputs
+    description = str(description)
     
-    # Default if no match found
+    # First, check for market IDs in the description
+    for market_id, standard_name in MARKET_ID_MAPPING.items():
+        if str(market_id) in description:
+            logger.debug(f"Matched market ID {market_id} to {standard_name}")
+            return standard_name
+    
+    # Then try broker-specific patterns if available
+    if broker_name in MARKET_MAPPINGS:
+        for market_name, patterns in MARKET_MAPPINGS[broker_name].items():
+            for pattern in patterns:
+                if re.search(pattern, description):
+                    logger.debug(f"Matched broker-specific pattern '{pattern}' to {market_name}")
+                    return market_name
+    
+    # Fall back to standard patterns
+    for market_name, patterns in MARKET_MAPPINGS['standard'].items():
+        for pattern in patterns:
+            if re.search(pattern, description):
+                logger.debug(f"Matched standard pattern '{pattern}' to {market_name}")
+                return market_name
+    
+    # Log unmatched descriptions to help improve the patterns
+    logger.warning(f"No market match found for: '{description}', categorizing as 'Other'")
     return 'Other'
+
+def analyze_unmatched_markets(df):
+    """
+    Helper function to identify descriptions that don't match any market
+    """
+    trading_data = get_trading_data(df)
+    
+    # Apply market extraction
+    if 'broker_name' in trading_data.columns:
+        trading_data['Market'] = trading_data.apply(
+            lambda row: extract_market(row['Description'], row['broker_name']), axis=1)
+    else:
+        trading_data['Market'] = trading_data['Description'].apply(extract_market)
+    
+    # Find unmatched entries
+    unmatched = trading_data[trading_data['Market'] == 'Other']
+    
+    # Group by unique description to see what's missing
+    if not unmatched.empty:
+        descriptions = unmatched['Description'].value_counts()
+        logger.info("Unmatched market descriptions:")
+        for desc, count in descriptions.items():
+            logger.info(f"  {count} trades: {desc}")
+    
+    return unmatched

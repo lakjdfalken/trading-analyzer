@@ -14,11 +14,94 @@ COLORS = {
     'funding_charge': 'black'
 }
 
-# Market Settings
+# Market Settings - Enhanced version
+MARKET_MAPPINGS = {
+    # Standard mappings (broker-agnostic)
+    'standard': {
+        'Wall Street': [
+            r'(?i)wall\s*street',
+            r'(?i)dow',
+            r'(?i)wall\s*st',
+            r'(?i)dji',
+            r'(?i)us\s*30'
+        ],
+        'NASDAQ': [
+            r'(?i)nasdaq',
+            r'(?i)nasdaq\s*100', 
+            r'(?i)us\s*tech',
+            r'(?i)ustec'
+        ],
+        'S&P 500': [
+            r'(?i)s\s*&\s*p',
+            r'(?i)spx',
+            r'(?i)sp\s*500'
+        ],
+        'Gold': [
+            r'(?i)gold',
+            r'(?i)xau',
+            r'(?i)gld'
+        ],
+        'Oil': [
+            r'(?i)oil',
+            r'(?i)crude',
+            r'(?i)wti',
+            r'(?i)brent'
+        ],
+        'EUR/USD': [
+            r'(?i)eur\s*usd',
+            r'(?i)euro\s*dollar'
+        ],
+        'GBP/USD': [
+            r'(?i)gbp\s*usd',
+            r'(?i)pound\s*dollar'
+        ],
+        'USD/JPY': [
+            r'(?i)usd\s*jpy',
+            r'(?i)dollar\s*yen'
+        ]
+    },
+    
+    # Broker-specific mappings (override or extend standard)
+    'trade_nation': {
+        'Wall Street': [
+            r'(?i)wall\s*street\s*30'
+        ],
+        'Germany 40': [
+            r'(?i)germany\s*40\s*-?\s*rolling\s*future',
+            r'(?i)dax',
+            r'(?i)germany\s*40'
+        ],
+        'S&P 500': [
+            r'(?i)us\s*500\s*-?\s*rolling\s*future',
+            r'(?i)us\s*500.*per\s*1\.0'
+        ],
+        'NVIDIA': [
+            r'(?i)nvidia\s*corp',
+            r'(?i)nvda'
+        ],
+        # Add other broker-specific patterns as needed
+    },
+    
+    'td365': {
+        'NASDAQ': [
+            r'(?i)US\s*Tech\s*100'
+        ],
+        # Add other broker-specific patterns
+    }
+}
+
+# Keep existing MARKETS dictionary for ID lookups
 MARKETS = {
     "Wall Street 30": 67995,
     "NASDAQ": 70433,
     "S&P 500": 67994
+}
+
+# Map market IDs to standard names
+MARKET_ID_MAPPING = {
+    67995: "Wall Street",
+    70433: "NASDAQ",
+    67994: "S&P 500"
 }
 
 # Format: (start_hour, end_hour, spread)
@@ -46,19 +129,19 @@ CURRENCY_SYMBOLS = {
 VALID_GRAPH_TYPES = [
     'Balance History',
     'P/L History',
-    'Win Rate',
-    'Funding',
-    'Funding Charges',
-    'Long vs Short Positions',
-    'Market Actions',
-    'Market P/L',
     'Daily P/L',
+    'Monthly P/L',
+    'Market P/L',
     'Daily Trades',
     'Daily P/L vs Trades',
-    'Monthly P/L',
     'Points Daily',
     'Points Monthly',
-    'Points per market',
+    'Points per Market',
+    'Win Rate',
+    'Funding',
+#    'Funding Charges',
+    'Long vs Short Positions',
+#    'Market Actions',
 ]
 
 # Add to existing settings
