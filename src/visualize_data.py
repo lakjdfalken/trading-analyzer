@@ -5,9 +5,9 @@ import logging
 from chart_types import (
     balance,
     funding,
+    pl_daily_vs_trades,
     pl_market,
     pl_relative,
-    pl_vs_trades,
     trades,
     positions,
     winrate,
@@ -83,8 +83,8 @@ def create_visualization_figure(df, graph_type):
             'Funding Charges': funding.create_funding_charges,
         
             # Performance analysis
-            'Daily P/L': pl_vs_trades.create_daily_pl,
-            'Daily P/L vs Trades': pl_vs_trades.create_daily_pl_vs_trades,
+            'Daily P/L': pl_daily_vs_trades.create_daily_pl,
+            'Daily P/L vs Trades': pl_daily_vs_trades.create_daily_pl_vs_trades,
 
             'Monthly P/L': monthly.create_monthly_distribution,
             'Points Daily': points_daily.create_points_daily,

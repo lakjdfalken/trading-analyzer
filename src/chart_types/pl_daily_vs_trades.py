@@ -12,6 +12,24 @@ def create_daily_pl_vs_trades(df):
     trading_df = get_trading_data(df)
     initial_balance = trading_df['Balance'].iloc[0]
     
+    # Try to extract currency from the dataframe
+    currency = None
+    if 'Currency' in trading_df.columns:
+        # Use the most common currency in the dataframe
+        currency = trading_df['Currency'].value_counts().index[0]
+    elif 'Description' in trading_df.columns and not trading_df['Description'].empty:
+        # Try to extract from description strings (common pattern in trading data)
+        # This looks for currency symbols like $, €, £ etc. in the first description
+        import re
+        first_desc = trading_df['Description'].iloc[0]
+        currency_match = re.search(r'[$€£¥]', first_desc)
+        if currency_match:
+            currency = currency_match.group(0)
+    
+    # If still no currency found, default to $
+    if not currency:
+        currency = '$'
+    
     # Calculate daily metrics
     daily_pl = trading_df.groupby(trading_df['Transaction Date'].dt.date)['P/L'].sum()
     daily_pl_pct = (daily_pl / abs(initial_balance)) * 100
@@ -22,6 +40,11 @@ def create_daily_pl_vs_trades(df):
     total_trades = daily_trades.sum()
     correlation = daily_pl_pct.corr(daily_trades)
     
+    # Prepare hover text with actual P/L values
+    hover_text = []
+    for date, pl in daily_pl.items():
+        hover_text.append(f'<b>Date</b>: {date}<br><b>P/L %</b>: {daily_pl_pct[date]:.2f}%<br><b>Actual P/L</b>: {currency}{abs(pl):.2f}')
+    
     fig = make_subplots(
         rows=2, 
         cols=1,
@@ -29,7 +52,7 @@ def create_daily_pl_vs_trades(df):
         vertical_spacing=0.12
     )
     
-    # Add P/L bars with auto-adjusting text
+    # Add P/L bars with auto-adjusting text and hover information
     fig.add_trace(
         go.Bar(
             x=daily_pl_pct.index,
@@ -38,7 +61,9 @@ def create_daily_pl_vs_trades(df):
             marker_color=[COLORS['profit'] if x >= 0 else COLORS['loss'] for x in daily_pl_pct],
             text=[f"{x:.1f}%" for x in daily_pl_pct],
             textposition='auto',
-            cliponaxis=False
+            cliponaxis=False,
+            hovertext=hover_text,
+            hoverinfo='text'
         ),
         row=1, col=1
     )
@@ -52,7 +77,8 @@ def create_daily_pl_vs_trades(df):
             marker_color=COLORS['trading'][1],
             text=daily_trades.values,
             textposition='auto',
-            cliponaxis=False
+            cliponaxis=False,
+            hovertemplate='<b>Date</b>: %{x}<br><b>Trade Count</b>: %{y}<extra></extra>'
         ),
         row=2, col=1
     )
@@ -60,7 +86,7 @@ def create_daily_pl_vs_trades(df):
     # Add annotations for totals and correlation
     annotations = [
         dict(
-            text=f'Total P/L: {total_pl_pct:.1f}%',
+            text=f'Total P/L: {total_pl_pct:.1f}% ({currency}{abs(daily_pl.sum()):.2f})',
             xref='paper', 
             yref='paper',
             x=0.02, 
@@ -109,6 +135,7 @@ def create_daily_pl_vs_trades(df):
     fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
     
     return fig
+
 def create_daily_pl(df):
     info_text = (
         "Daily P/L Calculation:<br><br>"
@@ -121,6 +148,24 @@ def create_daily_pl(df):
 
     trading_df = get_trading_data(df)
     trading_df = trading_df.sort_values('Transaction Date')
+    
+    # Try to extract currency from the dataframe
+    currency = None
+    if 'Currency' in trading_df.columns:
+        # Use the most common currency in the dataframe
+        currency = trading_df['Currency'].value_counts().index[0]
+    elif 'Description' in trading_df.columns and not trading_df['Description'].empty:
+        # Try to extract from description strings (common pattern in trading data)
+        # This looks for currency symbols like $, €, £ etc. in the first description
+        import re
+        first_desc = trading_df['Description'].iloc[0]
+        currency_match = re.search(r'[$€£¥]', first_desc)
+        if currency_match:
+            currency = currency_match.group(0)
+    
+    # If still no currency found, default to $
+    if not currency:
+        currency = '$'
     
     logger.debug(f"\nFull trading data sample:\n{trading_df[['Transaction Date', 'Action', 'Description', 'Amount', 'Balance', 'P/L']].head()}")
     daily_pl = trading_df.groupby(trading_df['Transaction Date'].dt.date)['P/L'].sum() 
@@ -180,7 +225,21 @@ def create_daily_pl(df):
     
     fig = go.Figure()
 
-    # Add long position bars
+    # Prepare hover text for long positions
+    long_hover_text = []
+    for date in all_dates:
+        pl_pct = long_pl_pct.get(date, 0)
+        pl_value = long_pl.get(date, 0)
+        long_hover_text.append(f'<b>Date</b>: {date}<br><b>Long P/L %</b>: {pl_pct:.2f}%<br><b>Actual Long P/L</b>: {currency}{abs(pl_value):.2f}')
+    
+    # Prepare hover text for short positions
+    short_hover_text = []
+    for date in all_dates:
+        pl_pct = short_pl_pct.get(date, 0)
+        pl_value = short_pl.get(date, 0)
+        short_hover_text.append(f'<b>Date</b>: {date}<br><b>Short P/L %</b>: {pl_pct:.2f}%<br><b>Actual Short P/L</b>: {currency}{abs(pl_value):.2f}')
+
+    # Add long position bars with hover text
     fig.add_trace(go.Bar(
         x=all_dates,
         y=[long_pl_pct.get(date, 0) for date in all_dates],
@@ -188,10 +247,12 @@ def create_daily_pl(df):
         marker_color=COLORS['profit'],
         text=[f"{long_pl_pct.get(date, 0):.1f}%" for date in all_dates],
         textposition='auto',
-        cliponaxis=False
+        cliponaxis=False,
+        hovertext=long_hover_text,
+        hoverinfo='text'
     ))
     
-    # Add short position bars
+    # Add short position bars with hover text
     fig.add_trace(go.Bar(
         x=all_dates,
         y=[short_pl_pct.get(date, 0) for date in all_dates],
@@ -199,7 +260,9 @@ def create_daily_pl(df):
         marker_color=COLORS['loss'],
         text=[f"{short_pl_pct.get(date, 0):.1f}%" for date in all_dates],
         textposition='auto',
-        cliponaxis=False
+        cliponaxis=False,
+        hovertext=short_hover_text,
+        hoverinfo='text'
     ))
 
     fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
@@ -248,9 +311,9 @@ def create_daily_pl(df):
             visible=False
           ),
           dict(
-            text=(f'Total Long: {total_long_pct:.1f}%<br>'
-              f'Total Short: {total_short_pct:.1f}%<br>'
-              f'Total P/L: {total_pl_pct:.1f}%<br>'
+            text=(f'Total Long: {total_long_pct:.1f}% <br>'
+              f'Total Short: {total_short_pct:.1f}% <br>'
+              f'Total P/L: {total_pl_pct:.1f}% <br>'
               f'Avg Daily P/L: {avg_daily_pct:.1f}%<br>'
               f'Trading Days: {trading_days}'),
             xref='paper', 
