@@ -79,6 +79,12 @@ MARKET_MAPPINGS = {
             r'(?i)nvidia\s*corp',
             r'(?i)nvda'
         ],
+        'UK 100': [
+            r'(?i)uk\s*100\s*-?\s*rolling\s*future',
+            r'(?i)uk\s*100',
+            r'(?i)ftse\s*100',
+            r'(?i)ftse'
+        ],
         # Add other broker-specific patterns as needed
     },
     
