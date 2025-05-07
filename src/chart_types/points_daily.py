@@ -18,39 +18,53 @@ def create_points_daily(df):
     trading_data['Date'] = pd.to_datetime(trading_data['Transaction Date']).dt.date
     daily_points = trading_data.groupby('Date')['Points'].sum().reset_index()
     
-    # Calculate cumulative points
-    daily_cumulative = daily_points['Points'].cumsum()
-    total_points = daily_cumulative.iloc[-1]  # Get final cumulative value
+    # Initialize default values in case the dataframe is empty
+    total_points = 0
+    avg_points_per_day = 0
+    
+    # Calculate metrics only if we have data
+    if not daily_points.empty:
+        # Calculate cumulative points
+        daily_cumulative = daily_points['Points'].cumsum()
+        total_points = daily_cumulative.iloc[-1] if len(daily_cumulative) > 0 else 0
+        
+        # Calculate average points per day
+        num_days = len(daily_points)
+        avg_points_per_day = total_points / num_days if num_days > 0 else 0
+    else:
+        # Create empty series for plotting if no data
+        daily_cumulative = pd.Series()
     
     fig = setup_base_figure()
     
-    # Add daily point bars
-    fig.add_trace(go.Bar(
-        x=daily_points['Date'],
-        y=daily_points['Points'],
-        name='Daily Points',
-        marker=dict(
-            color=daily_points['Points'].apply(
-                lambda x: COLORS['profit'] if x > 0 else COLORS['loss']
+    # Add daily point bars if we have data
+    if not daily_points.empty:
+        fig.add_trace(go.Bar(
+            x=daily_points['Date'],
+            y=daily_points['Points'],
+            name='Daily Points',
+            marker=dict(
+                color=daily_points['Points'].apply(
+                    lambda x: COLORS['profit'] if x > 0 else COLORS['loss']
+                )
             )
-        )
-    ))
+        ))
+        
+        # Add cumulative line
+        fig.add_trace(go.Scatter(
+            x=daily_points['Date'],
+            y=daily_cumulative,
+            name='Cumulative Points',
+            line=dict(color=COLORS['profit'])
+        ))
     
-    # Add cumulative line
-    fig.add_trace(go.Scatter(
-        x=daily_points['Date'],
-        y=daily_cumulative,
-        name='Cumulative Points',
-        line=dict(color=COLORS['profit'])
-    ))
-    
-    # Add total points annotation box
+    # Add total points and average points per day annotation box
     fig.add_annotation(
         x=1,
         y=1,
         xref='paper',
         yref='paper',
-        text=f'Total Points: {total_points:.2f}',
+        text=f'Total Points: {total_points:.2f}<br>Avg Points/Day: {avg_points_per_day:.2f}',
         showarrow=False,
         font=dict(size=16),
         bgcolor='white',

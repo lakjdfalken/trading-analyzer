@@ -23,42 +23,55 @@ def create_points_monthly(df):
     # Group by month and sum points
     monthly_points = trading_data.groupby('Month')['Points'].sum().reset_index()
     
-    # Convert Period to datetime for plotting
-    monthly_points['Month'] = monthly_points['Month'].dt.to_timestamp()
+    # Initialize default values
+    total_points = 0
+    avg_points_per_month = 0
+    monthly_cumulative = pd.Series()
     
-    # Calculate cumulative points
-    monthly_cumulative = monthly_points['Points'].cumsum()
-    total_points = monthly_cumulative.iloc[-1] if not monthly_cumulative.empty else 0
+    # Calculate metrics only if we have data
+    if not monthly_points.empty:
+        # Convert Period to datetime for plotting
+        monthly_points['Month'] = monthly_points['Month'].dt.to_timestamp()
+        
+        # Calculate cumulative points
+        monthly_cumulative = monthly_points['Points'].cumsum()
+        total_points = monthly_cumulative.iloc[-1] if not monthly_cumulative.empty else 0
+        
+        # Calculate average points per month
+        num_months = len(monthly_points)
+        avg_points_per_month = total_points / num_months if num_months > 0 else 0
     
     fig = setup_base_figure()
     
-    # Add monthly point bars
-    fig.add_trace(go.Bar(
-        x=monthly_points['Month'],
-        y=monthly_points['Points'],
-        name='Monthly Points',
-        marker=dict(
-            color=monthly_points['Points'].apply(
-                lambda x: COLORS['profit'] if x > 0 else COLORS['loss']
+    # Add visualizations only if we have data
+    if not monthly_points.empty:
+        # Add monthly point bars
+        fig.add_trace(go.Bar(
+            x=monthly_points['Month'],
+            y=monthly_points['Points'],
+            name='Monthly Points',
+            marker=dict(
+                color=monthly_points['Points'].apply(
+                    lambda x: COLORS['profit'] if x > 0 else COLORS['loss']
+                )
             )
-        )
-    ))
+        ))
+        
+        # Add cumulative line
+        fig.add_trace(go.Scatter(
+            x=monthly_points['Month'],
+            y=monthly_cumulative,
+            name='Cumulative Points',
+            line=dict(color=COLORS['profit'])
+        ))
     
-    # Add cumulative line
-    fig.add_trace(go.Scatter(
-        x=monthly_points['Month'],
-        y=monthly_cumulative,
-        name='Cumulative Points',
-        line=dict(color=COLORS['profit'])
-    ))
-    
-    # Add total points annotation box
+    # Add total points and average points per month annotation box
     fig.add_annotation(
         x=1,
         y=1,
         xref='paper',
         yref='paper',
-        text=f'Total Points: {total_points:.2f}',
+        text=f'Total Points: {total_points:.2f}<br>Avg Points/Month: {avg_points_per_month:.2f}',
         showarrow=False,
         font=dict(size=16),
         bgcolor='white',
