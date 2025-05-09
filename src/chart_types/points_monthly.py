@@ -98,11 +98,14 @@ def calculate_points(open_price, close_price, action):
         close_price = float(str(close_price).replace(',', ''))
         
         if action == 'Trade Receivable':
+            # For winning trades, points won is absolute difference between prices
             points = abs(close_price - open_price)
         elif action == 'Trade Payable':    
-            points = -(open_price - close_price)  # Subtract points for Trade Payable
+            # For losing trades, points lost is also absolute difference (but negative)
+            points = -abs(close_price - open_price)
             
         logger.debug(f"Calculated points: {points} for {action} open: {open_price} close: {close_price}")
         return points
-    except:
+    except Exception as e:
+        logger.error(f"Error calculating points: {e}, open: {open_price}, close: {close_price}")
         return 0
