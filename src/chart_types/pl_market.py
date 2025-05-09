@@ -1,23 +1,36 @@
 import numpy as np
 import pandas as pd
-from .base import prepare_dataframe, format_currency, setup_base_figure, apply_standard_layout, get_trading_data
+from .base import (prepare_dataframe, format_currency, setup_base_figure, 
+                   apply_standard_layout, get_trading_data, get_trading_pl_without_funding)
 from settings import COLORS
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 def get_market_data(df):
-    """Returns dataframe filtered for market transactions"""
-    df_copy = prepare_dataframe(df)
-    return df_copy[~df_copy['Description'].str.contains('Online Transfer Cash', case=False, na=False)]
+    """Returns dataframe filtered for market transactions with funding impacts removed"""
+    # Use get_trading_pl_without_funding which already removes funding impacts
+    trading_df = get_trading_pl_without_funding(df)
+    
+    # Further exclude any non-market transactions that might still be in the data
+    excluded_patterns = [
+        'Fee',
+        'Payable',
+        'Interest',
+        'Online Transfer'
+    ]
+    pattern = '|'.join(excluded_patterns)
+    market_df = trading_df[~trading_df['Description'].str.contains(pattern, case=False, na=False)]
+    
+    return market_df
 
 def create_market_actions(df):
-    trading_df = get_trading_data(df)
+    # Use get_trading_pl_without_funding for consistent data handling
+    trading_df = get_trading_pl_without_funding(df)
     
     # Convert to datetime if needed
     if not pd.api.types.is_datetime64_any_dtype(trading_df['Transaction Date']):
         trading_df['Transaction Date'] = pd.to_datetime(trading_df['Transaction Date'])
     
-
     # Get base figure with fluid layout
     fig = setup_base_figure()
     
@@ -38,8 +51,11 @@ def create_market_actions(df):
     fig = apply_standard_layout(fig, "Market Actions")
     
     return fig
+
 def create_market_pl(df):
+    # Use the improved get_market_data function which uses get_trading_pl_without_funding
     market_df = get_market_data(df)
+    
     # Group by Description and Currency, maintaining sign for P/L values
     market_pl = market_df.groupby(['Description', 'Currency'])['P/L'].sum().reset_index()
     market_pl = market_pl.sort_values('P/L')
