@@ -34,7 +34,15 @@ MARKET_MAPPINGS = {
         'S&P 500': [
             r'(?i)s\s*&\s*p',
             r'(?i)spx',
-            r'(?i)sp\s*500'
+            r'(?i)sp\s*500',
+            r'(?i)us\s*500\s*-?\s*rolling\s*future\s*\(per\s*1\.0\)',
+            r'(?i)us\s*500\s*\(per\s*1\.0\)'
+        ],
+        'Russell 2000': [
+            r'(?i)russell\s*2000',
+            r'(?i)us\s*2000\s*-?\s*rolling\s*future',
+            r'(?i)rut',
+            r'(?i)us\s*small\s*cap'
         ],
         'Germany 40': [
             r'(?i)germany\s*40\s*-?\s*rolling\s*future',
@@ -69,7 +77,15 @@ MARKET_MAPPINGS = {
         'USD/JPY': [
             r'(?i)usd\s*jpy',
             r'(?i)dollar\s*yen'
-        ]
+        ],
+        # Add a new category for individual stocks
+        'Individual Stocks': [
+            r'(?i)NOVO\s*NORDISK\s*AS',  # Add Novo Nordisk
+            r'(?i)APPLE\s*INC',          # Example of other potential stocks
+            r'(?i)MICROSOFT\s*CORP',     # Example of other potential stocks
+            r'(?i)AMAZON\.COM',          # Example of other potential stocks
+            r'(?i)TESLA\s*INC'           # Added Tesla Inc
+        ],
     },
     
     # Broker-specific mappings (override or extend standard)
