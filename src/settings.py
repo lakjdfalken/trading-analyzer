@@ -239,3 +239,24 @@ COLUMN_MAPPINGS = {
     # 'trade_nation': { ... },
     # 'td365': { ... }
 }
+
+# Market-specific point calculation multipliers
+# Format: market_name: points_multiplier
+MARKET_POINT_MULTIPLIERS = {
+    'Gold': 10,  # Gold increments by 0.1, so 1 price unit = 10 points
+    'Oil': 1,    # Default multiplier (1 price unit = 1 point)
+    'S&P 500': 1,
+    'NASDAQ': 1,
+    'Wall Street': 1,
+    'Russell 2000': 1,
+    'UK 100': 1,
+    'Germany 40': 1,
+    # Add more markets and their multipliers as needed
+    # For forex pairs, you might need specific multipliers based on the pip value
+    'EUR/USD': 10000,  # Example: 0.0001 change = 1 pip
+    'GBP/USD': 10000,
+    'USD/JPY': 100,    # Example: 0.01 change = 1 pip
+}
+
+# Default multiplier for markets not specifically listed
+DEFAULT_POINT_MULTIPLIER = 1

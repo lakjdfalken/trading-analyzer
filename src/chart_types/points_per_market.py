@@ -1,6 +1,6 @@
 from .base import get_trading_data, setup_base_figure, apply_standard_layout
 import plotly.graph_objects as go
-from settings import COLORS, MARKETS, MARKET_ID_MAPPING, MARKET_MAPPINGS
+from settings import COLORS, MARKET_ID_MAPPING, MARKET_MAPPINGS, MARKET_POINT_MULTIPLIERS, DEFAULT_POINT_MULTIPLIER
 import logging
 import pandas as pd
 import re
@@ -11,16 +11,16 @@ def create_points_per_market(df):
     logger.debug("Starting monthly points per market analysis")
     trading_data = get_trading_data(df)
     
-    # Calculate points for each trade
-    trading_data['Points'] = trading_data.apply(lambda row: 
-        calculate_points(row['Opening'], row['Closing'], row['Action']), axis=1)
-    
     # Extract market information with broker context if available
     if 'broker_name' in trading_data.columns:
         trading_data['Market'] = trading_data.apply(
             lambda row: extract_market(row['Description'], row['broker_name']), axis=1)
     else:
         trading_data['Market'] = trading_data['Description'].apply(extract_market)
+    
+    # Calculate points with market context
+    trading_data['Points'] = trading_data.apply(lambda row: 
+        calculate_points(row['Opening'], row['Closing'], row['Action'], row['Market']), axis=1)
     
     # Count unidentified markets
     other_count = (trading_data['Market'] == 'Other').sum()
@@ -121,22 +121,43 @@ def create_points_per_market(df):
     
     return fig
 
-def calculate_points(open_price, close_price, action):
+
+def calculate_points(open_price, close_price, action, market=None):
+    """
+    Calculate points won or lost, adjusted for market-specific tick sizes
+    
+    Args:
+        open_price: Opening price of the trade
+        close_price: Closing price of the trade
+        action: Trade action (Trade Receivable/Payable)
+        market: The market name to apply specific multipliers
+        
+    Returns:
+        Points won (positive) or lost (negative)
+    """
     try:
         open_price = float(str(open_price).replace(',', ''))
         close_price = float(str(close_price).replace(',', ''))
         
+        # Calculate raw price difference
+        price_diff = abs(close_price - open_price)
+        
+        # Apply market-specific multiplier from settings
+        points_multiplier = MARKET_POINT_MULTIPLIERS.get(market, DEFAULT_POINT_MULTIPLIER)
+        price_diff *= points_multiplier
+        
+        # Assign positive or negative sign based on action
         if action == 'Trade Receivable':
-            # For winning trades, points won is absolute difference between prices
-            points = abs(close_price - open_price)
+            points = price_diff
         elif action == 'Trade Payable':    
-            # For losing trades, points lost is also absolute difference (but negative)
-            points = -abs(close_price - open_price)
+            points = -price_diff
+        else:
+            points = 0
             
-        logger.debug(f"Calculated points: {points} for {action} open: {open_price} close: {close_price}")
+        logger.debug(f"Calculated points: {points} for {action} in {market}, open: {open_price} close: {close_price}, multiplier: {points_multiplier}")
         return points
     except Exception as e:
-        logger.error(f"Error calculating points: {e}, open: {open_price}, close: {close_price}")
+        logger.error(f"Error calculating points: {e}, open: {open_price}, close: {close_price}, market: {market}")
         return 0
 
 def extract_market(description, broker_name='standard'):
