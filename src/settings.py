@@ -36,6 +36,17 @@ MARKET_MAPPINGS = {
             r'(?i)spx',
             r'(?i)sp\s*500'
         ],
+        'Germany 40': [
+            r'(?i)germany\s*40\s*-?\s*rolling\s*future',
+            r'(?i)dax',
+            r'(?i)germany\s*40'
+        ],
+        'UK 100': [
+            r'(?i)uk\s*100\s*-?\s*rolling\s*future',
+            r'(?i)uk\s*100',
+            r'(?i)ftse\s*100',
+            r'(?i)ftse'
+        ],
         'Gold': [
             r'(?i)gold',
             r'(?i)xau',
@@ -66,11 +77,6 @@ MARKET_MAPPINGS = {
         'Wall Street': [
             r'(?i)wall\s*street\s*30'
         ],
-        'Germany 40': [
-            r'(?i)germany\s*40\s*-?\s*rolling\s*future',
-            r'(?i)dax',
-            r'(?i)germany\s*40'
-        ],
         'S&P 500': [
             r'(?i)us\s*500\s*-?\s*rolling\s*future',
             r'(?i)us\s*500.*per\s*1\.0'
@@ -78,12 +84,6 @@ MARKET_MAPPINGS = {
         'NVIDIA': [
             r'(?i)nvidia\s*corp',
             r'(?i)nvda'
-        ],
-        'UK 100': [
-            r'(?i)uk\s*100\s*-?\s*rolling\s*future',
-            r'(?i)uk\s*100',
-            r'(?i)ftse\s*100',
-            r'(?i)ftse'
         ],
         # Add other broker-specific patterns as needed
     },
