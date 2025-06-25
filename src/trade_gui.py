@@ -15,6 +15,7 @@ from import_data import import_transaction_data
 from visualize_data import create_visualization_figure
 from settings import BROKERS, VALID_GRAPH_TYPES, WINDOW_CONFIG, UI_SETTINGS, DATA_COLUMNS
 #from signals import TradeSignals
+from chart_types.tax_overview import create_tax_overview_table, create_yearly_summary_chart, get_available_years
 logger = logging.getLogger(__name__)
 
 
@@ -43,11 +44,13 @@ class TradingAnalyzerGUI(QMainWindow):
         self.data_tab = QWidget()
         self.graph_tab = QWidget()
         self.settings_tab = QWidget()
+        self.overview_tab = QWidget()  # New overview tab
     
         self.tab_widget = QTabWidget()
         self.tab_widget.addTab(self.data_tab, "Data View")
         self.tab_widget.addTab(self.graph_tab, "Graphs")
         self.tab_widget.addTab(self.settings_tab, "Settings")
+        self.tab_widget.addTab(self.overview_tab, "Tax Overview")  # Add this line
     
         # Setup UI components in correct order
         self.create_import_frame()
@@ -55,6 +58,7 @@ class TradingAnalyzerGUI(QMainWindow):
         self.setup_data_tab()
         self.setup_graph_tab()
         self.setup_settings_tab()
+        self.setup_overview_tab()  # Setup new tab
         self.load_existing_data()
     def create_import_frame(self):        
         import_frame = QFrame()
@@ -335,7 +339,7 @@ class TradingAnalyzerGUI(QMainWindow):
         # Adjust column widths based on content
         for column in range(self.tree.columnCount()):
             self.tree.resizeColumnToContents(column)
-
+        self.update_year_combo()
 
     def display_selected_graph(self):
           try:
@@ -544,3 +548,177 @@ class TradingAnalyzerGUI(QMainWindow):
         - Custom reporting
         """
         QMessageBox.about(self, "About Trading Analyzer", about_text)
+
+    def setup_overview_tab(self):
+        """Setup the tax overview tab"""
+        overview_layout = QHBoxLayout(self.overview_tab)
+
+        # Create selection frame
+        selection_frame = QFrame()
+        selection_frame.setFixedWidth(UI_SETTINGS['graph_selection_width'])
+        selection_layout = QVBoxLayout(selection_frame)
+
+        # Year selection
+        selection_layout.addWidget(QLabel("Select Year:"))
+        self.year_combo = QComboBox()
+        self.year_combo.addItem("All Years")
+        selection_layout.addWidget(self.year_combo)
+
+        # Broker filter
+        selection_layout.addWidget(QLabel("Filter by Broker:"))
+        self.overview_broker_combo = QComboBox()
+        self.overview_broker_combo.addItems(['All'] + list(BROKERS.values()))
+        selection_layout.addWidget(self.overview_broker_combo)
+
+        # View type selection
+        selection_layout.addWidget(QLabel("View Type:"))
+        self.overview_type_combo = QComboBox()
+        self.overview_type_combo.addItems(['Tax Overview Table', 'Yearly Summary Chart'])
+        selection_layout.addWidget(self.overview_type_combo)
+
+        # Generate button
+        generate_button = QPushButton("Generate Overview")
+        generate_button.clicked.connect(self.generate_tax_overview)
+        selection_layout.addWidget(generate_button)
+
+        # Export button
+        export_button = QPushButton("Export to CSV")
+        export_button.clicked.connect(self.export_tax_data)
+        selection_layout.addWidget(export_button)
+
+        # Add stretch to push controls to top
+        selection_layout.addStretch()
+
+        overview_layout.addWidget(selection_frame)
+
+        # Add overview display area
+        self.overview_display_frame = QFrame()
+        self.overview_display_frame.setSizePolicy(
+            QSizePolicy.Policy.Expanding, 
+            QSizePolicy.Policy.Expanding
+        )
+        overview_layout.addWidget(self.overview_display_frame)
+
+    def update_year_combo(self):
+        """Update the year combo box with available years from data"""
+        if hasattr(self, 'df') and not self.df.empty:
+            years = get_available_years(self.df)
+            self.year_combo.clear()
+            self.year_combo.addItem("All Years")
+            for year in years:
+                self.year_combo.addItem(str(year))
+
+    def generate_tax_overview(self):
+        """Generate the tax overview based on selected options"""
+        try:
+            if not hasattr(self, 'df') or self.df.empty:
+                QMessageBox.warning(self, "No Data", "Please import trading data first")
+                return
+
+            # Get selected year
+            selected_year_text = self.year_combo.currentText()
+            selected_year = None if selected_year_text == "All Years" else int(selected_year_text)
+
+            # Get selected broker
+            selected_broker_text = self.overview_broker_combo.currentText()
+            selected_broker = None if selected_broker_text == 'All' else None
+        
+            # Convert broker display name back to broker key
+            if selected_broker_text != 'All':
+                # Find the broker key from the display name
+                selected_broker = [k for k, v in BROKERS.items() if v == selected_broker_text]
+                selected_broker = selected_broker[0] if selected_broker else None
+
+            # Get view type
+            view_type = self.overview_type_combo.currentText()
+
+            # Create temp directory for HTML files
+            temp_dir = os.path.join(os.getcwd(), 'temp_graphs')
+            os.makedirs(temp_dir, exist_ok=True)
+
+            # Clear any existing layout
+            if self.overview_display_frame.layout():
+                QWidget().setLayout(self.overview_display_frame.layout())
+        
+            # Create new layout
+            layout = QVBoxLayout()
+            self.overview_display_frame.setLayout(layout)
+    
+            # Create webview
+            self.overview_webview = QWebEngineView()
+            layout.addWidget(self.overview_webview)
+
+            # Generate appropriate visualization with broker parameter
+            if view_type == 'Tax Overview Table':
+                fig = create_tax_overview_table(self.df, selected_year, selected_broker)
+            else:  # Yearly Summary Chart
+                fig = create_yearly_summary_chart(self.df, selected_broker)
+
+            # Save and display
+            temp_path = os.path.join(temp_dir, 'tax_overview.html')
+            fig.write_html(temp_path, include_plotlyjs=True, full_html=True)
+            self.overview_webview.load(QUrl.fromLocalFile(temp_path))
+
+        except Exception as e:
+            logger.error(f"Error generating tax overview: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to generate tax overview: {str(e)}")
+
+    def export_tax_data(self):
+        """Export tax overview data to CSV"""
+        try:
+            if not hasattr(self, 'df') or self.df.empty:
+                QMessageBox.warning(self, "No Data", "Please import trading data first")
+                return
+
+            # Get selected year
+            selected_year_text = self.year_combo.currentText()
+            selected_year = None if selected_year_text == "All Years" else int(selected_year_text)
+
+            # Get selected broker
+            selected_broker_text = self.overview_broker_combo.currentText()
+            selected_broker = None if selected_broker_text == 'All' else None
+        
+            # Convert broker display name back to broker key
+            if selected_broker_text != 'All':
+                selected_broker = [k for k, v in BROKERS.items() if v == selected_broker_text]
+                selected_broker = selected_broker[0] if selected_broker else None
+
+            # Import the function here to avoid circular imports
+            from chart_types.tax_overview import get_tax_overview_data
+        
+            # Get tax data with broker filter
+            tax_data = get_tax_overview_data(self.df, selected_year, selected_broker)
+        
+            if tax_data.empty:
+                QMessageBox.warning(self, "No Data", "No tax data available for export")
+                return
+
+            # Get file path for export
+            broker_suffix = f"_{selected_broker_text}" if selected_broker_text != 'All' else ""
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Export Tax Overview",
+                f"tax_overview_{selected_year if selected_year else 'all_years'}{broker_suffix}.csv",
+                "CSV Files (*.csv)"
+            )
+        
+            if file_path:
+                # Prepare data for export
+                export_data = tax_data.copy()
+                export_data = export_data.drop(['broker_name'], axis=1)  # Remove internal broker name
+                export_data = export_data.rename(columns={
+                    'Broker_Display': 'Broker',
+                    'Description': 'Market',
+                    'Total_PL': 'Total_P/L',
+                    'Trade_Count': 'Number_of_Trades',
+                    'First_Trade': 'First_Trade_Date',
+                    'Last_Trade': 'Last_Trade_Date'
+                })
+            
+                # Export to CSV
+                export_data.to_csv(file_path, index=False)
+                QMessageBox.information(self, "Export Successful", f"Tax overview exported to {file_path}")
+
+        except Exception as e:
+            logger.error(f"Error exporting tax data: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to export tax data: {str(e)}")
