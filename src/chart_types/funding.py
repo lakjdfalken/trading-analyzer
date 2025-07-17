@@ -3,48 +3,67 @@ import plotly.graph_objects as go
 from settings import COLORS
 import pandas as pd
 import logging
-from logger import setup_logger
 
 logger = logging.getLogger(__name__)
 
 def get_funding_data(df):
     """Returns dataframe filtered for funding transactions"""
+    logger.debug("get_funding_data called")  # Add this debug line
     df_copy = prepare_dataframe(df)
-#    print("Unique Action values:", df_copy['Action'].unique())
     
     # Try case-insensitive matching for funding transactions
     funding_mask = df_copy['Action'].str.contains('fund', case=False, na=False)
     funding_df = df_copy[funding_mask]
     
-#    print("Number of funding transactions found:", len(funding_df))
-#    if not funding_df.empty:
-#        print("Sample of funding data:\n", funding_df[['Transaction Date', 'Action', 'P/L']].head())
+    logger.debug(f"Found {len(funding_df)} funding transactions")  # Add this debug line
     
     return funding_df
 
 def create_funding_distribution(df):
+    logger.debug("create_funding_distribution called")  # Add this debug line
     funding_df = get_funding_data(df)
+    
+    # Debug: Check what Action values we actually have
+    logger.debug(f"Unique Action values in funding data: {funding_df['Action'].unique()}")
     
     # Convert dates and sort all data at once
     funding_df['Transaction Date'] = pd.to_datetime(funding_df['Transaction Date'])
     funding_df = funding_df.sort_values('Transaction Date', ascending=True)
     
-    # Calculate totals
+    # Calculate totals - check for different possible charge action names
     total_deposits = funding_df[funding_df['Action'] == 'Fund receivable']['P/L'].sum()
     total_withdrawals = funding_df[funding_df['Action'] == 'Fund payable']['P/L'].sum()
-    total_charges = funding_df[funding_df['Action'] == 'Funding Charges']['P/L'].sum()
+    
+    # Try different possible names for charges
+    charges_mask = (
+        (funding_df['Action'] == 'Funding Charges') |
+        (funding_df['Action'] == 'Funding charge') |
+        (funding_df['Action'].str.contains('Funding charge', case=False, na=False))
+    )
+    total_charges = funding_df[charges_mask]['P/L'].sum()
     net_total = total_deposits + total_withdrawals + total_charges
+
+    logger.debug(f"Calculated totals - Deposits: {total_deposits}, Withdrawals: {total_withdrawals}, Charges: {total_charges}")
 
     fig = setup_base_figure()
     
     for currency in funding_df['Currency'].unique():
         currency_funding = funding_df[funding_df['Currency'] == currency]
         
+        # Updated funding_types with blue color for charges and better matching
         funding_types = {
             'Fund receivable': {'name': 'Deposits', 'color': COLORS['profit']},
             'Fund payable': {'name': 'Withdrawals', 'color': COLORS['loss']}
         }
         
+        # Add charges with flexible matching
+        charges_data = currency_funding[
+            (currency_funding['Action'] == 'Funding Charges') |
+            (currency_funding['Action'] == 'Funding charge') |
+            (currency_funding['Action'].str.contains('Funding charge', case=False, na=False))
+        ]
+        
+        # Process standard funding types
         for action, props in funding_types.items():
             action_data = currency_funding[currency_funding['Action'] == action]
             if not action_data.empty:
@@ -61,8 +80,30 @@ def create_funding_distribution(df):
                     textfont=dict(
                         color='white',
                         size=12
-                    )
-                ))    
+                    ),
+                    legendgroup=f"{props['name']}_{currency}",
+                    showlegend=True
+                ))
+        
+        # Process charges separately with blue color
+        if not charges_data.empty:
+            x_dates = charges_data['Transaction Date'].dt.strftime('%Y-%m-%d')
+            
+            fig.add_trace(go.Bar(
+                name=f"Charges ({currency})",
+                x=x_dates,
+                y=abs(charges_data['P/L']),
+                marker_color='#0066CC',  # Blue color
+                text=[f"{val:.0f}" for val in charges_data['P/L']],
+                textposition='inside',
+                textfont=dict(
+                    color='white',
+                    size=12
+                ),
+                legendgroup=f"Charges_{currency}",
+                showlegend=True
+            ))
+    
     # Set explicit x-axis range
     min_date = funding_df['Transaction Date'].min()
     max_date = funding_df['Transaction Date'].max()
@@ -83,10 +124,12 @@ def create_funding_distribution(df):
             x=0.0,
             y=1.0,
             xanchor='left',
-            yanchor='top'
+            yanchor='top',
+            bgcolor='rgba(255,255,255,0.8)',
+            bordercolor='black',
+            borderwidth=1
         ),
         autosize=True
-#        height=600
     )
     
     fig.add_annotation(
@@ -116,17 +159,11 @@ def create_funding_charges(df):
     df_copy = prepare_dataframe(df).copy()
     df_copy['Transaction Date'] = pd.to_datetime(df_copy['Transaction Date'], format='%Y-%m-%d')
     
-    # Sort by date and P/L in reverse order to stack largest values first
-    #df_copy = df_copy.sort_values(['Transaction Date', 'P/L'], ascending=[True, False])
-    
     funding_mask = df_copy['Action'].str.contains('Funding charge', case=False, na=False)
     funding_c_df = df_copy[funding_mask]
 
     # Reset index after filtering to ensure proper sorting
     funding_c_df = funding_c_df.reset_index(drop=True)
-
-    # Sort by date first, then by absolute value of P/L in descending order
-    #funding_c_df = funding_c_df.sort_values(['Transaction Date', 'P/L'], ascending=[True, True])
     funding_c_df = funding_c_df.sort_values(by='Transaction Date', ascending=True)
     
     logger.debug(f"Found {len(funding_c_df)} funding charge entries")
@@ -134,9 +171,6 @@ def create_funding_charges(df):
     
     fig = setup_base_figure()
     y_position = 0.95
-    
-    # Sort by exact timestamp and P/L to ensure consistent display
-    #funding_c_df = funding_c_df.sort_values(['Transaction Date', 'P/L'], ascending=[True, False])
     
     # Calculate date range and adjust bar width accordingly
     date_range = (funding_c_df['Transaction Date'].max() - funding_c_df['Transaction Date'].min()).days
@@ -182,7 +216,6 @@ def create_funding_charges(df):
         bargap=0.3,
         showlegend=False,
         yaxis=dict(
-            #range=[total_min * 1.1, 0],  # Set range from total sum to zero
             range=[total_min, 0],  # Set range from total sum to zero
             title="Cumulative Charges"
         ),

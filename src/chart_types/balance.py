@@ -20,10 +20,18 @@ def create_balance_history(df):
         # Create explicit copy of filtered data
         broker_data = trading_data[trading_data['broker_name'] == broker].copy()
         
-        # Calculate metrics per broker
+        # Calculate metrics per broker (including all transactions)
         total_pl = broker_data['P/L'].sum()
         days_traded = len(broker_data['Transaction Date'].dt.date.unique())
         daily_average = total_pl / days_traded if days_traded > 0 else 0
+        
+        # Calculate funding charges for this broker
+        charges_mask = broker_data['Action'].str.contains('Funding charge', case=False, na=False)
+        total_charges = broker_data[charges_mask]['P/L'].sum()
+        
+        # Calculate deposits and withdrawals
+        deposits = broker_data[broker_data['Action'] == 'Fund receivable']['P/L'].sum()
+        withdrawals = broker_data[broker_data['Action'] == 'Fund payable']['P/L'].sum()
         
         # Calculate cumulative P/L using loc
         broker_data.loc[:, 'Cumulative P/L'] = broker_data['P/L'].cumsum()        
@@ -64,26 +72,37 @@ def create_balance_history(df):
             total_pl_no_funding = 0
             daily_average_no_funding = 0
         
-        # Add annotations for broker metrics
+        # Calculate trading P/L (excluding funding transactions)
+        trading_only_mask = ~broker_data['Action'].str.contains('fund', case=False, na=False)
+        trading_pl = broker_data[trading_only_mask]['P/L'].sum()
+        
+        # Add annotations for broker metrics with charges breakdown
         fig.add_annotation(
             text=(f'{broker}<br>'
                   f'Total P/L (with funding): {total_pl:.2f}<br>'
                   f'Daily Avg (with funding): {daily_average:.2f}<br>'
                   f'Total P/L (excl. funding): {total_pl_no_funding:.2f}<br>'
-                  f'Daily Avg (excl. funding): {daily_average_no_funding:.2f}'),
+                  f'Daily Avg (excl. funding): {daily_average_no_funding:.2f}<br>'
+                  f'Trading P/L: {trading_pl:.2f}<br>'
+                  f'Funding Charges: {total_charges:.2f}<br>'
+                  f'Deposits: {deposits:.2f}<br>'
+                  f'Withdrawals: {withdrawals:.2f}'),
             xref='paper', yref='paper',
-            x=0.92, y=0.08 + (list(brokers).index(broker) * 0.15),  # Stack annotations with more space
+            x=0.92, y=0.08 + (list(brokers).index(broker) * 0.20),  # More space for additional info
             showarrow=False,
             bgcolor='white',
             bordercolor='black',
-            borderwidth=1
+            borderwidth=1,
+            font=dict(size=10)
         )
     
     fig = apply_standard_layout(fig, "Balance History (With and Without Funding)")
     
-    # Add a note explaining the lines
+    # Add a note explaining the lines and metrics
     fig.add_annotation(
-        text="Blue solid line: Actual balance including funding<br>Green dashed line: Balance excluding funding",
+        text=("Blue solid line: Actual balance including funding<br>"
+              "Green dashed line: Balance excluding funding<br>"
+              "Annotations show detailed breakdown including charges"),
         xref='paper', yref='paper',
         x=0.5, y=1.05,
         showarrow=False,
