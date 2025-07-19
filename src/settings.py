@@ -142,10 +142,27 @@ MARKET_SPREADS = {
 
 # Currency Settings
 CURRENCY_SYMBOLS = {
+    'DKK': 'kr',
+    'SEK': 'kr',
+    'EUR': '€',
     'GBP': '£',
-    'USD': '$',
-    'EUR': '€'
+    'USD': '$'
 }
+
+# Default exchange rates (base currency: SEK)
+DEFAULT_EXCHANGE_RATES = {
+    'SEK': 1,  # 1 SEK = 1 SEK (base currency)
+    'DKK': 1.52,  # 1 DKK = 1.52 SEK
+    'EUR': 11.32,  # 1 EUR = 11.32 SEK
+    'USD': 10.50,  # 1 USD = 10.50 SEK (example rate)
+    'GBP': 13.20,  # 1 GBP = 13.20 SEK (example rate)
+}
+
+# Available currencies for the application
+AVAILABLE_CURRENCIES = ['SEK', 'DKK', 'EUR', 'USD', 'GBP']
+
+# Base currency for conversions
+DEFAULT_BASE_CURRENCY = 'SEK'
 
 # Graph Types
 VALID_GRAPH_TYPES = [

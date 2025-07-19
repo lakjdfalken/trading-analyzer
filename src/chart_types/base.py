@@ -15,6 +15,7 @@ def format_currency(value, currency):
     return f'{symbol}{value:,.2f}'  # Now preserves negative signs
 
 def setup_base_figure():
+    """Create a basic Plotly figure with standard layout"""
     fig = go.Figure()
     
     fig.update_layout(
@@ -34,6 +35,7 @@ def setup_base_figure():
     return fig
 
 def apply_standard_layout(fig, title):
+    """Apply standard layout settings to a Plotly figure"""
     fig.update_layout(
         title=title,
         plot_bgcolor='white',
@@ -60,6 +62,16 @@ def apply_standard_layout(fig, title):
     fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
     
     return fig
+
+def ensure_currency_column(df, default_currency='USD'):
+    """
+    Ensures DataFrame has a currency column, adds default if missing
+    """
+    df_copy = df.copy()
+    if 'currency' not in df_copy.columns:
+        df_copy['currency'] = default_currency
+    return df_copy
+
 def prepare_dataframe(df):
     """
     Prepares dataframe with proper datetime handling and returns a clean copy
@@ -77,6 +89,7 @@ def get_trading_data(df):
     logger.debug(f"Trading data Actions:\n{trading_data['Action'].unique()}")
     logger.debug(f"Trading data Descriptions:\n{trading_data['Description'].unique()}")
     return trading_data
+
 def get_trade_counts(df):
     """
     Returns daily trade counts
@@ -113,7 +126,6 @@ def get_trading_pl_without_funding(df):
     
     return df_copy[trading_mask].copy()
 
-
 def get_all_data():
     try:
         conn = sqlite3.connect('trading_data.db')
@@ -131,3 +143,124 @@ def get_all_data():
     except Exception as e:
         logger.error(f"Error fetching data from database: {str(e)}")
         raise
+
+def get_broker_currency_groups(df):
+    """
+    Returns grouped data by broker and currency combinations
+    """
+    df_copy = prepare_dataframe(df)
+    
+    # Ensure currency column exists, default to USD if missing
+    if 'currency' not in df_copy.columns:
+        df_copy['currency'] = 'USD'
+    
+    # Group by broker and currency
+    groups = df_copy.groupby(['broker_name', 'currency'])
+    
+    return groups
+
+def get_trading_data_by_currency(df, broker=None, currency=None):
+    """
+    Returns trading data filtered by broker and/or currency
+    """
+    trading_data = get_trading_data(df)
+    
+    if broker:
+        trading_data = trading_data[trading_data['broker_name'] == broker]
+    
+    if currency:
+        # Ensure currency column exists
+        if 'currency' not in trading_data.columns:
+            trading_data['currency'] = 'USD'
+        trading_data = trading_data[trading_data['currency'] == currency]
+    
+    return trading_data
+
+def calculate_currency_metrics(df, broker, currency):
+    """
+    Calculate P/L metrics for a specific broker-currency combination
+    """
+    broker_currency_data = df[
+        (df['broker_name'] == broker) & 
+        (df['currency'] == currency)
+    ].copy()
+    
+    total_pl = broker_currency_data['P/L'].sum()
+    days_traded = len(broker_currency_data['Transaction Date'].dt.date.unique())
+    daily_average = total_pl / days_traded if days_traded > 0 else 0
+    
+    # Calculate funding charges
+    charges_mask = broker_currency_data['Action'].str.contains('Funding charge', case=False, na=False)
+    total_charges = broker_currency_data[charges_mask]['P/L'].sum()
+    
+    # Calculate deposits and withdrawals
+    deposits = broker_currency_data[broker_currency_data['Action'] == 'Fund rece received']['P/L'].sum()
+    withdrawals = broker_currency_data[broker_currency_data['Action'] == 'Fund payable']['P/L'].sum()
+    
+    return {
+        'total_pl': total_pl,
+        'daily_average': daily_average,
+        'total_charges': total_charges,
+        'deposits': deposits,
+        'withdrawals': withdrawals,
+        'currency': currency
+    }
+
+def convert_to_base_currency(amount, from_currency, exchange_rates, base_currency='SEK'):
+    """
+    Convert amount from one currency to base currency
+    """
+    if from_currency == base_currency:
+        return amount
+    
+    if from_currency in exchange_rates:
+        # Direct conversion using the exchange rate
+        return amount * exchange_rates[from_currency]
+    else:
+        logger.warning(f"Exchange rate not found for {from_currency}, using original amount")
+        return amount
+
+def format_currency_with_conversion(value, currency, exchange_rates, base_currency='SEK', show_converted=True):
+    """
+    Format currency value with optional conversion display
+    """
+    symbol = CURRENCY_SYMBOLS.get(currency, '')
+    formatted = f'{symbol}{value:,.2f}'
+    
+    if show_converted and currency != base_currency:
+        converted_value = convert_to_base_currency(value, currency, exchange_rates, base_currency)
+        base_symbol = CURRENCY_SYMBOLS.get(base_currency, '')
+        formatted += f' ({base_symbol}{converted_value:,.2f})'
+    
+    return formatted
+
+def get_unified_currency_data(df, exchange_rates, target_currency='SEK'):
+    """
+    Convert all monetary values to a single currency for unified analysis
+    """
+    df_copy = df.copy()
+    
+    # Ensure currency column exists - use target_currency as default
+    if 'currency' not in df_copy.columns:
+        df_copy['currency'] = target_currency
+    
+    # Convert monetary columns
+    monetary_columns = ['Amount', 'P/L', 'Balance', 'Fund_Balance', 'Opening', 'Closing']
+    
+    for col in monetary_columns:
+        if col in df_copy.columns:
+            df_copy[f'{col}_Original'] = df_copy[col].copy()  # Keep original values
+            
+            # Convert each row based on its currency
+            for idx, row in df_copy.iterrows():
+                original_currency = row['currency']
+                if pd.notna(row[col]) and original_currency != target_currency:
+                    converted_value = convert_to_base_currency(
+                        row[col], original_currency, exchange_rates, target_currency
+                    )
+                    df_copy.at[idx, col] = converted_value
+            
+            # Update currency column to reflect conversion
+            df_copy['currency'] = target_currency
+    
+    return df_copy

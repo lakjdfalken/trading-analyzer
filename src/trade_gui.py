@@ -13,7 +13,8 @@ import shutil
 from datetime import datetime, timedelta
 from import_data import import_transaction_data
 from visualize_data import create_visualization_figure
-from settings import BROKERS, VALID_GRAPH_TYPES, WINDOW_CONFIG, UI_SETTINGS, DATA_COLUMNS
+from settings import (BROKERS, VALID_GRAPH_TYPES, WINDOW_CONFIG, UI_SETTINGS, DATA_COLUMNS,
+                     DEFAULT_EXCHANGE_RATES, AVAILABLE_CURRENCIES, DEFAULT_BASE_CURRENCY)
 #from signals import TradeSignals
 from chart_types.tax_overview import create_tax_overview_table, create_yearly_summary_chart, get_available_years
 logger = logging.getLogger(__name__)
@@ -30,11 +31,16 @@ class TradingAnalyzerGUI(QMainWindow):
         # Create the menu bar before other UI elements
         self.create_menu_bar()  # This line ensures menus are created
     
-        # Initialize attributes
+        # Initialize currency settings BEFORE setting up UI
+        self.exchange_rates = DEFAULT_EXCHANGE_RATES.copy()
+        self.base_currency = DEFAULT_BASE_CURRENCY
+        
+        # Initialize other attributes
         self.broker_combo = QComboBox()
         self.current_sort_column = -1
         self.current_sort_order = Qt.SortOrder.AscendingOrder
         self.sort_states = {}  # Add this to track sort states per column    
+        
         # Create central widget and main layout
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -57,7 +63,7 @@ class TradingAnalyzerGUI(QMainWindow):
         self.main_layout.addWidget(self.tab_widget)
         self.setup_data_tab()
         self.setup_graph_tab()
-        self.setup_settings_tab()
+        self.setup_settings_tab()  # Now called after currency attributes are initialized
         self.setup_overview_tab()  # Setup new tab
         self.load_existing_data()
     def create_import_frame(self):        
@@ -86,9 +92,11 @@ class TradingAnalyzerGUI(QMainWindow):
         selection_frame.setFixedWidth(UI_SETTINGS['graph_selection_width'])
         selection_layout = QVBoxLayout(selection_frame)
 
-        # Broker selection populated from settings
+        # Broker selection populated from settings - keep Trade Nation as default but include All option
         self.graph_broker_combo = QComboBox()
-        self.graph_broker_combo.addItems(['All'] + list(BROKERS.values()))
+        self.graph_broker_combo.addItems(['All', 'Trade Nation'] + list(BROKERS.values()))
+        # Set Trade Nation as the default selection
+        self.graph_broker_combo.setCurrentText('Trade Nation')
         selection_layout.addWidget(self.graph_broker_combo)
 
         # Date range selection
@@ -188,6 +196,61 @@ class TradingAnalyzerGUI(QMainWindow):
         theme_layout.addStretch()
         settings_layout.addWidget(theme_frame)
     
+        # NEW: Currency Settings Section
+        currency_frame = QFrame()
+        currency_frame.setStyleSheet("QFrame { border: 1px solid gray; margin: 5px; padding: 10px; }")
+        currency_layout = QVBoxLayout(currency_frame)
+        
+        currency_title = QLabel("Currency Settings")
+        currency_title.setStyleSheet("font-weight: bold; font-size: 14px; margin-bottom: 10px;")
+        currency_layout.addWidget(currency_title)
+        
+        # Base Currency Selection
+        base_currency_layout = QHBoxLayout()
+        base_currency_layout.addWidget(QLabel("Base Currency:"))
+        
+        self.base_currency_combo = QComboBox()
+        self.base_currency_combo.addItems(AVAILABLE_CURRENCIES)
+        self.base_currency_combo.setCurrentText(self.base_currency)
+        self.base_currency_combo.setFixedWidth(80)
+        self.base_currency_combo.currentTextChanged.connect(self.change_base_currency)
+        base_currency_layout.addWidget(self.base_currency_combo)
+        
+        base_currency_layout.addWidget(QLabel("(All amounts will be converted to this currency)"))
+        base_currency_layout.addStretch()
+        currency_layout.addLayout(base_currency_layout)
+        
+        # Add separator
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        currency_layout.addWidget(separator)
+        
+        # Exchange Rates Section
+        rates_title = QLabel("Exchange Rates")
+        rates_title.setStyleSheet("font-weight: bold; font-size: 12px; margin-top: 10px;")
+        currency_layout.addWidget(rates_title)
+        
+        rates_info = QLabel(f"Enter how much 1 unit of each currency equals in {self.base_currency}")
+        rates_info.setStyleSheet("font-size: 10px; color: gray; margin-bottom: 5px;")
+        self.rates_info_label = rates_info  # Store reference to update when base currency changes
+        currency_layout.addWidget(rates_info)
+        
+        # Create exchange rate inputs
+        self.exchange_rate_inputs = {}
+        self.rates_layout = QVBoxLayout()  # Store reference to update when base currency changes
+        currency_layout.addLayout(self.rates_layout)
+        
+        self.create_exchange_rate_inputs()
+        
+        # Reset to defaults button
+        reset_rates_button = QPushButton("Reset Exchange Rates to Defaults")
+        reset_rates_button.setFixedWidth(200)
+        reset_rates_button.clicked.connect(self.reset_exchange_rates)
+        currency_layout.addWidget(reset_rates_button)
+        
+        settings_layout.addWidget(currency_frame)
+    
         # Transparency control
         trans_frame = QFrame()
         trans_layout = QVBoxLayout(trans_frame)
@@ -212,6 +275,113 @@ class TradingAnalyzerGUI(QMainWindow):
         settings_layout.addWidget(about_frame)
     
         settings_layout.addStretch()
+
+    def create_exchange_rate_inputs(self):
+        """Create exchange rate input fields based on current base currency"""
+        # Clear existing inputs
+        while self.rates_layout.count():
+            child = self.rates_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        
+        self.exchange_rate_inputs.clear()
+        
+        # Create inputs for all currencies except base currency
+        for currency in AVAILABLE_CURRENCIES:
+            if currency != self.base_currency:
+                rate_layout = QHBoxLayout()
+                rate_layout.addWidget(QLabel(f"1 {currency} ="))
+                
+                rate_input = QLineEdit()
+                rate_input.setFixedWidth(100)
+                
+                # Calculate rate relative to current base currency
+                if currency in self.exchange_rates:
+                    if self.base_currency == 'USD':
+                        # If base is USD, use direct rate
+                        rate_value = self.exchange_rates[currency]
+                    else:
+                        # Convert rate to new base currency
+                        # Rate = (currency to USD) / (base_currency to USD)
+                        currency_to_usd = self.exchange_rates.get(currency, 1.0)
+                        base_to_usd = self.exchange_rates.get(self.base_currency, 1.0)
+                        rate_value = currency_to_usd / base_to_usd
+                else:
+                    rate_value = 1.0
+                
+                rate_input.setText(f"{rate_value:.4f}")
+                rate_input.textChanged.connect(lambda text, curr=currency: self.update_exchange_rate(curr, text))
+                self.exchange_rate_inputs[currency] = rate_input
+                rate_layout.addWidget(rate_input)
+                
+                rate_layout.addWidget(QLabel(self.base_currency))
+                rate_layout.addStretch()
+                
+                # Create widget to hold the layout
+                rate_widget = QWidget()
+                rate_widget.setLayout(rate_layout)
+                self.rates_layout.addWidget(rate_widget)
+
+    def change_base_currency(self, new_base_currency):
+        """Handle base currency change"""
+        old_base_currency = self.base_currency
+        self.base_currency = new_base_currency
+        
+        logger.info(f"Base currency changed from {old_base_currency} to {new_base_currency}")
+        
+        # Update the info label
+        self.rates_info_label.setText(f"Enter how much 1 unit of each currency equals in {self.base_currency}")
+        
+        # Recreate exchange rate inputs
+        self.create_exchange_rate_inputs()
+        
+        # Show confirmation message
+        QMessageBox.information(
+            self, 
+            "Base Currency Changed", 
+            f"Base currency changed to {new_base_currency}.\n"
+            f"Exchange rates have been recalculated.\n"
+            f"Please verify the rates are correct."
+        )
+
+    def update_exchange_rate(self, currency, text):
+        """Update exchange rate when user changes input"""
+        try:
+            rate = float(text)
+            if rate > 0:
+                # Convert rate to USD-based rate for internal storage
+                if self.base_currency == 'USD':
+                    # Direct rate to USD
+                    self.exchange_rates[currency] = rate
+                else:
+                    # Convert: rate is currency to base_currency
+                    # We need currency to USD = rate * (base_currency to USD)
+                    base_to_usd = self.exchange_rates.get(self.base_currency, 1.0)
+                    self.exchange_rates[currency] = rate * base_to_usd
+                
+                logger.debug(f"Updated exchange rate for {currency}: {rate} {self.base_currency} = {self.exchange_rates[currency]} USD")
+            else:
+                logger.warning(f"Invalid exchange rate for {currency}: {text}")
+        except ValueError:
+            logger.warning(f"Invalid exchange rate format for {currency}: {text}")
+
+    def reset_exchange_rates(self):
+        """Reset exchange rates to defaults"""
+        self.exchange_rates = DEFAULT_EXCHANGE_RATES.copy()
+        
+        # Recreate the input fields with default values
+        self.create_exchange_rate_inputs()
+        
+        logger.info("Exchange rates reset to defaults")
+        QMessageBox.information(self, "Exchange Rates", "Exchange rates have been reset to default values")
+
+    def get_exchange_rates(self):
+        """Return current exchange rates for use by chart functions"""
+        return self.exchange_rates.copy()
+
+    def get_base_currency(self):
+        """Return current base currency"""
+        return self.base_currency
 
     def cleanup_temp_graphs(self):
         """Clean up graph files older than 24 hours"""
@@ -368,8 +538,13 @@ class TradingAnalyzerGUI(QMainWindow):
             self.webview = QWebEngineView()
             layout.addWidget(self.webview)
         
-            # Generate and display graph
-            fig = create_visualization_figure(filtered_data, selection)
+            # Generate and display graph with exchange rates and base currency
+            fig = create_visualization_figure(
+                filtered_data, 
+                selection, 
+                self.get_exchange_rates(), 
+                self.get_base_currency()
+            )
             temp_path = os.path.join(temp_dir, 'graph.html')
             fig.write_html(temp_path, include_plotlyjs=True, full_html=True)
             self.webview.load(QUrl.fromLocalFile(temp_path))

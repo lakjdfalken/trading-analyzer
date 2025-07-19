@@ -19,7 +19,9 @@ from chart_types import (
 from settings import (
     FIGURE_SIZES,
     CURRENCY_SYMBOLS,
-    VALID_GRAPH_TYPES
+    VALID_GRAPH_TYPES,
+    DEFAULT_EXCHANGE_RATES,
+    DEFAULT_BASE_CURRENCY
 )
 
 # Configure logging
@@ -51,7 +53,16 @@ def apply_common_styling(ax, title, xlabel=None, ylabel=None):
     ax.grid(True, alpha=0.3)
 
 # Main visualization function
-def create_visualization_figure(df, graph_type):
+def create_visualization_figure(df, graph_type, exchange_rates=None, base_currency=None):
+    """
+    Create visualization figure based on graph type
+    """
+    if exchange_rates is None:
+        exchange_rates = DEFAULT_EXCHANGE_RATES
+    
+    if base_currency is None:
+        base_currency = DEFAULT_BASE_CURRENCY
+    
     try:
         if df.empty:
             logger.error("Attempted to create visualization with empty DataFrame")
@@ -61,42 +72,64 @@ def create_visualization_figure(df, graph_type):
             logger.error(f"Invalid graph type requested: {graph_type}")
             raise ValueError(f"Unsupported graph type: {graph_type}")
         
-        # Map each graph type to its implementation
-        GRAPH_IMPLEMENTATIONS = {
-            # Balance charts
-            'Balance History': balance.create_balance_history,
-            'P/L History': pl_relative.create_relative_balance_history,
+        # Handle Balance History separately since it needs exchange rates and base currency
+        if graph_type == 'Balance History':
+            from chart_types.balance import create_balance_history
+            return create_balance_history(df, exchange_rates, base_currency)
         
-            # Trade analysis charts
-            'Win Rate': winrate.create_distribution_days,
-            'Daily Trades': trades.create_daily_trade_count,
-        
-            # Position analysis
-            'Long vs Short Positions': positions.create_position_distribution,
-        
-            # Market analysis
-            'Market Actions': pl_market.create_market_actions,
-            'Market P/L': pl_market.create_market_pl,
-        
-            # Funding analysis
-            'Funding': funding.create_funding_distribution,
-            'Funding Charges': funding.create_funding_charges,
-        
-            # Performance analysis
-            'Daily P/L': pl_daily_vs_trades.create_daily_pl,
-            'Daily P/L vs Trades': pl_daily_vs_trades.create_daily_pl_vs_trades,
-
-            'Monthly P/L': monthly.create_monthly_distribution,
-            'Points Daily': points_daily.create_points_daily,
-            'Points Monthly': points_monthly.create_points_monthly,
-            'Points per Market': points_per_market.create_points_per_market,
-        }
-        return GRAPH_IMPLEMENTATIONS[graph_type](df)
+        # For all other chart types, use the correct function names from the grep output
+        elif graph_type == 'P/L History':
+            from chart_types.pl_relative import create_relative_balance_history
+            return create_relative_balance_history(df)
             
+        elif graph_type == 'Daily P/L':
+            from chart_types.pl_daily_vs_trades import create_daily_pl
+            return create_daily_pl(df)
+            
+        elif graph_type == 'Monthly P/L':
+            from chart_types.monthly import create_monthly_distribution
+            return create_monthly_distribution(df)
+            
+        elif graph_type == 'Market P/L':
+            from chart_types.pl_market import create_market_pl
+            return create_market_pl(df)
+            
+        elif graph_type == 'Daily Trades':
+            from chart_types.trades import create_daily_trade_count
+            return create_daily_trade_count(df)
+            
+        elif graph_type == 'Daily P/L vs Trades':
+            from chart_types.pl_daily_vs_trades import create_daily_pl_vs_trades
+            return create_daily_pl_vs_trades(df)
+            
+        elif graph_type == 'Points Daily':
+            from chart_types.points_daily import create_points_daily
+            return create_points_daily(df)
+            
+        elif graph_type == 'Points Monthly':
+            from chart_types.points_monthly import create_points_monthly
+            return create_points_monthly(df)
+            
+        elif graph_type == 'Points per Market':
+            from chart_types.points_per_market import create_points_per_market
+            return create_points_per_market(df)
+            
+        elif graph_type == 'Win Rate':
+            from chart_types.winrate import create_distribution_days
+            return create_distribution_days(df)
+            
+        elif graph_type == 'Funding':
+            from chart_types.funding import create_funding_distribution
+            return create_funding_distribution(df)
+            
+        elif graph_type == 'Long vs Short Positions':
+            from chart_types.positions import create_position_distribution
+            return create_position_distribution(df)
+            
+        else:
+            logger.error(f"Unknown graph type: {graph_type}")
+            raise ValueError(f"Unknown graph type: {graph_type}")
+                
     except Exception as e:
         logger.error(f"Error creating {graph_type} visualization: {str(e)}")
         raise
-
-
-
-
