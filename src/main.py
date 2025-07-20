@@ -1,6 +1,6 @@
 import sys
 from PyQt6.QtWidgets import QApplication
-from trade_gui import TradingAnalyzerGUI
+from gui.main_window import TradingAnalyzerGUI
 
 import logging
 
@@ -18,7 +18,6 @@ root_logger.addHandler(console_handler)
 root_logger.setLevel(logging.INFO)  # Default level
 
 def main():
-#    logging.getLogger().handlers.clear()
     root_logger.info("Starting Trading Analyzer application")
     
     # Create Qt application
