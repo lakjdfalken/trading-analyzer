@@ -83,8 +83,8 @@ def create_visualization_figure(df, graph_type, exchange_rates=None, base_curren
             return create_relative_balance_history(df)
             
         elif graph_type == 'Daily P/L':
-            from chart_types.pl_daily_vs_trades import create_daily_pl
-            return create_daily_pl(df)
+            from chart_types.daily_pl import create_daily_pl
+            return create_daily_pl(df, exchange_rates, base_currency)
             
         elif graph_type == 'Monthly P/L':
             from chart_types.monthly import create_monthly_distribution

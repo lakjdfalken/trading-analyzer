@@ -153,7 +153,12 @@ def create_funding_distribution(df):
     return fig 
 
 
-def create_funding_charges(df):
+def create_funding_charges(df, account_id=None):
+    """Create funding charges chart with account filtering"""
+    # Filter by account if specified
+    if account_id and account_id != "all":
+        df = df[df['account_id'] == account_id]
+
     logger.debug("Starting funding charges analysis")
     
     df_copy = prepare_dataframe(df).copy()

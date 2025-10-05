@@ -5,6 +5,7 @@ import logging
 from settings import BROKERS, UI_SETTINGS
 from chart_types.tax_overview import (create_tax_overview_table, create_yearly_summary_chart, 
                                     get_available_years, get_tax_overview_data)
+from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,16 @@ class OverviewTab(QWidget):
         # Broker filter
         selection_layout.addWidget(QLabel("Filter by Broker:"))
         self.broker_combo = QComboBox()
-        self.broker_combo.addItems(['All'] + list(BROKERS.values()))
+        self.broker_combo.clear()  # Ensure it's empty before adding items
+        # Deduplicate broker display names (case-insensitive, strip whitespace)
+        seen = set()
+        unique_brokers = []
+        for name in BROKERS.values():
+            normalized = name.strip().lower()
+            if normalized not in seen:
+                seen.add(normalized)
+                unique_brokers.append(name.strip())
+        self.broker_combo.addItems(['All'] + unique_brokers)
         selection_layout.addWidget(self.broker_combo)
 
         # View type selection
@@ -190,3 +200,4 @@ class OverviewTab(QWidget):
         export_data = export_data.rename(columns=existing_renames)
         
         return export_data
+

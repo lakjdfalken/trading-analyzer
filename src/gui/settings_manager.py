@@ -1,18 +1,33 @@
 import logging
+from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QMessageBox
 from settings import (DEFAULT_EXCHANGE_RATES, AVAILABLE_CURRENCIES, 
                      DEFAULT_BASE_CURRENCY)
 
 logger = logging.getLogger(__name__)
 
+class SettingsManager(QObject):
+    accounts_updated = pyqtSignal()
 
-class SettingsManager:
     def __init__(self):
+        super().__init__()
         self.exchange_rates = DEFAULT_EXCHANGE_RATES.copy()
         self.base_currency = DEFAULT_BASE_CURRENCY
         self.debug_mode = False
         self.theme = 'Light'
         self.transparency = 100
+
+    def add_account(self, account_data):
+        # ... existing code ...
+        self.accounts_updated.emit()  # Emit signal after adding an account
+
+    def update_account(self, account_id, account_data):
+        # ... existing code ...
+        self.accounts_updated.emit()  # Emit signal after updating an account
+
+    def delete_account(self, account_id):
+        # ... existing code ...
+        self.accounts_updated.emit()  # Emit signal after deleting an account
 
     def get_exchange_rates(self):
         """Return current exchange rates"""
@@ -113,12 +128,15 @@ class SettingsManager:
 
     def get_theme_stylesheet(self):
         """Get stylesheet for current theme"""
-        if self.theme == 'Dark':
+        if self.theme == "Dark":
             return """
-                QMainWindow, QWidget { background-color: #2b2b2b; color: #ffffff; }
-                QTreeWidget { background-color: #363636; color: #ffffff; }
-                QHeaderView::section { background-color: #404040; color: #ffffff; }
-                QComboBox, QPushButton { background-color: #404040; color: #ffffff; }
+                QWidget { background-color: #232629; color: #f0f0f0; }
+                QLabel, QLineEdit, QComboBox, QCheckBox, QPushButton, QTextEdit {
+                    color: #f0f0f0;
+                    background-color: #232629;
+                }
+                QFrame { background-color: #232629; }
+                QScrollArea { background-color: #232629; }
             """
         else:
             return ""

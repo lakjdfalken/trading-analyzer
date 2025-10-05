@@ -23,7 +23,11 @@ def get_market_data(df):
     
     return market_df
 
-def create_market_actions(df):
+def create_market_actions(df, account_id=None):
+    """Create market actions chart with account filtering"""
+    # Filter by account if specified
+    if account_id and account_id != "all":
+        df = df[df['account_id'] == account_id]
     # Use get_trading_pl_without_funding for consistent data handling
     trading_df = get_trading_pl_without_funding(df)
     

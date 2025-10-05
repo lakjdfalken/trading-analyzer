@@ -96,26 +96,38 @@ class TradingAnalyzerGUI(QMainWindow):
 
     def import_csv(self):
         """Handle CSV import"""
-        if self.broker_combo.currentText() == 'Select Broker':
-            QMessageBox.warning(self, "Broker Selection", 
-                              "Please select a broker before importing")
+        # Get selected account from settings tab
+        selected_account_id = None
+        if hasattr(self.settings_tab, "account_combo"):
+            selected_account_id = self.settings_tab.account_combo.currentData()
+        if not selected_account_id or selected_account_id == "all":
+            QMessageBox.warning(self, "Account Selection",
+                          "Please select an account in the Settings tab before importing data")
             return
-            
+
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Select CSV File", "", "CSV Files (*.csv)")
-        
+
         if file_path:
-            broker_key = [k for k, v in BROKERS.items() 
-                         if v == self.broker_combo.currentText()][0]
-            
-            try:
-                success = self.data_manager.import_data(file_path, broker_key)
-                if success:
-                    self.data_tab.update_display(self.data_manager.get_data())
-                    self.overview_tab.update_year_combo(self.data_manager.get_data())
-            except Exception as e:
-                logger.error(f"Import failed: {e}")
-                QMessageBox.critical(self, "Error", f"Failed to import data: {str(e)}")
+            selected_broker = self.broker_combo.currentText()
+            if selected_broker == 'Select Broker':
+                QMessageBox.warning(self, "Broker Selection", "Please select a broker before importing")
+                return
+
+            # Find the correct broker key
+            broker_key = None
+            for k, v in BROKERS.items():
+                if v == selected_broker:
+                    broker_key = k
+                    break
+
+            if not broker_key or broker_key == "none":
+                QMessageBox.warning(self, "Broker Selection", "Please select a valid broker before importing")
+                return
+
+            self.data_manager.import_data(file_path, broker_key, selected_account_id)
+            self.data_tab.update_display(self.data_manager.get_data())
+            self.overview_tab.update_year_combo(self.data_manager.get_data())
 
     def cleanup_temp_graphs(self):
         """Clean up graph files older than 24 hours"""

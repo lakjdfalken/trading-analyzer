@@ -3,13 +3,17 @@ import pandas as pd
 import plotly.graph_objects as go
 from .base import (prepare_dataframe, setup_base_figure, apply_standard_layout, 
                    get_trading_pl_without_funding, get_unified_currency_data)
-from settings import CURRENCY_SYMBOLS, DEFAULT_BASE_CURRENCY
+from settings import CURRENCY_SYMBOLS, DEFAULT_BASE_CURRENCY, DEFAULT_EXCHANGE_RATES
 import logging
 
 logger = logging.getLogger(__name__)
 
-def create_balance_history(df, exchange_rates=None, base_currency=None):
-    from settings import DEFAULT_EXCHANGE_RATES, DEFAULT_BASE_CURRENCY
+def create_balance_history(df, exchange_rates=None, base_currency=None, account_id=None):
+    """Create balance history chart with account filtering"""
+    # Filter by account if specified
+    if account_id and account_id != "all":
+        df = df[df['account_id'] == account_id]
+
     
     if exchange_rates is None:
         exchange_rates = DEFAULT_EXCHANGE_RATES

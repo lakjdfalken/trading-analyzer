@@ -6,7 +6,6 @@ from settings import DATA_COLUMNS
 
 logger = logging.getLogger(__name__)
 
-
 class DataTab(QWidget):
     def __init__(self):
         super().__init__()
@@ -21,7 +20,7 @@ class DataTab(QWidget):
         self.tree = QTreeWidget()
         columns = ["broker_name", "Transaction Date", "Ref. No.", "Action", "Description", 
                   "Amount", "Open Period", "Opening", "Closing", "P/L", 
-                  "Status", "Balance", "Currency", "Fund_Balance", "sl", "tp"]
+                  "Status", "Balance", "Currency", "Fund_Balance", "sl", "tp", "account_name", "account_broker"]
         self.tree.setHeaderLabels(columns)
         
         # Enable sorting and visual indicators
@@ -33,14 +32,13 @@ class DataTab(QWidget):
         layout.addWidget(self.tree)
 
     def update_display(self, df):
-        """Update the tree display with new data"""
+        """Update the tree display with new data including account information"""
         if df is None or df.empty:
             self.tree.clear()
             return
             
         self.tree.clear()
-        treeview_columns = DATA_COLUMNS
-        
+        treeview_columns = DATA_COLUMNS + ['account_name', 'account_broker']
         for idx, row in df.iterrows():
             item = QTreeWidgetItem()
             for col, column_name in enumerate(treeview_columns):
