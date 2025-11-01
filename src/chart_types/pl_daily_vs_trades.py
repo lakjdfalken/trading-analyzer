@@ -1,12 +1,21 @@
-from .base import get_trading_data, apply_standard_layout, setup_base_figure, format_currency, get_unified_currency_data
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from settings import (COLORS, DEFAULT_BASE_CURRENCY, DEFAULT_EXCHANGE_RATES, 
-                     AVAILABLE_CURRENCIES, CURRENCY_SYMBOLS)
+from .base import (
+    get_trading_data,
+    apply_standard_layout,
+    setup_base_figure,
+    format_currency,
+    get_unified_currency_data,
+    find_date_col,
+    find_pl_col,
+    coerce_date,
+    coerce_pl_numeric,
+    ensure_market_column,
+    aggregate_pl_by_period,
+    top_markets_by_pl,
+)
 import logging
 import pandas as pd
-from logger import setup_logger
-
+import plotly.graph_objects as go
+import chart_types.base as base
 logger = logging.getLogger(__name__)
 
 def create_daily_pl_vs_trades(df, exchange_rates=None, base_currency=None, account_id=None):
@@ -21,10 +30,10 @@ def create_daily_pl_vs_trades(df, exchange_rates=None, base_currency=None, accou
     if base_currency is None:
         base_currency = DEFAULT_BASE_CURRENCY
 
-    trading_df = get_trading_data(df)
-    
+    trading_df = base.get_filtered_trading_df(df, account_id=account_id, start_date=None, end_date=None)
+    if trading_df is None:
+        trading_df = pd.DataFrame()
     if trading_df.empty:
-        logger.warning("No trading data available")
         return setup_base_figure()
 
     # Convert all data to base currency
@@ -283,9 +292,6 @@ def create_daily_pl(df):
         # Use the most common currency in the dataframe
         currency = trading_df['Currency'].value_counts().index[0]
     elif 'Description' in trading_df.columns and not trading_df['Description'].empty:
-        # Try to extract from description strings (common pattern in trading data)
-        # This looks for currency symbols like $, €, £ etc. in the first description
-        import re
         first_desc = trading_df['Description'].iloc[0]
         currency_match = re.search(r'[$€£¥]', first_desc)
         if currency_match:

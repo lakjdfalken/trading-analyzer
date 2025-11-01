@@ -1,6 +1,21 @@
 from .base import get_trading_data, setup_base_figure, apply_standard_layout
 import plotly.graph_objects as go
 from settings import COLORS
+import re
+import pandas as pd
+import logging
+from .base import (
+    find_date_col,
+    find_pl_col,
+    coerce_date,
+    coerce_pl_numeric,
+    ensure_market_column,
+    aggregate_pl_by_period,
+    top_markets_by_pl,
+)
+import chart_types.base as base
+
+logger = logging.getLogger(__name__)
 
 def create_monthly_distribution(df):
     trading_data = get_trading_data(df)
@@ -67,4 +82,75 @@ def create_monthly_distribution(df):
     fig.update_layout(barmode='group')
     fig = apply_standard_layout(fig, "Monthly Win/Loss trades")
     
+    return fig
+
+def create_monthly_summary(df, start_date=None, end_date=None):
+    dfc = base.get_filtered_trading_df(df, start_date=start_date, end_date=end_date)
+    if dfc is None:
+        dfc = pd.DataFrame()
+    if dfc.empty:
+        return setup_base_figure()
+
+    dfc['Month'] = dfc['Transaction Date'].dt.to_period('M').dt.to_timestamp()
+
+    monthly_summary = dfc.groupby('Month').agg(
+        total_trades=('P/L', 'size'),
+        winning_trades=('P/L', lambda x: (x > 0).sum()),
+        losing_trades=('P/L', lambda x: (x < 0).sum()),
+        total_pl=('P/L', 'sum'),
+        average_pl=('P/L', 'mean'),
+        max_win=('P/L', lambda x: x[x > 0].max()),
+        max_loss=('P/L', lambda x: x[x < 0].min()),
+    ).reset_index()
+
+    fig = setup_base_figure()
+
+    fig.add_trace(go.Scatter(
+        x=monthly_summary['Month'],
+        y=monthly_summary['total_trades'],
+        mode='lines+markers',
+        name='Total Trades',
+        line=dict(color=COLORS['default'], width=2),
+        marker=dict(size=8)
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=monthly_summary['Month'],
+        y=monthly_summary['winning_trades'],
+        mode='lines+markers',
+        name='Winning Trades',
+        line=dict(color=COLORS['profit'], width=2),
+        marker=dict(size=8)
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=monthly_summary['Month'],
+        y=monthly_summary['losing_trades'],
+        mode='lines+markers',
+        name='Losing Trades',
+        line=dict(color=COLORS['loss'], width=2),
+        marker=dict(size=8)
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=monthly_summary['Month'],
+        y=monthly_summary['total_pl'],
+        mode='lines+markers',
+        name='Total P/L',
+        line=dict(color=COLORS['highlight'], width=2, dash='dash'),
+        marker=dict(size=8)
+    ))
+
+    fig.update_layout(
+        title='Monthly Trading Summary',
+        xaxis_title='Month',
+        yaxis_title='Count / P/L',
+        legend_title='Metrics',
+        xaxis=dict(tickformat='%Y-%m'),
+        yaxis_tickprefix='',
+        yaxis_ticksuffix='',
+    )
+
+    fig = apply_standard_layout(fig, "Monthly Trading Summary")
+
     return fig

@@ -1,14 +1,28 @@
-from .base import get_trading_data, setup_base_figure, apply_standard_layout
+from .base import normalize_trading_df, setup_base_figure, apply_standard_layout
 import plotly.graph_objects as go
 from settings import COLORS
 import logging
+import re
 import pandas as pd
-
+from .base import (
+    find_date_col,
+    find_pl_col,
+    coerce_date,
+    coerce_pl_numeric,
+    ensure_market_column,
+    aggregate_pl_by_period,
+    top_markets_by_pl,
+)
 logger = logging.getLogger(__name__)
 
 def create_points_monthly(df):
+    trading_data = normalize_trading_df(df)
+    if trading_data is None or trading_data.empty:
+        fig = setup_base_figure()
+        fig = apply_standard_layout(fig, "Monthly Points Won/Lost Analysis")
+        return fig
+    
     logger.debug("Starting monthly points analysis")
-    trading_data = get_trading_data(df)
     
     # Calculate points for each trade
     trading_data['Points'] = trading_data.apply(lambda row: 

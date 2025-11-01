@@ -1,55 +1,122 @@
+import re
+import logging
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from .base import get_trading_pl_without_funding, format_currency
-from settings import COLORS, BROKERS
-import logging
+from .base import (
+    create_market_pl_chart,
+    format_currency,
+    find_date_col,
+    find_pl_col,
+    coerce_date,
+    coerce_pl_numeric,
+    ensure_market_column,
+    aggregate_pl_by_period,
+    top_markets_by_pl,
+)
+import chart_types.base as base
+from .base import normalize_trading_df
+from settings import COLORS, BROKERS, OVERVIEW_SETTINGS
 
 logger = logging.getLogger(__name__)
 
-def get_tax_overview_data(df, selected_year=None, selected_broker=None):
-    """
-    Get trading data organized for tax declaration purposes
-    Returns data grouped by broker, market, and year with P/L summaries
-    """
-    # Get clean trading data without funding
-    trading_df = get_trading_pl_without_funding(df)
-    
-    # Convert to datetime if needed
-    if not pd.api.types.is_datetime64_any_dtype(trading_df['Transaction Date']):
-        trading_df['Transaction Date'] = pd.to_datetime(trading_df['Transaction Date'])
-    
-    # Add year column
-    trading_df['Year'] = trading_df['Transaction Date'].dt.year
-    
-    # Filter by selected year if provided
-    if selected_year:
-        trading_df = trading_df[trading_df['Year'] == selected_year]
-    
-    # Filter by selected broker if provided
-    if selected_broker and selected_broker != 'All':
-        trading_df = trading_df[trading_df['broker_name'] == selected_broker]
-    
-    # Group by broker, market, currency, and year
-    tax_summary = trading_df.groupby([
-        'broker_name', 'Description', 'Currency', 'Year'
-    ]).agg({
-        'P/L': ['sum', 'count'],
-        'Transaction Date': ['min', 'max']
-    }).round(2)
-    
-    # Flatten column names
-    tax_summary.columns = ['Total_PL', 'Trade_Count', 'First_Trade', 'Last_Trade']
-    tax_summary = tax_summary.reset_index()
-    
-    # Separate wins and losses
-    tax_summary['Wins'] = tax_summary['Total_PL'].apply(lambda x: x if x > 0 else 0)
-    tax_summary['Losses'] = tax_summary['Total_PL'].apply(lambda x: abs(x) if x < 0 else 0)
-    
-    # Add broker display name
-    tax_summary['Broker_Display'] = tax_summary['broker_name'].map(BROKERS)
-    
-    return tax_summary
+def get_tax_overview_data(df, year=None, broker=None):
+    # Normalize and coerce columns first
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    df = df.copy()
+
+    # detect and coerce date / pl columns
+    date_col = find_date_col(df) or 'Transaction Date'
+    pl_col = find_pl_col(df) or 'P/L'
+    coerce_date(df, date_col)
+    pl_alias = coerce_pl_numeric(df, pl_col)
+
+    trading_df = normalize_trading_df(df)
+    if trading_df is None or trading_df.empty:
+        return pd.DataFrame()
+    # ensure Description exists
+    if 'Description' not in trading_df.columns:
+        trading_df['Description'] = trading_df.get('Market', '').astype(str)
+    df = trading_df
+
+    # ensure Currency exist (fallbacks)
+    if 'Currency' not in df.columns:
+        df['Currency'] = df.get('currency', 'UNKNOWN')
+
+    # Normalize broker display column
+    if 'broker_name' in df.columns:
+        df['Broker_Key'] = df['broker_name'].astype(str)
+        df['Broker_Display'] = df['Broker_Key'].apply(lambda k: BROKERS.get(k, k))
+    else:
+        # fall back to provided broker filter or unknown
+        df['Broker_Display'] = BROKERS.get(broker, broker) if broker else 'Unknown'
+        df['Broker_Key'] = None
+
+    # Filter by year if provided (handle strings like 'All Years' or empty)
+    if year and str(year).strip() and str(year) != OVERVIEW_SETTINGS.get('year_all_label', 'All Years'):
+        try:
+            year_int = int(year)
+            df = df[df[date_col].dt.year == year_int]
+        except Exception:
+            return pd.DataFrame()
+
+    # Filter by broker if provided and not "All"
+    if broker and broker != OVERVIEW_SETTINGS.get('all_brokers_label', 'All'):
+        # broker may be a key or a display name
+        # accept either: if matches a display name, map back to keys
+        broker_keys = [k for k, v in BROKERS.items() if v == broker]
+        if broker_keys:
+            df = df[df.get('broker_name', df.get('Broker_Key')) == broker_keys[0]]
+        else:
+            # if broker looks like a key
+            df = df[df.get('broker_name', df.get('Broker_Key')) == broker]
+
+    if df.empty:
+        return pd.DataFrame()
+
+    # Add Year column for grouping
+    df['Year'] = df[date_col].dt.year
+
+    group_cols = ['Broker_Display', 'Description', 'Currency', 'Year']
+
+    # Base aggregation
+    grouped = df.groupby(group_cols).agg(
+        Total_PL=(pl_alias, 'sum'),
+        Trade_Count=(pl_alias, 'count'),
+        First_Trade=(date_col, 'min'),
+        Last_Trade=(date_col, 'max')
+    ).reset_index()
+
+    # Wins (positive PL) and Losses (absolute negative PL)
+    wins = df[df[pl_alias] > 0].groupby(group_cols)[pl_alias].sum().rename('Wins').reset_index()
+    losses = df[df[pl_alias] < 0].groupby(group_cols)[pl_alias].sum().abs().rename('Losses').reset_index()
+
+    # Merge wins/losses into grouped
+    overview = grouped.merge(wins, on=group_cols, how='left').merge(losses, on=group_cols, how='left')
+    overview['Wins'] = overview['Wins'].fillna(0.0)
+    overview['Losses'] = overview['Losses'].fillna(0.0)
+
+    # Ensure columns expected by the UI
+    # Rename Total_PL to Total_PL (already set), ensure types
+    overview['Year'] = overview['Year'].astype(int)
+    overview['Trade_Count'] = overview['Trade_Count'].astype(int)
+
+    # Provide display-friendly Broker_Display values (already set)
+    # Provide Description fallback if any missing
+    overview['Description'] = overview['Description'].fillna('Unknown')
+
+    # Order columns as expected by create_tax_overview_table
+    expected_cols = ['Broker_Display', 'Description', 'Currency', 'Year',
+                     'Total_PL', 'Wins', 'Losses', 'Trade_Count', 'First_Trade', 'Last_Trade']
+    for c in expected_cols:
+        if c not in overview.columns:
+            overview[c] = None
+
+    overview = overview[expected_cols]
+
+    return overview
 
 def create_tax_overview_table(df, selected_year=None, selected_broker=None):
     """
@@ -207,7 +274,7 @@ def get_available_years(df):
     Get list of available years from the trading data
     """
     try:
-        trading_df = get_trading_pl_without_funding(df)
+        trading_df = create_market_pl_chart(df)
         if trading_df.empty:
             return []
         
@@ -219,3 +286,17 @@ def get_available_years(df):
     except Exception as e:
         logger.error(f"Error getting available years: {e}")
         return []
+
+def some_entry(df, *args, **kwargs):
+    """
+    Safe placeholder to avoid import-time syntax errors.
+    Replace with real implementation as needed.
+    """
+    try:
+        from .base import setup_base_figure
+        return setup_base_figure()
+    except Exception:
+        import plotly.graph_objects as go
+        fig = go.Figure()
+        fig.update_layout(title="Not implemented")
+        return fig

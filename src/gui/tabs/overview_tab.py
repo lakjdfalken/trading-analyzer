@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QFrame, QLabel,
                            QComboBox, QPushButton, QSizePolicy, QMessageBox,
                            QFileDialog)
 import logging
-from settings import BROKERS, UI_SETTINGS
+from settings import BROKERS, UI_SETTINGS, OVERVIEW_SETTINGS
 from chart_types.tax_overview import (create_tax_overview_table, create_yearly_summary_chart, 
                                     get_available_years, get_tax_overview_data)
 from collections import OrderedDict
@@ -41,7 +41,7 @@ class OverviewTab(QWidget):
         # Year selection
         selection_layout.addWidget(QLabel("Select Year:"))
         self.year_combo = QComboBox()
-        self.year_combo.addItem("All Years")
+        self.year_combo.addItem(OVERVIEW_SETTINGS['year_all_label'])
         selection_layout.addWidget(self.year_combo)
 
         # Broker filter
@@ -56,13 +56,13 @@ class OverviewTab(QWidget):
             if normalized not in seen:
                 seen.add(normalized)
                 unique_brokers.append(name.strip())
-        self.broker_combo.addItems(['All'] + unique_brokers)
+        self.broker_combo.addItems([OVERVIEW_SETTINGS['all_brokers_label']] + unique_brokers)
         selection_layout.addWidget(self.broker_combo)
 
         # View type selection
         selection_layout.addWidget(QLabel("View Type:"))
         self.view_type_combo = QComboBox()
-        self.view_type_combo.addItems(['Tax Overview Table', 'Yearly Summary Chart'])
+        self.view_type_combo.addItems(OVERVIEW_SETTINGS['view_types'])
         selection_layout.addWidget(self.view_type_combo)
 
         # Generate button
@@ -85,7 +85,7 @@ class OverviewTab(QWidget):
         if df is not None and not df.empty:
             years = get_available_years(df)
             self.year_combo.clear()
-            self.year_combo.addItem("All Years")
+            self.year_combo.addItem(OVERVIEW_SETTINGS['year_all_label'])
             for year in years:
                 self.year_combo.addItem(str(year))
 
@@ -98,7 +98,7 @@ class OverviewTab(QWidget):
 
             # Get selected parameters
             selected_year_text = self.year_combo.currentText()
-            selected_year = None if selected_year_text == "All Years" else int(selected_year_text)
+            selected_year = None if selected_year_text == OVERVIEW_SETTINGS['year_all_label'] else int(selected_year_text)
 
             selected_broker_text = self.broker_combo.currentText()
             selected_broker = self.get_broker_key(selected_broker_text)
@@ -132,7 +132,7 @@ class OverviewTab(QWidget):
 
             # Get selected parameters
             selected_year_text = self.year_combo.currentText()
-            selected_year = None if selected_year_text == "All Years" else int(selected_year_text)
+            selected_year = None if selected_year_text == OVERVIEW_SETTINGS['year_all_label'] else int(selected_year_text)
 
             selected_broker_text = self.broker_combo.currentText()
             selected_broker = self.get_broker_key(selected_broker_text)
@@ -146,14 +146,17 @@ class OverviewTab(QWidget):
                 return
 
             # Get file path for export
-            broker_suffix = f"_{selected_broker_text}" if selected_broker_text != 'All' else ""
-            default_filename = f"tax_overview_{selected_year if selected_year else 'all_years'}{broker_suffix}.csv"
+            broker_suffix = f"_{selected_broker_text}" if selected_broker_text != OVERVIEW_SETTINGS['all_brokers_label'] else ""
+            default_filename = OVERVIEW_SETTINGS['export']['filename_template'].format(
+                year=selected_year if selected_year else 'all_years',
+                broker_suffix=broker_suffix
+            )
             
             file_path, _ = QFileDialog.getSaveFileName(
                 self,
                 "Export Tax Overview",
                 default_filename,
-                "CSV Files (*.csv)"
+                OVERVIEW_SETTINGS['export']['csv_filter']
             )
         
             if file_path:
@@ -170,9 +173,9 @@ class OverviewTab(QWidget):
 
     def get_broker_key(self, broker_display_name):
         """Convert broker display name to broker key"""
-        if broker_display_name == 'All':
+        if broker_display_name == OVERVIEW_SETTINGS['all_brokers_label']:
             return None
-        
+
         # Find the broker key from the display name
         broker_keys = [k for k, v in BROKERS.items() if v == broker_display_name]
         return broker_keys[0] if broker_keys else None
@@ -182,19 +185,12 @@ class OverviewTab(QWidget):
         export_data = tax_data.copy()
         
         # Remove internal broker name column if it exists
-        if 'broker_name' in export_data.columns:
-            export_data = export_data.drop(['broker_name'], axis=1)
+        internal_col = OVERVIEW_SETTINGS['export']['internal_broker_col']
+        if internal_col in export_data.columns:
+            export_data = export_data.drop([internal_col], axis=1)
         
         # Rename columns for better readability
-        column_renames = {
-            'Broker_Display': 'Broker',
-            'Description': 'Market',
-            'Total_PL': 'Total_P/L',
-            'Trade_Count': 'Number_of_Trades',
-            'First_Trade': 'First_Trade_Date',
-            'Last_Trade': 'Last_Trade_Date'
-        }
-        
+        column_renames = OVERVIEW_SETTINGS['export']['column_renames']
         # Only rename columns that exist
         existing_renames = {k: v for k, v in column_renames.items() if k in export_data.columns}
         export_data = export_data.rename(columns=existing_renames)

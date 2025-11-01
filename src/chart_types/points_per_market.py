@@ -1,21 +1,38 @@
-from .base import get_trading_data, setup_base_figure, apply_standard_layout
-import plotly.graph_objects as go
-from settings import COLORS, MARKET_ID_MAPPING, MARKET_MAPPINGS, MARKET_POINT_MULTIPLIERS, DEFAULT_POINT_MULTIPLIER
-import logging
-import pandas as pd
 import re
+import pandas as pd
+import logging
+import settings as _settings
+from .base import (
+    normalize_trading_df,
+    ensure_market_column,
+)
+import plotly.graph_objects as go
+
+# pull config from settings with safe fallbacks
+MARKET_POINT_MULTIPLIERS = getattr(_settings, 'MARKET_POINT_MULTIPLIERS', {})
+MARKET_MAPPINGS = getattr(_settings, 'MARKET_MAPPINGS', {})
+MARKET_ID_MAPPING = getattr(_settings, 'MARKET_ID_MAPPING', {})  # optional map id -> market name
+DEFAULT_POINT_MULTIPLIER = getattr(_settings, 'DEFAULT_POINT_MULTIPLIER', 1)
+COLORS = getattr(_settings, 'COLORS', {'profit': '#2ca02c', 'loss': '#d62728', 'trading': ['#1f77b4']})
 
 logger = logging.getLogger(__name__)
 
 def create_points_per_market(df):
     logger.debug("Starting monthly points per market analysis")
-    trading_data = get_trading_data(df)
+    trading_data = normalize_trading_df(df)
+    if trading_data is None or trading_data.empty:
+        return setup_base_figure()
     
     # Extract market information with broker context if available
     if 'broker_name' in trading_data.columns:
         trading_data['Market'] = trading_data.apply(
             lambda row: extract_market(row['Description'], row['broker_name']), axis=1)
     else:
+        # ensure Description exists
+        if 'Description' not in trading_data.columns:
+            trading_data = ensure_market_column(trading_data)
+            if 'Description' not in trading_data.columns:
+                trading_data['Description'] = trading_data.get('Market', '').astype(str)
         trading_data['Market'] = trading_data['Description'].apply(extract_market)
     
     # Calculate points with market context
@@ -223,3 +240,44 @@ def analyze_unmatched_markets(df):
             logger.info(f"  {count} trades: {desc}")
     
     return unmatched
+
+def calculate_points_per_market(df, market_point_multipliers=None):
+    """Return total points per market using multipliers; robust to column name variants."""
+    if df is None or df.empty:
+        return {}
+
+    df = df.copy()
+    date_col = find_date_col(df) or 'Transaction Date'
+    pl_col = find_pl_col(df) or 'P/L'
+    coerce_date(df, date_col)
+    pl_alias = coerce_pl_numeric(df, pl_col)
+
+    # Ensure Market exists; try to infer from Description if missing
+    if 'Market' not in df.columns and 'Description' in df.columns:
+        import re as _re
+        def _infer(desc):
+            if not isinstance(desc, str):
+                return 'Unknown'
+            for source_map in MARKET_MAPPINGS.values():
+                for market_name, pats in source_map.items():
+                    for pat in pats:
+                        try:
+                            if _re.search(pat, desc):
+                                return market_name
+                        except re.error:
+                            continue
+            return 'Unknown'
+        df['Market'] = df['Description'].apply(_infer)
+
+    if market_point_multipliers is None:
+        market_point_multipliers = MARKET_POINT_MULTIPLIERS
+
+    # Use absolute PL values grouped by Market and apply multipliers
+    df['_abs_pl'] = df[pl_alias].abs()
+    # correct implementation: apply multiplier per market name
+    market_points = {}
+    for m, group in df.groupby('Market'):
+        multiplier = market_point_multipliers.get(m, 1)
+        total = (group['_abs_pl'] * multiplier).sum()
+        market_points[m] = int(total)
+    return market_points

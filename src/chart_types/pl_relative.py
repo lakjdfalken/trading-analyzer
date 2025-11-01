@@ -1,10 +1,29 @@
 import plotly.graph_objects as go
-from .base import get_trading_data, setup_base_figure, apply_standard_layout
+import chart_types.base as base
+from .base import (
+    get_trading_data,
+    setup_base_figure,
+    apply_standard_layout,
+    find_date_col,
+    find_pl_col,
+    coerce_date,
+    coerce_pl_numeric,
+    ensure_market_column,
+    aggregate_pl_by_period,
+    top_markets_by_pl,
+)
 import logging
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-def create_relative_balance_history(df):
+def create_relative_pl(df):
+    dfc = base.get_filtered_trading_df(df)
+    if dfc is None:
+        dfc = pd.DataFrame()
+    if dfc.empty:
+        return setup_base_figure()
+
     info_text = (
         "Relative P/L Calculation:<br><br>"
         "Sum of profits/losses from all trades during the<br>"
@@ -15,7 +34,7 @@ def create_relative_balance_history(df):
     )
 
     fig = setup_base_figure()
-    trading_data = get_trading_data(df)
+    trading_data = get_trading_data(dfc)
     
     trading_data = trading_data.sort_values('Transaction Date')
     

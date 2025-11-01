@@ -522,15 +522,17 @@ class SettingsTab(QWidget):
             layout = QFormLayout(dialog)
 
             # Create input fields with existing data
-            account_id = QLineEdit(account_data[0])
+            # Convert each value to a string explicitly
+            account_id = QLineEdit(str(account_data[0]))  # Convert to string
             account_id.setReadOnly(True)  # Account ID should not be editable
-            account_name = QLineEdit(account_data[1])
-            broker_name = QLineEdit(account_data[2])
+            account_name = QLineEdit(str(account_data[1]) if account_data[1] is not None else "")
+            broker_name = QLineEdit(str(account_data[2]) if account_data[2] is not None else "")
             currency = QComboBox()
             currency.addItems(AVAILABLE_CURRENCIES)
-            currency.setCurrentText(account_data[3])
-            initial_balance = QLineEdit(str(account_data[4]))
-            notes = QTextEdit(account_data[5])
+            currency.setCurrentText(str(account_data[3]) if account_data[3] is not None else AVAILABLE_CURRENCIES[0])
+            initial_balance = QLineEdit(str(account_data[4]) if account_data[4] is not None else "0")
+            notes = QTextEdit()
+            notes.setText(str(account_data[5]) if account_data[5] is not None else "")
 
             layout.addRow("Account ID:", account_id)
             layout.addRow("Account Name:", account_name)

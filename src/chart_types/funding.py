@@ -1,46 +1,114 @@
-from .base import prepare_dataframe, get_trading_data, format_currency, setup_base_figure, apply_standard_layout
-import plotly.graph_objects as go
+import chart_types.base as base
+from .base import (
+    prepare_dataframe,
+    get_trading_data,
+    format_currency,
+    setup_base_figure,
+    apply_standard_layout,
+    find_date_col,
+    find_pl_col,
+    coerce_date,
+    coerce_pl_numeric,
+)
 from settings import COLORS
 import pandas as pd
+import re
 import logging
+import plotly.graph_objects as go
 
 logger = logging.getLogger(__name__)
 
+def _find_column(df, candidates):
+    if df is None:
+        return None
+    for c in df.columns:
+        key = re.sub(r'[\s\-_]', '', c.strip().lower())
+        if key in candidates:
+            return c
+    return None
+
 def get_funding_data(df):
     """Returns dataframe filtered for funding transactions"""
-    logger.debug("get_funding_data called")  # Add this debug line
-    df_copy = prepare_dataframe(df)
-    
-    # Try case-insensitive matching for funding transactions
-    funding_mask = df_copy['Action'].str.contains('fund', case=False, na=False)
-    funding_df = df_copy[funding_mask]
-    
-    logger.debug(f"Found {len(funding_df)} funding transactions")  # Add this debug line
-    
+    logger.debug("get_funding_data called")
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    df_copy = prepare_dataframe(df.copy())
+
+    # detect and coerce date / P/L columns and ensure numeric alias exists
+    date_col = find_date_col(df_copy) or 'Transaction Date'
+    pl_col = find_pl_col(df_copy) or 'P/L'
+    coerce_date(df_copy, date_col)
+    # ensure we always create the consistent alias used by the rest of the code
+    pl_alias = coerce_pl_numeric(df_copy, pl_col, alias='_pl_numeric')  # ensures df_copy['_pl_numeric'] exists
+
+    # Try case-insensitive matching for funding transactions (Action or action)
+    action_col = None
+    for c in df_copy.columns:
+        if re.sub(r'[\s\-_]', '', c.strip().lower()) == 'action':
+            action_col = c
+            break
+    if action_col is None:
+        # nothing to filter on
+        return pd.DataFrame()
+
+    funding_mask = df_copy[action_col].astype(str).str.contains('fund', case=False, na=False)
+    funding_df = df_copy[funding_mask].copy()
+    # Ensure numeric alias present on returned DF
+    if '_pl_numeric' not in funding_df.columns:
+        funding_df['_pl_numeric'] = pd.to_numeric(funding_df.get(pl_col, 0), errors='coerce').fillna(0.0)
+
     return funding_df
 
 def create_funding_distribution(df):
     logger.debug("create_funding_distribution called")  # Add this debug line
     funding_df = get_funding_data(df)
     
-    # Debug: Check what Action values we actually have
-    logger.debug(f"Unique Action values in funding data: {funding_df['Action'].unique()}")
-    
+    # If no funding rows, return empty figure
+    if funding_df is None or funding_df.empty:
+        return setup_base_figure()
+
+    # Debug: find which column holds the "action" and "date" fields (case/format variants)
+    action_col = None
+    for c in funding_df.columns:
+        if re.sub(r'[\s\-_]', '', c.strip().lower()) == 'action':
+            action_col = c
+            break
+    logger.debug(f"Unique Action values in funding data: {funding_df[action_col].unique() if action_col else 'N/A'}")
+
+    date_col = find_date_col(funding_df) or 'Transaction Date'
+    pl_col = find_pl_col(funding_df) or 'P/L'
+
     # Convert dates and sort all data at once
-    funding_df['Transaction Date'] = pd.to_datetime(funding_df['Transaction Date'])
-    funding_df = funding_df.sort_values('Transaction Date', ascending=True)
+    if date_col in funding_df.columns:
+        funding_df[date_col] = pd.to_datetime(funding_df[date_col], errors='coerce')
+
+    funding_df = funding_df.sort_values(date_col, ascending=True)
     
     # Calculate totals - check for different possible charge action names
-    total_deposits = funding_df[funding_df['Action'] == 'Fund receivable']['P/L'].sum()
-    total_withdrawals = funding_df[funding_df['Action'] == 'Fund payable']['P/L'].sum()
-    
+    # use action_col when available
+    if action_col:
+        total_deposits = funding_df[funding_df[action_col] == 'Fund receivable']['_pl_numeric'].sum()
+        total_withdrawals = funding_df[funding_df[action_col] == 'Fund payable']['_pl_numeric'].sum()
+    else:
+        total_deposits = funding_df[funding_df.get('Action', '') == 'Fund receivable']['_pl_numeric'].sum()
+        total_withdrawals = funding_df[funding_df.get('Action', '') == 'Fund payable']['_pl_numeric'].sum()
+     
     # Try different possible names for charges
-    charges_mask = (
-        (funding_df['Action'] == 'Funding Charges') |
-        (funding_df['Action'] == 'Funding charge') |
-        (funding_df['Action'].str.contains('Funding charge', case=False, na=False))
-    )
-    total_charges = funding_df[charges_mask]['P/L'].sum()
+    if action_col:
+        charges_mask = (
+            (funding_df[action_col] == 'Funding Charges') |
+            (funding_df[action_col] == 'Funding charge') |
+            (funding_df[action_col].str.contains('Funding charge', case=False, na=False))
+        )
+        total_charges = funding_df[charges_mask]['_pl_numeric'].sum()
+    else:
+        charges_mask = (
+            (funding_df.get('Action') == 'Funding Charges') |
+            (funding_df.get('Action') == 'Funding charge') |
+            (funding_df.get('Action', '').astype(str).str.contains('Funding charge', case=False, na=False))
+        )
+        total_charges = funding_df.loc[charges_mask, '_pl_numeric'].sum() if hasattr(charges_mask, '__iter__') else 0
     net_total = total_deposits + total_withdrawals + total_charges
 
     logger.debug(f"Calculated totals - Deposits: {total_deposits}, Withdrawals: {total_withdrawals}, Charges: {total_charges}")
@@ -68,14 +136,14 @@ def create_funding_distribution(df):
             action_data = currency_funding[currency_funding['Action'] == action]
             if not action_data.empty:
                 # Convert datetime to string format for Plotly
-                x_dates = action_data['Transaction Date'].dt.strftime('%Y-%m-%d')
+                x_dates = action_data[date_col].dt.strftime('%Y-%m-%d')
                 
                 fig.add_trace(go.Bar(
                     name=f"{props['name']} ({currency})",
                     x=x_dates,
-                    y=abs(action_data['P/L']),
+                    y=abs(action_data['_pl_numeric']),
                     marker_color=props['color'],
-                    text=[f"{val:.0f}" for val in action_data['P/L']],
+                    text=[f"{val:.0f}" for val in action_data['_pl_numeric']],
                     textposition='inside',
                     textfont=dict(
                         color='white',
@@ -87,14 +155,14 @@ def create_funding_distribution(df):
         
         # Process charges separately with blue color
         if not charges_data.empty:
-            x_dates = charges_data['Transaction Date'].dt.strftime('%Y-%m-%d')
+            x_dates = charges_data[date_col].dt.strftime('%Y-%m-%d')
             
             fig.add_trace(go.Bar(
                 name=f"Charges ({currency})",
                 x=x_dates,
-                y=abs(charges_data['P/L']),
+                y=abs(charges_data['_pl_numeric']),
                 marker_color='#0066CC',  # Blue color
-                text=[f"{val:.0f}" for val in charges_data['P/L']],
+                text=[f"{val:.0f}" for val in charges_data['_pl_numeric']],
                 textposition='inside',
                 textfont=dict(
                     color='white',
@@ -105,8 +173,8 @@ def create_funding_distribution(df):
             ))
     
     # Set explicit x-axis range
-    min_date = funding_df['Transaction Date'].min()
-    max_date = funding_df['Transaction Date'].max()
+    min_date = funding_df[date_col].min()
+    max_date = funding_df[date_col].max()
     
     fig.update_layout(
         title='Funding Transactions Over Time',

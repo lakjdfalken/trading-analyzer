@@ -158,11 +158,21 @@ DEFAULT_EXCHANGE_RATES = {
     'GBP': 13.20,  # 1 GBP = 13.20 SEK (example rate)
 }
 
-# Available currencies for the application
-AVAILABLE_CURRENCIES = ['SEK', 'DKK', 'EUR', 'USD', 'GBP']
-
 # Base currency for conversions
 DEFAULT_BASE_CURRENCY = 'SEK'
+
+# Explicit authoritative list of supported currencies (do not infer at runtime)
+SUPPORTED_CURRENCIES = ['SEK', 'DKK', 'EUR', 'USD', 'GBP']
+
+# Keep AVAILABLE_CURRENCIES for backward compatibility but make it authoritative from SUPPORTED_CURRENCIES
+AVAILABLE_CURRENCIES = SUPPORTED_CURRENCIES.copy()
+
+# Canonical exchange-rates format (per-base): mapping base_currency -> { currency: rate_relative_to_base }
+# This makes it explicit that DEFAULT_EXCHANGE_RATES maps each currency to its value in DEFAULT_BASE_CURRENCY.
+EXCHANGE_RATES_BASE = DEFAULT_BASE_CURRENCY
+DEFAULT_EXCHANGE_RATES_PER_BASE = {
+    EXCHANGE_RATES_BASE: DEFAULT_EXCHANGE_RATES.copy()
+}
 
 # Graph Types
 VALID_GRAPH_TYPES = [
@@ -277,3 +287,30 @@ MARKET_POINT_MULTIPLIERS = {
 
 # Default multiplier for markets not specifically listed
 DEFAULT_POINT_MULTIPLIER = 1
+
+# Overview tab specific settings
+OVERVIEW_SETTINGS = {
+    'year_all_label': 'All Years',
+    'all_brokers_label': 'All',
+    'view_types': ['Tax Overview Table', 'Yearly Summary Chart'],
+    'export': {
+        'filename_template': 'tax_overview_{year}{broker_suffix}.csv',
+        'csv_filter': 'CSV Files (*.csv)',
+        'internal_broker_col': 'broker_name',
+        'column_renames': {
+            'Broker_Display': 'Broker',
+            'Description': 'Market',
+            'Total_PL': 'Total_P/L',
+            'Trade_Count': 'Number_of_Trades',
+            'First_Trade': 'First_Trade_Date',
+            'Last_Trade': 'Last_Trade_Date'
+        }
+    }
+}
+
+TRANSACTION_TYPE_PATTERNS = {
+    'funding': [r'fund', r'deposit'],
+    'charge': [r'charge', r'fee'],
+    'withdrawal': [r'withdraw'],
+    'trading': [r'buy', r'sell', r'open', r'close', r'trade', r'executed'],
+}

@@ -1,35 +1,48 @@
-import numpy as np
+import logging
 import pandas as pd
-from .base import (prepare_dataframe, format_currency, setup_base_figure, 
-                   apply_standard_layout, get_trading_data, get_trading_pl_without_funding)
-from settings import COLORS
+import chart_types.base as base
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import settings as _settings
+COLORS = getattr(_settings, "COLORS", {"profit": "green", "loss": "red"})
+from .base import (
+    find_date_col,
+    find_pl_col,
+    coerce_date,
+    coerce_pl_numeric,
+    ensure_market_column,
+    aggregate_pl_by_period,
+    top_markets_by_pl,
+    setup_base_figure,
+    apply_standard_layout,
+)
+logger = logging.getLogger(__name__)
 
 def get_market_data(df):
-    """Returns dataframe filtered for market transactions with funding impacts removed"""
-    # Use get_trading_pl_without_funding which already removes funding impacts
-    trading_df = get_trading_pl_without_funding(df)
-    
-    # Further exclude any non-market transactions that might still be in the data
-    excluded_patterns = [
-        'Fee',
-        'Payable',
-        'Interest',
-        'Online Transfer'
-    ]
+    trading_df = base.get_filtered_trading_df(df)
+    if trading_df is None:
+        trading_df = pd.DataFrame()
+    if trading_df.empty:
+        return pd.DataFrame()
+    excluded_patterns = ['fee', 'payable', 'interest', 'online transfer', 'deposit', 'withdraw']
     pattern = '|'.join(excluded_patterns)
-    market_df = trading_df[~trading_df['Description'].str.contains(pattern, case=False, na=False)]
-    
-    return market_df
+    desc_series = trading_df.get('Description')
+    if desc_series is None:
+        for cand in ('Desc', 'Market', 'Instrument', 'Symbol'):
+            if cand in trading_df.columns:
+                desc_series = trading_df[cand].astype(str)
+                break
+    if desc_series is None:
+        desc_series = pd.Series([''] * len(trading_df), index=trading_df.index)
+    mask = ~desc_series.str.contains(pattern, case=False, na=False)
+    return trading_df[mask].copy()
 
 def create_market_actions(df, account_id=None):
     """Create market actions chart with account filtering"""
     # Filter by account if specified
     if account_id and account_id != "all":
         df = df[df['account_id'] == account_id]
-    # Use get_trading_pl_without_funding for consistent data handling
-    trading_df = get_trading_pl_without_funding(df)
+    # Use create_market_pl_chart for consistent data handling
+    trading_df = create_market_pl_chart(df)
     
     # Convert to datetime if needed
     if not pd.api.types.is_datetime64_any_dtype(trading_df['Transaction Date']):
@@ -57,8 +70,10 @@ def create_market_actions(df, account_id=None):
     return fig
 
 def create_market_pl(df):
-    # Use the improved get_market_data function which uses get_trading_pl_without_funding
     market_df = get_market_data(df)
+    if market_df is None or market_df.empty:
+        return setup_base_figure()
+    # unify / aggregate via base helpers if needed
     
     # Group by Description and Currency, maintaining sign for P/L values
     market_pl = market_df.groupby(['Description', 'Currency'])['P/L'].sum().reset_index()
@@ -72,7 +87,7 @@ def create_market_pl(df):
         go.Bar(
             x=market_pl['Description'],
             y=market_pl['P/L'],
-            text=[format_currency(v, c) for v, c in zip(market_pl['P/L'], market_pl['Currency'])],
+            text=[base.format_currency(v, c) for v, c in zip(market_pl['P/L'], market_pl['Currency'])],
             textposition='auto',
             marker_color=[COLORS['loss'] if x < 0 else COLORS['profit'] for x in market_pl['P/L']],
             hovertemplate='<b>%{x}</b><br>P/L: %{text}<extra></extra>'
@@ -94,7 +109,7 @@ def create_market_pl(df):
     )
     
     # Add total P/L annotation
-    totals_text = "<br>".join([f"{curr}: {format_currency(pl, curr)}" 
+    totals_text = "<br>".join([f"{curr}: {base.format_currency(pl, curr)}" 
                               for curr, pl in total_pl.items()])
     
     fig.add_annotation(
@@ -149,8 +164,8 @@ def calculate_win_loss_stats(market_df):
     losses_by_currency = losses.groupby('Currency')['P/L'].sum()
     
     # Format the wins and losses by currency
-    wins_text = ", ".join([f"{format_currency(v, c)}" for c, v in wins_by_currency.items()])
-    losses_text = ", ".join([f"{format_currency(abs(v), c)}" for c, v in losses_by_currency.items()])
+    wins_text = ", ".join([f"{base.format_currency(v, c)}" for c, v in wins_by_currency.items()])
+    losses_text = ", ".join([f"{base.format_currency(abs(v), c)}" for c, v in losses_by_currency.items()])
     
     stats["Total Wins"] = wins_text if not wins_by_currency.empty else "0"
     stats["Total Losses"] = losses_text if not losses_by_currency.empty else "0"
@@ -171,8 +186,8 @@ def calculate_win_loss_stats(market_df):
             avg_loss = currency_losses['P/L'].mean()
             avg_loss_by_currency[currency] = avg_loss
     
-    avg_win_text = ", ".join([f"{format_currency(v, c)}" for c, v in avg_win_by_currency.items()])
-    avg_loss_text = ", ".join([f"{format_currency(abs(v), c)}" for c, v in avg_loss_by_currency.items()])
+    avg_win_text = ", ".join([f"{base.format_currency(v, c)}" for c, v in avg_win_by_currency.items()])
+    avg_loss_text = ", ".join([f"{base.format_currency(abs(v), c)}" for c, v in avg_loss_by_currency.items()])
     
     stats["Avg Win"] = avg_win_text if avg_win_text else "N/A"
     stats["Avg Loss"] = avg_loss_text if avg_loss_text else "N/A"
@@ -295,4 +310,44 @@ def create_win_loss_analysis(df):
     fig.update_xaxes(title_text="Market", row=2, col=1)
     fig.update_yaxes(title_text="Win Rate (%)", row=2, col=1)
     
+    return fig
+
+def create_market_pl_chart(df, top_n=10):
+    if df is None or df.empty:
+        return go.Figure()
+
+    df = df.copy()
+    date_col = find_date_col(df) or 'Transaction Date'
+    pl_col = find_pl_col(df) or 'P/L'
+    coerce_date(df, date_col)
+    pl_alias = coerce_pl_numeric(df, pl_col)
+
+    # If Market missing, try to infer from Description as in other modules
+    if 'Market' not in df.columns and 'Description' in df.columns:
+         import re as _re
+         # simple heuristic fallback
+         df['Market'] = df['Description'].str.split().str[0].fillna('Unknown')
+ 
+    # Aggregate P/L by Market using numeric alias
+    market_agg = (
+        df.groupby('Market')[pl_alias]
+        .sum()
+        .abs()
+        .sort_values(ascending=False)
+        .head(top_n)
+    )
+
+    fig = setup_base_figure()
+
+    # Build bar trace using market_agg
+    import plotly.graph_objects as go
+    fig.add_trace(
+        go.Bar(
+            x=market_agg.index.tolist(),
+            y=market_agg.values.tolist(),
+            name='P/L per Market'
+        )
+    )
+
+    fig = apply_standard_layout(fig, "PL by Market")
     return fig

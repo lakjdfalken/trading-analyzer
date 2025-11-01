@@ -1,6 +1,19 @@
 from .base import prepare_dataframe, get_trading_data, format_currency, setup_base_figure, apply_standard_layout
 import plotly.graph_objects as go
 from settings import COLORS
+import re
+import pandas as pd
+import logging
+from .base import (
+    find_date_col,
+    find_pl_col,
+    coerce_date,
+    coerce_pl_numeric,
+    ensure_market_column,
+    aggregate_pl_by_period,
+    top_markets_by_pl,
+)
+logger = logging.getLogger(__name__)
 
 def get_position_data(df, currency):
     """Returns position data for a specific currency"""
