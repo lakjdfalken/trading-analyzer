@@ -11,7 +11,6 @@ Design:
 """
 from typing import Dict, Any
 import logging
-import re
 
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
@@ -92,7 +91,11 @@ def _prepare_trading_df(df: pd.DataFrame) -> pd.DataFrame:
 def aggregate_points(df: pd.DataFrame, mode: str = "daily") -> Dict[str, Any]:
     """Aggregate points for requested mode. Returns dict with aggregation frames and stats."""
     td = _prepare_trading_df(df)
+    logger.debug("aggregate_points: mode=%s incoming df type=%s shape=%s prepared td.shape=%s",
+                 mode, type(df), getattr(df, "shape", None), getattr(td, "shape", None))
     if td.empty:
+        # no prepared trading-only rows — return explicit reason so callers can log / fallback
+        logger.debug("aggregate_points: prepared trading df is empty")
         return {"ok": False, "reason": "no data"}
 
     # Compute points per trade (conservative: uses opening/closing if present; otherwise 0)
@@ -105,6 +108,10 @@ def aggregate_points(df: pd.DataFrame, mode: str = "daily") -> Dict[str, Any]:
 
     td = td.copy()
     td["Points"] = td.apply(lambda r: _row_points(r), axis=1)
+    logger.debug("aggregate_points: sample points rows: %s", td.head(5).to_dict("records"))
+    logger.debug("aggregate_points: points summary sum=%s mean=%s count=%s zeros=%s",
+                 td["Points"].sum(), td["Points"].mean() if not td["Points"].empty else None,
+                 len(td), int((td["Points"] == 0).sum()))
 
     result: Dict[str, Any] = {"ok": True}
     if mode == "daily":
@@ -151,13 +158,34 @@ def aggregate_points(df: pd.DataFrame, mode: str = "daily") -> Dict[str, Any]:
 
 def create_points_view(df, mode='daily', top_n=10):
     """Create unified points figure with stats on top and chart below."""
-    dfc = base.get_filtered_trading_df(df)
-    if dfc is None or dfc.empty:
-        return setup_base_figure()
+    logger.debug("create_points_view: incoming df type=%s shape=%s mode=%s", type(df), getattr(df, "shape", None), mode)
+    # Prefer caller-provided DataFrame if it already contains trading rows (Opening/Closing or Transaction Date)
+    dfc = None
+    try:
+        dfc = base.get_filtered_trading_df(df)
+    except Exception:
+        logger.exception("create_points_view: base.get_filtered_trading_df failed")
+
+    if not isinstance(dfc, pd.DataFrame) or dfc.empty:
+        # fallback to incoming df when normalizer returned no rows
+        if isinstance(df, pd.DataFrame) and getattr(df, "shape", (0, 0))[0] > 0:
+            # heuristic: require either Opening/Closing or Transaction Date present
+            has_prices = any(c in df.columns for c in ("Opening", "Closing", "Open", "Close"))
+            has_date = "Transaction Date" in df.columns or any("date" in c.lower() for c in df.columns)
+            if has_prices and has_date:
+                dfc = df.copy()
+                logger.debug("create_points_view: using incoming DataFrame as fallback (has prices & date)")
+            else:
+                logger.debug("create_points_view: incoming DataFrame lacks required columns (prices/date); will return empty figure")
+                return setup_base_figure()
+        else:
+            logger.debug("create_points_view: base.get_filtered_trading_df returned empty and no suitable fallback")
+            return setup_base_figure()
 
     agg = aggregate_points(dfc, mode=mode)
     # base empty figure if no data
     if not agg.get("ok"):
+        logger.debug("create_points_view: aggregate_points returned not ok: %s", agg.get("reason"))
         fig = setup_base_figure()
         fig = apply_standard_layout(fig, "Points")
         return fig
@@ -213,7 +241,7 @@ def create_points_view(df, mode='daily', top_n=10):
             fig.add_trace(go.Bar(x=dfc["Date"], y=dfc["Points"], name="Daily Points",
                                  marker=dict(color=dfc["Points"].apply(lambda x: COLORS.get("profit", "green") if x > 0 else COLORS.get("loss", "red")))),
                           row=2, col=1)
-            fig.add_trace(go.Scatter(x=dfc["Date"], y=dfc["Cumulative"], name="Cumulative", line=dict(color=COLORS.get("profit", "green"))),
+            fig.add_trace(go.Scatter(x=dfc["Date"], y=dfc["Cumulative"], name="Cumulative", line=dict(color=COLORS.get("trading", "blue"))),
                           row=2, col=1)
 
     elif mode == "monthly":
@@ -222,7 +250,7 @@ def create_points_view(df, mode='daily', top_n=10):
             fig.add_trace(go.Bar(x=dfc["Month"], y=dfc["Points"], name="Monthly Points",
                                  marker=dict(color=dfc["Points"].apply(lambda x: COLORS.get("profit", "green") if x > 0 else COLORS.get("loss", "red")))),
                           row=2, col=1)
-            fig.add_trace(go.Scatter(x=dfc["Month"], y=dfc["Cumulative"], name="Cumulative", line=dict(color=COLORS.get("profit", "green"))),
+            fig.add_trace(go.Scatter(x=dfc["Month"], y=dfc["Cumulative"], name="Cumulative", line=dict(color=COLORS.get("trading", "blue"))),
                           row=2, col=1)
 
     elif mode == "per_market":
@@ -231,13 +259,16 @@ def create_points_view(df, mode='daily', top_n=10):
             # stacked/grouped bars per month per market
             markets = pivot.columns.tolist()
             for i, m in enumerate(markets):
-                fig.add_trace(go.Bar(x=pivot.index, y=pivot[m], name=m,
-                                     marker=dict(color=COLORS.get("trading", [None])[i % len(COLORS.get("trading", [None]))])),
-                              row=2, col=1)
+                fig.add_trace(
+                    go.Bar(x=pivot.index, y=pivot[m], name=m, marker=dict(color=COLORS.get("trading", "blue"))),
+                    row=2, col=1
+                )
             # optionally add total line
             total_series = pivot.sum(axis=1)
-            fig.add_trace(go.Scatter(x=pivot.index, y=total_series, name="Total", line=dict(color=COLORS.get("profit", "green"))),
-                          row=2, col=1)
+            fig.add_trace(
+                go.Scatter(x=pivot.index, y=total_series, name="Total", line=dict(color=COLORS.get("profit", "green"))),
+                row=2, col=1
+            )
 
     # Apply standard styling (mutates fig in-place)
     apply_standard_layout(fig, f"Points - {mode.replace('_', ' ').title()}")
@@ -261,20 +292,3 @@ def create_points_view(df, mode='daily', top_n=10):
     )
     fig.update_xaxes(tickangle=45)
     return fig
-
-
-def some_entry(df, account_id=None, start_date=None, end_date=None, *args, **kwargs):
-    """
-    Compatibility stub (safe import-time behavior).
-    Replace with real implementation if needed.
-    """
-    try:
-        dfc = base.get_filtered_trading_df(df, account_id=account_id, start_date=start_date, end_date=end_date)
-    except Exception:
-        dfc = None
-    if dfc is None:
-        dfc = pd.DataFrame()
-    if dfc.empty:
-        return setup_base_figure()
-    # Default behavior: render the daily points view for the filtered data
-    return create_points_view(dfc, mode="daily")

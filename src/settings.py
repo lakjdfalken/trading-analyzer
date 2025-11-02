@@ -9,7 +9,7 @@ COLORS = {
     'profit': 'green',
     'loss': 'red',
     'neutral': 'gray',
-    'trading': ['blue', 'darkblue', 'navy'],
+    'trading': 'blue',
     'funding': 'white',
     'funding_charge': 'black'
 }

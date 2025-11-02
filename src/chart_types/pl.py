@@ -1,8 +1,7 @@
 # Consolidated P/L visualizations (daily, vs trades, relative, market)
 import logging
 import pandas as pd
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import matplotlib.pyplot as plt
 
 from .base import (
     ensure_market_column,
@@ -15,6 +14,7 @@ import settings as _settings
 import chart_types.base as base
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # Defensive defaults for settings that may not exist in every environment.
 COLORS = getattr(_settings, "COLORS", {"profit": "green", "loss": "red", "trading": ["#1f77b4"]})
@@ -34,9 +34,27 @@ def _currency_color_map():
 def create_daily_pl(df, exchange_rates=None, base_currency=None, account_id=None):
     """Daily P/L using canonical helpers."""
     logger.debug("create_daily_pl called; incoming df type=%s shape=%s", type(df), getattr(df, "shape", None))
-    # get canonical filtered/normalized data
-    trading_df = base.get_filtered_trading_df(df, account_id=account_id)
-    if trading_df is None or trading_df.empty:
+    # Prefer incoming DataFrame when it already looks normalized (has date and P/L)
+    trading_df = None
+    try:
+        if isinstance(df, pd.DataFrame):
+            if ('Transaction Date' in df.columns) and (('_pl_numeric' in df.columns) or ('P/L' in df.columns)):
+                trading_df = df.copy()
+                logger.debug("create_daily_pl: using incoming DataFrame directly (has date and P/L)")
+    except Exception:
+        logger.exception("create_daily_pl: error inspecting incoming df; will try normalized helper")
+
+    # fallback to canonical helper
+    if trading_df is None:
+        try:
+            trading_df = base.get_filtered_trading_df(df, account_id=account_id)
+        except Exception:
+            logger.exception("create_daily_pl: get_filtered_trading_df failed; falling back to original df")
+            trading_df = df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame()
+
+    if not isinstance(trading_df, pd.DataFrame):
+        trading_df = pd.DataFrame()
+    if trading_df.empty:
         logger.warning("create_daily_pl: no trading data after normalization/filtering")
         return setup_base_figure()
 
@@ -55,9 +73,16 @@ def create_daily_pl(df, exchange_rates=None, base_currency=None, account_id=None
     fig = setup_base_figure()
     if daily.empty:
         return fig
-    fig.add_trace(go.Bar(x=daily[date_col], y=daily['_pl_in_base'],
-                         marker_color=['green' if v >= 0 else 'red' for v in daily['_pl_in_base']],
-                         text=[base.format_currency(v, base_currency) for v in daily['_pl_in_base']]))
+    # use COLORS from settings.py directly
+    marker_colors = [COLORS['profit'] if v >= 0 else COLORS['loss'] for v in daily['_pl_in_base']]
+    logger.debug("create_daily_pl: marker colors=%s", marker_colors)
+
+    fig.add_trace(go.Bar(
+        x=daily[date_col],
+        y=daily['_pl_in_base'],
+        marker_color=marker_colors,
+        text=[base.format_currency(v, base_currency) for v in daily['_pl_in_base']]
+    ))
     apply_standard_layout(fig, "Daily P/L")
     return fig
 
@@ -75,9 +100,40 @@ def create_daily_pl_vs_trades(df, exchange_rates=None, base_currency=None, accou
         except Exception:
             pass
 
-    trading_df = base.normalize_trading_df(df)
+    # Prefer incoming DataFrame if it already looks normalized (has date + P/L)
+    trading_df = None
+    try:
+        if isinstance(df, pd.DataFrame):
+            if ('Transaction Date' in df.columns) and (('_pl_numeric' in df.columns) or ('P/L' in df.columns)):
+                trading_df = df.copy()
+                logger.debug("create_daily_pl_vs_trades: using incoming DataFrame directly (has date and P/L)")
+    except Exception:
+        logger.exception("create_daily_pl_vs_trades: error inspecting incoming df; will try normalizer")
+
+    # Fallback to normalizer if needed
     if trading_df is None:
+        try:
+            trading_df = base.normalize_trading_df(df)
+        except Exception:
+            logger.exception("create_daily_pl_vs_trades: normalize_trading_df failed; falling back to incoming df")
+            trading_df = None
+
+    # Ensure we have a DataFrame; attempt a quick salvage from original df if empty
+    if not isinstance(trading_df, pd.DataFrame):
         trading_df = pd.DataFrame()
+    if trading_df.empty:
+        try:
+            tmp = df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame()
+            if not tmp.empty and 'P/L' in tmp.columns:
+                tmp['_pl_numeric'] = pd.to_numeric(tmp['P/L'], errors='coerce').fillna(0.0)
+                if 'Transaction Date' in tmp.columns:
+                    tmp['Transaction Date'] = pd.to_datetime(tmp['Transaction Date'], errors='coerce')
+                if not tmp.empty:
+                    trading_df = tmp
+                    logger.debug("create_daily_pl_vs_trades: salvaged trading_df from incoming df")
+        except Exception:
+            logger.exception("create_daily_pl_vs_trades: salvage attempt failed")
+
     if trading_df.empty:
         logger.warning("No trading data for daily PL vs trades")
         return setup_base_figure()
@@ -134,7 +190,7 @@ def create_daily_pl_vs_trades(df, exchange_rates=None, base_currency=None, accou
             x=daily_trades.index, y=daily_trades.values,
             mode='lines+markers',
             name=f"Trade Count - {currency}",
-            line=dict(color=color, width=2),
+            line=dict(color=COLORS['trading'], width=2),
             marker=dict(size=6, color=color)
         ), row=i+1, col=1, secondary_y=True)
 
@@ -147,39 +203,104 @@ def create_daily_pl_vs_trades(df, exchange_rates=None, base_currency=None, accou
     return fig
 
 
-def create_relative_balance_history(df):
-    fig = setup_base_figure()
-    trading_data = base.normalize_trading_df(df)
-    if trading_data is None:
-        trading_data = pd.DataFrame()
-    if trading_data.empty:
-        return fig
+def _ensure_pl_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure a numeric PL column named '_pl_numeric' exists."""
+    if '_pl_numeric' in df.columns:
+        df['_pl_numeric'] = pd.to_numeric(df['_pl_numeric'], errors='coerce').fillna(0.0)
+        return df
+    if 'P/L' in df.columns:
+        df['_pl_numeric'] = pd.to_numeric(df['P/L'], errors='coerce').fillna(0.0)
+        return df
+    # no PL column found -> create zero column
+    df['_pl_numeric'] = 0.0
+    return df
 
-    trading_data = trading_data.sort_values('Transaction Date')
-    total_pl = trading_data.get('P/L', pd.Series(dtype=float)).sum()
-    days_traded = len(trading_data['Transaction Date'].dt.date.unique())
-    daily_average = total_pl / days_traded if days_traded > 0 else 0
 
-    trading_data['Cumulative P/L'] = trading_data.get('P/L', pd.Series(dtype=float)).cumsum()
-    fig.add_trace(go.Scatter(
-        x=trading_data['Transaction Date'],
-        y=trading_data['Cumulative P/L'],
-        mode='lines+markers',
-        name='Cumulative P/L',
-        hovertemplate='Date: %{x}<br>Cumulative P/L: %{y:.2f}<extra></extra>'
-    ))
-
-    apply_standard_layout(fig, "Relative P/L Over Time")
-    fig.update_layout(
-        annotations=[
-            dict(
-                text=(f'Total P/L: {total_pl:.2f}<br>Daily Average: {daily_average:.2f}'),
-                xref='paper', yref='paper', x=0.92, y=0.08, showarrow=False,
-                bgcolor='white', bordercolor='black', borderwidth=1
-            )
-        ]
-    )
+def _empty_figure(title: str = "No data available"):
+    fig = plt.Figure(figsize=(10, 4))
+    ax = fig.add_subplot(111)
+    ax.set_title(title)
     return fig
+
+
+def create_relative_balance_history(df, exchange_rates=None, base_currency=None, account_id=None,
+                                    start_date=None, end_date=None) -> go.Figure:
+    """
+    P/L history (cumulative) — consistent signature with other chart functions.
+    Prefers the caller-provided (already filtered) DataFrame. If account_id or
+    start/end are supplied they will be applied as additional filters.
+    Always returns a plotly.graph_objects.Figure.
+    """
+    try:
+        logger.debug("create_relative_balance_history called; incoming df type=%s shape=%s",
+                     type(df), getattr(df, "shape", None))
+
+        if df is None:
+            return setup_base_figure()
+        if not isinstance(df, pd.DataFrame):
+            try:
+                df = pd.DataFrame(df)
+            except Exception:
+                logger.exception("create_relative_balance_history: failed to coerce df to DataFrame")
+                return setup_base_figure()
+        if df.empty:
+            return setup_base_figure()
+
+        # Ensure there is a date column we can use
+        if 'Transaction Date' in df.columns:
+            df['Transaction Date'] = pd.to_datetime(df['Transaction Date'], errors='coerce')
+        else:
+            for c in df.columns:
+                if 'date' in c.lower():
+                    df['Transaction Date'] = pd.to_datetime(df[c], errors='coerce')
+                    break
+        df = df.dropna(subset=['Transaction Date'])
+        if df.empty:
+            return setup_base_figure()
+
+        # Apply optional account/date filters (caller often already filtered by graph_tab)
+        try:
+            if account_id is not None and 'account_id' in df.columns:
+                df = df[df['account_id'] == account_id]
+            if start_date is not None:
+                sd = pd.to_datetime(start_date, errors='coerce')
+                if pd.notna(sd):
+                    df = df[df['Transaction Date'] >= sd]
+            if end_date is not None:
+                ed = pd.to_datetime(end_date, errors='coerce')
+                if pd.notna(ed):
+                    df = df[df['Transaction Date'] <= ed]
+        except Exception:
+            logger.exception("create_relative_balance_history: optional filtering failed; continuing with available rows")
+        if df.empty:
+            return setup_base_figure()
+
+        # Ensure PL numeric column exists and compute daily cumulative
+        df = _ensure_pl_column(df)
+        df = df.set_index('Transaction Date')
+        daily = df['_pl_numeric'].resample('D').sum().reset_index()
+        if daily.empty:
+            return setup_base_figure()
+        daily['cumulative'] = daily['_pl_numeric'].cumsum()
+
+        # Build Plotly figure
+        fig = setup_base_figure()
+        fig.add_trace(go.Scatter(
+            x=daily['Transaction Date'],
+            y=daily['cumulative'],
+            mode='lines+markers',
+            line=dict(color=COLORS.get('profit', 'green'), width=2),
+            marker=dict(size=6),
+            name='Cumulative P/L',
+            hovertemplate='%{x|%Y-%m-%d}: %{y:.2f}<extra></extra>'
+        ))
+        apply_standard_layout(fig, "P/L History (Cumulative)")
+        fig.update_yaxes(title_text="Cumulative P/L")
+        fig.update_xaxes(title_text="Date")
+        return fig
+    except Exception as exc:
+        logger.exception("create_relative_balance_history failed: %s", exc)
+        return setup_base_figure()
 
 
 def get_market_data(df):
@@ -282,30 +403,92 @@ def create_win_loss_analysis(df):
 
 
 def create_market_pl_chart(df, top_n=10, exchange_rates=None, base_currency=None):
-    # 1) normalize + filter (chart caller should already pass filtered DF; we still normalize to be safe)
-    dfc = base.get_filtered_trading_df(df)
-    if dfc.empty:
+    logger.debug("create_market_pl_chart called; incoming df type=%s shape=%s", type(df), getattr(df, "shape", None))
+
+    # Prefer the incoming DataFrame when it already contains expected columns/rows.
+    dfc = None
+    try:
+        if isinstance(df, pd.DataFrame) and getattr(df, "shape", (0, 0))[0] > 0:
+            # heuristic: must have a date-like column and a P/L column (P/L or _pl_numeric)
+            has_date = 'Transaction Date' in df.columns or any('date' in c.lower() for c in df.columns)
+            has_pl = ('_pl_numeric' in df.columns) or ('P/L' in df.columns)
+            if has_date and has_pl:
+                dfc = df.copy()
+                logger.debug("create_market_pl_chart: using incoming DataFrame directly")
+    except Exception:
+        logger.exception("create_market_pl_chart: error inspecting incoming df; will try base helper")
+
+    # Fallback: use base.get_filtered_trading_df to normalize/filter when incoming df isn't suitable
+    if dfc is None:
+        try:
+            dfc = base.get_filtered_trading_df(df)
+        except Exception:
+            logger.exception("create_market_pl_chart: get_filtered_trading_df failed; coercing to DataFrame")
+            dfc = df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame()
+
+    logger.debug("create_market_pl_chart: dfc.shape=%s columns=%s", getattr(dfc, "shape", None), list(getattr(dfc, "columns", [])))
+    if dfc is None or dfc.empty:
+        logger.debug("create_market_pl_chart: dfc is empty after filtering")
         return setup_base_figure()
 
-    # 2) remove funding/charges / non-market rows (use your existing logic)
-    market_df = get_market_data(dfc)   # keep get_market_data but have it call base.get_filtered_trading_df internally
-    if market_df.empty:
-        return setup_base_figure()
+    # 2) remove funding/charges / non-market rows
+    market_df = get_market_data(dfc)
+    logger.debug("create_market_pl_chart: market_df.shape=%s", getattr(market_df, "shape", None))
+
+    # If market filtering removed everything, try to salvage by using dfc directly
+    if market_df is None or market_df.empty:
+        logger.warning("create_market_pl_chart: market_df empty after filtering; falling back to dfc (no market filtering)")
+        market_df = dfc.copy()
+        if market_df.empty:
+            return setup_base_figure()
 
     # 3) unify to base currency if requested
     if exchange_rates is None:
         exchange_rates = getattr(_settings, 'DEFAULT_EXCHANGE_RATES', {})
     if base_currency is None:
         base_currency = getattr(_settings, 'DEFAULT_BASE_CURRENCY', 'USD')
-    unified = base.to_unified_currency(market_df, exchange_rates, base_currency, pl_col='_pl_numeric')
+
+    try:
+        unified = base.to_unified_currency(market_df, exchange_rates, base_currency, pl_col='_pl_numeric')
+    except Exception:
+        logger.exception("create_market_pl_chart: to_unified_currency failed; attempting to coerce _pl_numeric and continue")
+        market_df = _ensure_pl_column(market_df)
+        unified = market_df.copy()
+        unified['_pl_in_base'] = pd.to_numeric(unified.get('_pl_numeric', 0), errors='coerce').fillna(0.0)
+
+    logger.debug("create_market_pl_chart: unified.shape=%s columns=%s", getattr(unified, "shape", None), list(getattr(unified, "columns", [])))
 
     # 4) pick label column, aggregate, and plot
     label_col = base.pick_label_col(unified)
-    agg = unified.groupby(label_col)['_pl_in_base'].sum().reset_index().sort_values('_pl_in_base', ascending=False).head(top_n)
+    if label_col is None or label_col not in unified.columns:
+        # fallback to Description if present
+        if 'Description' in unified.columns:
+            label_col = 'Description'
+        else:
+            # last resort: use first non-numeric column
+            for c in unified.columns:
+                if unified[c].dtype == object:
+                    label_col = c
+                    break
+    if label_col is None:
+        logger.warning("create_market_pl_chart: could not determine label column; returning empty figure")
+        return setup_base_figure()
 
+    logger.debug("create_market_pl_chart: using label_col=%s", label_col)
+    try:
+        agg = unified.groupby(label_col)['_pl_in_base'].sum().reset_index().sort_values('_pl_in_base', ascending=False).head(top_n)
+    except Exception:
+        logger.exception("create_market_pl_chart: aggregation failed; returning empty figure")
+        return setup_base_figure()
+
+    logger.debug("create_market_pl_chart: agg.head()=%s", agg.head().to_dict('records') if not agg.empty else "EMPTY")
     fig = setup_base_figure()
     if agg.empty:
+        logger.debug("create_market_pl_chart: agg is empty -> no data to plot")
         return fig
+
+    # ensure label col is string for plotting
+    agg[label_col] = agg[label_col].astype(str)
     fig.add_trace(go.Bar(x=agg[label_col], y=agg['_pl_in_base'], text=[base.format_currency(v, base_currency) for v in agg['_pl_in_base']]))
     apply_standard_layout(fig, "PL by Market")
     return fig
@@ -317,3 +500,153 @@ def get_trading_pl_without_funding(df, top_n=10):
     Delegates to create_market_pl_chart to preserve behavior.
     """
     return create_market_pl_chart(df, top_n=top_n)
+
+def create_market_pl(*args, **kwargs):
+    """Backward-compatible alias for create_market_pl_chart."""
+    return create_market_pl_chart(*args, **kwargs)
+
+def create_balance_history(df, exchange_rates=None, base_currency=None, account_id=None, start_date=None, end_date=None):
+    """
+    Create a Balance History (line) Plotly figure.
+    - df: DataFrame (expected to have 'Transaction Date', 'Balance', and optionally 'Currency')
+    - exchange_rates/base_currency: optional conversion to a unified currency
+    - account_id/start_date/end_date: optional filters (caller often pre-filters)
+    Returns a plotly.graph_objects.Figure (never None).
+    """
+    try:
+        logger.debug("create_balance_history called; incoming df type=%s shape=%s", type(df), getattr(df, "shape", None))
+        logger.debug("create_balance_history params: account_id=%r start_date=%r end_date=%r (types: %s,%s,%s)",
+                     account_id, start_date, end_date,
+                     type(account_id), type(start_date), type(end_date))
+
+        # Coerce to DataFrame
+        if df is None:
+            return setup_base_figure()
+        if not isinstance(df, pd.DataFrame):
+            try:
+                df = pd.DataFrame(df)
+            except Exception:
+                logger.exception("create_balance_history: failed to coerce df to DataFrame")
+                return setup_base_figure()
+        if df.empty:
+            return setup_base_figure()
+
+        # Ensure transaction date column
+        if 'Transaction Date' in df.columns:
+            df['Transaction Date'] = pd.to_datetime(df['Transaction Date'], errors='coerce')
+        else:
+            for c in df.columns:
+                if 'date' in c.lower():
+                    df['Transaction Date'] = pd.to_datetime(df[c], errors='coerce')
+                    break
+
+        # Log date range BEFORE dropna
+        try:
+            logger.debug("create_balance_history: incoming Transaction Date min=%s max=%s",
+                         df['Transaction Date'].min(), df['Transaction Date'].max())
+        except Exception:
+            logger.debug("create_balance_history: couldn't read min/max Transaction Date")
+        df = df.dropna(subset=['Transaction Date'])
+        if df.empty:
+            return setup_base_figure()
+
+        # Optional filtering by account_id
+        try:
+            if account_id is not None and 'account_id' in df.columns:
+                logger.debug("create_balance_history: applying account_id filter: %r", account_id)
+                df = df[df['account_id'] == account_id]
+                logger.debug("create_balance_history: after account filter shape=%s", getattr(df, "shape", None))
+        except Exception:
+            logger.debug("create_balance_history: account filtering failed; continuing with available rows")
+
+        # Optional date-range filtering
+        try:
+            logger.debug("create_balance_history: applying date filters (raw): start_date=%r end_date=%r", start_date, end_date)
+            if start_date is not None:
+                sd = pd.to_datetime(start_date, errors='coerce')
+                logger.debug("create_balance_history: parsed start_date -> %s (na? %s)", sd, pd.isna(sd))
+                if pd.notna(sd):
+                    df = df[df['Transaction Date'] >= sd]
+                    logger.debug("create_balance_history: after start_date filter shape=%s", getattr(df, "shape", None))
+            if end_date is not None:
+                ed = pd.to_datetime(end_date, errors='coerce')
+                logger.debug("create_balance_history: parsed end_date -> %s (na? %s)", ed, pd.isna(ed))
+                if pd.notna(ed):
+                    df = df[df['Transaction Date'] <= ed]
+                    logger.debug("create_balance_history: after end_date filter shape=%s", getattr(df, "shape", None))
+        except Exception:
+            logger.debug("create_balance_history: date filtering failed; continuing with available rows")
+
+        # Log date range AFTER filters
+        try:
+            logger.debug("create_balance_history: post-filter Transaction Date min=%s max=%s (rows=%s)",
+                         df['Transaction Date'].min() if not df.empty else None,
+                         df['Transaction Date'].max() if not df.empty else None,
+                         len(df))
+        except Exception:
+            logger.debug("create_balance_history: couldn't read post-filter min/max Transaction Date")
+        if df.empty:
+            return setup_base_figure()
+
+        # Ensure Balance numeric
+        df['Balance'] = pd.to_numeric(df.get('Balance', 0), errors='coerce').fillna(0.0)
+
+        # Convert balances to base currency if requested and Currency column exists
+        if exchange_rates is None:
+            exchange_rates = DEFAULT_EXCHANGE_RATES or {}
+        if base_currency is None:
+            base_currency = DEFAULT_BASE_CURRENCY
+
+        if 'Currency' in df.columns and exchange_rates and base_currency:
+            def conv_factor(curr):
+                try:
+                    base_rate = exchange_rates.get(base_currency, 1.0) or 1.0
+                    return (exchange_rates.get(curr, 1.0) or 1.0) / base_rate
+                except Exception:
+                    return 1.0
+            df['_conv'] = df['Currency'].apply(conv_factor)
+            df['_balance_in_base'] = df['Balance'] * df['_conv']
+            y_col = '_balance_in_base'
+            y_label_currency = base_currency
+        else:
+            y_col = 'Balance'
+            y_label_currency = None
+            df['_balance_in_base'] = df['Balance']
+
+        # Resample to daily last-known balance and forward-fill
+        df = df.set_index('Transaction Date').sort_index()
+        daily = df['_balance_in_base'].resample('D').last().ffill().reset_index()
+        if daily.empty:
+            return setup_base_figure()
+
+        # Build Plotly figure (use COLORS from settings.py)
+        fig = setup_base_figure()
+        line_color = COLORS.get('trading', 'blue')
+        fig.add_trace(go.Scatter(
+            x=daily['Transaction Date'],
+            y=daily['_balance_in_base'],
+            mode='lines+markers',
+            line=dict(color=line_color, width=2),
+            marker=dict(size=6),
+            name=f"Balance{f' ({y_label_currency})' if y_label_currency else ''}",
+            hovertemplate='%{x|%Y-%m-%d}: %{y:,.2f}<extra></extra>'
+        ))
+        apply_standard_layout(fig, "Balance History")
+        fig.update_yaxes(title_text=f"Balance{f' ({y_label_currency})' if y_label_currency else ''}")
+        fig.update_xaxes(title_text="Date")
+        return fig
+
+    except Exception as exc:
+        logger.exception("create_balance_history failed: %s", exc)
+        return setup_base_figure()
+
+__all__ = [
+    "create_daily_pl",
+    "create_daily_pl_vs_trades",
+    "create_relative_balance_history",
+    "create_market_pl_chart",
+    "create_win_loss_analysis",
+    "get_trading_pl_without_funding",
+    "create_market_pl",
+    "create_balance_history",
+]

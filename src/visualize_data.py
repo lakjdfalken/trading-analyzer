@@ -1,21 +1,7 @@
 import matplotlib.pyplot as plt
-import seaborn as sns
 import pandas as pd
 import logging
-from chart_types import (
-    balance,
-    funding,
-    pl_daily_vs_trades,
-    pl_market,
-    pl_relative,
-    trades,
-    positions,
-    winrate,
-    monthly,
-    points_daily,
-    points_monthly,
-    points_per_market,
-)
+
 from settings import (
     FIGURE_SIZES,
     CURRENCY_SYMBOLS,
@@ -57,6 +43,8 @@ def create_visualization_figure(df, graph_type, exchange_rates=None, base_curren
     """
     Create visualization figure based on graph type
     """
+    logger.debug("visualize_data: requested graph_type=%r", graph_type)
+    
     if exchange_rates is None:
         exchange_rates = DEFAULT_EXCHANGE_RATES
     
@@ -79,11 +67,12 @@ def create_visualization_figure(df, graph_type, exchange_rates=None, base_curren
         
         # For all other chart types, use the correct function names from the grep output
         elif graph_type == 'P/L History':
-            from chart_types.pl_relative import create_relative_balance_history
+            from chart_types.pl import create_relative_balance_history
             return create_relative_balance_history(df)
             
         elif graph_type == 'Daily P/L':
-            from chart_types.daily_pl import create_daily_pl
+            logger.debug("visualize_data: calling create_daily_pl with df.shape=%s", getattr(df, "shape", None))
+            from chart_types.pl import create_daily_pl
             return create_daily_pl(df, exchange_rates, base_currency)
             
         elif graph_type == 'Monthly P/L':
@@ -91,7 +80,7 @@ def create_visualization_figure(df, graph_type, exchange_rates=None, base_curren
             return create_monthly_distribution(df)
             
         elif graph_type == 'Market P/L':
-            from chart_types.pl_market import create_market_pl
+            from chart_types.pl import create_market_pl
             return create_market_pl(df)
             
         elif graph_type == 'Daily Trades':
@@ -99,20 +88,20 @@ def create_visualization_figure(df, graph_type, exchange_rates=None, base_curren
             return create_daily_trade_count(df)
             
         elif graph_type == 'Daily P/L vs Trades':
-            from chart_types.pl_daily_vs_trades import create_daily_pl_vs_trades
-            return create_daily_pl_vs_trades(df)
+            from chart_types.pl import create_daily_pl_vs_trades
+            return create_daily_pl_vs_trades(df, exchange_rates=exchange_rates, base_currency=base_currency)
             
         elif graph_type == 'Points Daily':
-            from chart_types.points_daily import create_points_daily
-            return create_points_daily(df)
+            from chart_types.points import create_points_view
+            return create_points_view(df, mode="daily", top_n=10)
             
         elif graph_type == 'Points Monthly':
-            from chart_types.points_monthly import create_points_monthly
-            return create_points_monthly(df)
+            from chart_types.points import create_points_view
+            return create_points_view(df, mode="monthly", top_n=10)
             
         elif graph_type == 'Points per Market':
-            from chart_types.points_per_market import create_points_per_market
-            return create_points_per_market(df)
+            from chart_types.points import create_points_view
+            return create_points_view(df, mode="per_market", top_n=10)
             
         elif graph_type == 'Win Rate':
             from chart_types.winrate import create_distribution_days

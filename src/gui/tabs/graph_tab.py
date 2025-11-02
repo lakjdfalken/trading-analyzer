@@ -7,9 +7,9 @@ import sqlite3
 from datetime import datetime
 from settings import BROKERS, VALID_GRAPH_TYPES, UI_SETTINGS
 from visualize_data import create_visualization_figure
-from chart_types.balance import create_balance_history
 from chart_types.points import create_points_view
 from chart_types.pl import (
+    create_balance_history,
     create_daily_pl,
     create_daily_pl_vs_trades,
     create_relative_balance_history,
@@ -305,54 +305,26 @@ class GraphTab(QWidget):
                     return
             elif selection == "Balance History":
                 try:
-                    # Prefer DataManager's filtering if available so chart modules get canonical data
+                    # Use the already computed filtered_data (it respects UI start/end/account)
                     fd = filtered_data
-                    dm = getattr(self, "data_manager", None)
-                    if dm is not None and callable(getattr(dm, "get_filtered_data", None)):
-                        try:
-                            # call get_filtered_data adaptively: prefer kwargs, fall back to positional
-                            func = dm.get_filtered_data
-                            # build arg values from locals (use None when missing)
-                            bk = broker_key if 'broker_key' in locals() else None
-                            acc = filtered_account if 'filtered_account' in locals() else None
-                            sd = start_date if 'start_date' in locals() else None
-                            ed = end_date if 'end_date' in locals() else None
-                            import inspect
-                            sig = inspect.signature(func)
-                            # try keyword call first when supported
-                            try:
-                                call_kwargs = {}
-                                if 'broker_key' in sig.parameters:
-                                    call_kwargs['broker_key'] = bk
-                                if 'account_id' in sig.parameters or 'account' in sig.parameters:
-                                    # accept either account_id or account
-                                    if 'account_id' in sig.parameters:
-                                        call_kwargs['account_id'] = acc
-                                    else:
-                                        call_kwargs['account'] = acc
-                                if 'start_date' in sig.parameters:
-                                    call_kwargs['start_date'] = sd
-                                if 'end_date' in sig.parameters:
-                                    call_kwargs['end_date'] = ed
-                                if call_kwargs:
-                                    fd = func(**call_kwargs)
-                                else:
-                                    # no recognizable kw params, try positional
-                                    fd = func(bk, acc, sd, ed)
-                            except TypeError:
-                                # fallback: attempt a positional call
-                                try:
-                                    fd = func(bk, acc, sd, ed)
-                                except Exception:
-                                    # last resort: call without args
-                                    fd = func()
-                        except Exception:
-                            logger.exception("data_manager.get_filtered_data failed; falling back to existing filtered_data")
+                    logger.debug("create_balance_chart: using filtered_data directly for balance chart; shape=%s", getattr(fd, "shape", None))
+
+                    acct = filtered_account if 'filtered_account' in locals() else None
+                    try:
+                        if acct == "all":
+                            acct = None
+                        elif acct is not None:
+                            acct = int(acct)
+                    except Exception:
+                        logger.debug("Could not coerce account id to int; passing as-is: %r", acct)
 
                     fig = create_balance_history(
                         fd,
                         base_currency=(self.settings_manager.get_base_currency() if hasattr(self, "settings_manager") else None),
-                        account_id=(filtered_account if 'filtered_account' in locals() else None),
+                        account_id=acct,
+                        # pass UI start/end so the chart can reapply them if desired
+                        start_date=self.start_date.text().strip() if hasattr(self, "start_date") and self.start_date.text().strip() else None,
+                        end_date=self.end_date.text().strip() if hasattr(self, "end_date") and self.end_date.text().strip() else None,
                     )
                 except Exception as e:
                     import traceback as _tb
@@ -533,53 +505,44 @@ class GraphTab(QWidget):
     
     def create_balance_chart(self):
         """Create balance history chart with account filtering"""
-        # Get the selected filters
-        selected_broker = self.broker_combo.currentText()
-        broker_key = None
-        if selected_broker != 'All':
-            broker_key = [k for k, v in BROKERS.items() if v == selected_broker]
-            broker_key = broker_key[0] if broker_key else None
-
-        account_id = None
-        if hasattr(self, "account_combo"):
-            account_id = self.account_combo.currentData()
-            if account_id == "all":
-                account_id = None
-
-        start_date = self.start_date.text() if self.start_date.text() else None
-        end_date = self.end_date.text() if self.end_date.text() else None
-
-        logger.debug(f"Filters - broker_key: {broker_key}, account_id: {account_id}, start_date: {start_date}, end_date: {end_date}")
-
-        # Add debug logging to print the type of account_id
-        logger.debug(f"Type of account_id: {type(account_id)}")
-
-        # Get the filtered data
-        filtered_df = self.data_manager.get_filtered_data(
-            broker_key, account_id, start_date, end_date
-        )
-        logger.debug(f"Account ID being passed to create_balance_history: {account_id}")
-
-        logger.debug(f"Data shape before filtering: {filtered_df.shape}")
-
-        if filtered_df is None or filtered_df.empty:
-            logger.error("No data available for the selected filters")
-            QMessageBox.warning(self, "Info", "No data available for selected date range")
-            return
-
-        
-        # Create the balance history chart
+        # Reuse the tab's adaptive filtering (parses dates / adapts to DataManager signatures)
         try:
-            # Add debug logging to print the account_id being passed to create_balance_history
-            logger.debug(f"Account ID being passed to create_balance_history: {account_id}")
-            
-            # Ensure account_id is an integer
-            if account_id and account_id != "all":
-                account_id = int(account_id)
+            filtered_df = self.get_filtered_data()
+            logger.debug("create_balance_chart: get_filtered_data returned shape=%s columns=%s",
+                         getattr(filtered_df, "shape", None), list(getattr(filtered_df, "columns", [])))
+            # Log the UI start/end text values for clarity
+            try:
+                sd_text = self.start_date.text() if hasattr(self, "start_date") else None
+                ed_text = self.end_date.text() if hasattr(self, "end_date") else None
+            except Exception:
+                sd_text = ed_text = None
+            logger.debug("create_balance_chart: UI start_date text=%r end_date text=%r", sd_text, ed_text)
+ 
+            if filtered_df is None or filtered_df.empty:
+                logger.error("No data available for the selected filters")
+                QMessageBox.warning(self, "Info", "No data available for selected date range")
+                return
 
-            
+            # Ensure account_id is an integer when passed explicitly
+            account_id = None
+            if hasattr(self, "account_combo"):
+                account_id = self.account_combo.currentData()
+                if account_id == "all":
+                    account_id = None
+                else:
+                    try:
+                        account_id = int(account_id) if account_id is not None else None
+                    except Exception:
+                        logger.debug("Could not coerce account_id to int; passing as-is")
 
-            fig = create_balance_history(filtered_df, account_id=account_id)
+            logger.debug("Calling create_balance_history with filtered_df.shape=%s account_id=%s",
+                         getattr(filtered_df, "shape", None), account_id)
+
+            fig = create_balance_history(
+                filtered_df,
+                base_currency=(self.settings_manager.get_base_currency() if hasattr(self, "settings_manager") else None),
+                account_id=account_id,
+            )
 
             # Display in webview
             self.visualization_manager.display_plotly_figure(
@@ -588,7 +551,7 @@ class GraphTab(QWidget):
                 "balance_history"
             )
         except Exception as e:
-            logger.error(f"Error creating balance history chart: {e}")
+            logger.exception("Error creating balance history chart: %s", e)
             QMessageBox.critical(self, "Error", f"Failed to create balance history chart: {e}")
 
     def visualize_data(self, chart_key, df, **kwargs):
