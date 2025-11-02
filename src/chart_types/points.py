@@ -144,7 +144,10 @@ def aggregate_points(df: pd.DataFrame, mode: str = "daily") -> Dict[str, Any]:
         mm = td.groupby(["Month", "Market"])["Points"].sum().reset_index()
         # pivot for plotting
         pivot = mm.pivot(index="Month", columns="Market", values="Points").fillna(0).sort_index()
-        total_by_market = td.groupby("Market")["Points"].sum().to_dict()
+        # Round per-market points to one decimal for plotting
+        pivot = pivot.round(1)
+        # also round totals shown in stats to one decimal
+        total_by_market = td.groupby("Market")["Points"].sum().round(1).to_dict()
         stats = {
             "total_points": float(td["Points"].sum()),
             "num_markets": int(len(total_by_market)),

@@ -34,8 +34,33 @@ def get_tax_overview_data(df, year=None, broker=None):
     pl_alias = coerce_pl_numeric(df, pl_col)
 
     trading_df = normalize_trading_df(df)
-    if trading_df is None or trading_df.empty:
+    logger.debug("get_tax_overview_data: normalize_trading_df returned type=%s shape=%s",
+                 type(trading_df), getattr(trading_df, "shape", None))
+    # Fallbacks if normalize_trading_df returned None or empty
+    if trading_df is None or (hasattr(trading_df, "empty") and trading_df.empty):
+        logger.debug("get_tax_overview_data: normalize_trading_df returned None/empty, attempting fallbacks")
+        # try base.get_trading_data if available
+        try:
+            trading_df = base.get_trading_data(df)
+            logger.debug("get_tax_overview_data: base.get_trading_data returned type=%s shape=%s",
+                         type(trading_df), getattr(trading_df, "shape", None))
+        except Exception:
+            logger.debug("get_tax_overview_data: base.get_trading_data not available or failed; attempting to coerce to DataFrame")
+            try:
+                trading_df = pd.DataFrame(df) if not isinstance(df, pd.DataFrame) else df.copy()
+                # ensure date/pl coercion on the fallback
+                if date_col in trading_df.columns:
+                    trading_df[date_col] = pd.to_datetime(trading_df[date_col], errors='coerce')
+                trading_df[pl_alias] = pd.to_numeric(trading_df.get(pl_alias, trading_df.get(pl_col, 0)), errors='coerce').fillna(0.0)
+                logger.debug("get_tax_overview_data: fallback DataFrame shape=%s", getattr(trading_df, "shape", None))
+            except Exception:
+                logger.exception("get_tax_overview_data: fallback coercion failed")
+                return pd.DataFrame()
+    # final check
+    if trading_df is None or (hasattr(trading_df, "empty") and trading_df.empty):
+        logger.debug("get_tax_overview_data: no trading data after fallbacks")
         return pd.DataFrame()
+    logger.debug("get_tax_overview_data: sample rows: %s", trading_df.head(3).to_dict('records'))
     # ensure Description exists
     if 'Description' not in trading_df.columns:
         trading_df['Description'] = trading_df.get('Market', '').astype(str)
@@ -213,7 +238,8 @@ def create_yearly_summary_chart(df, selected_broker=None):
     """
     Create a yearly summary chart showing P/L by broker and currency
     """
-    tax_data = get_tax_overview_data(df, selected_broker=selected_broker)
+    # pass broker via keyword 'broker'
+    tax_data = get_tax_overview_data(df, broker=selected_broker)
     
     if tax_data.empty:
         fig = go.Figure()
@@ -269,23 +295,50 @@ def create_yearly_summary_chart(df, selected_broker=None):
     
     return fig
 
-def get_available_years(df):
+def get_available_years(df_or_manager):
     """
-    Get list of available years from the trading data
+    Get list of available years from the trading data.
+
+    - If a DataManager (or manager-like) object is passed and it implements
+      get_available_years(), prefer that method (fast / DB-backed).
+    - Otherwise fall back to extracting years from a pandas.DataFrame.
+    Returns list of strings with the configured "All Years" label first.
     """
     try:
-        trading_df = create_market_pl_chart(df)
-        if trading_df.empty:
-            return []
-        
-        if not pd.api.types.is_datetime64_any_dtype(trading_df['Transaction Date']):
-            trading_df['Transaction Date'] = pd.to_datetime(trading_df['Transaction Date'])
-        
-        years = sorted(trading_df['Transaction Date'].dt.year.unique(), reverse=True)
-        return [int(year) for year in years]
+        label = OVERVIEW_SETTINGS.get('year_all_label', 'All Years')
+
+        # If a manager-like object was provided, prefer its helper
+        if not isinstance(df_or_manager, pd.DataFrame) and hasattr(df_or_manager, "get_available_years"):
+            try:
+                years = df_or_manager.get_available_years()
+                # normalize to list of ints/strings
+                if not years:
+                    return [label]
+                # convert ints -> strings, keep strings as-is
+                normalized = []
+                for y in years:
+                    try:
+                        normalized.append(str(int(y)))
+                    except Exception:
+                        normalized.append(str(y))
+                return [label] + normalized
+            except Exception:
+                logger.debug("get_available_years: manager.get_available_years failed; falling back to DataFrame path", exc_info=True)
+
+        # Fallback: treat argument as DataFrame
+        df = df_or_manager if isinstance(df_or_manager, pd.DataFrame) else pd.DataFrame()
+        if df is None or df.empty:
+            logger.debug("get_available_years: no trading data")
+            return [label]
+
+        date_col = find_date_col(df) or 'Transaction Date'
+        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+        years = sorted(df[date_col].dt.year.dropna().unique().astype(int).tolist(), reverse=True)
+        logger.debug("get_available_years: found years=%s", years)
+        return [label] + [str(y) for y in years] if years else [label]
     except Exception as e:
-        logger.error(f"Error getting available years: {e}")
-        return []
+        logger.exception("Error getting available years: %s", e)
+        return [OVERVIEW_SETTINGS.get('year_all_label', 'All Years')]
 
 def some_entry(df, *args, **kwargs):
     """

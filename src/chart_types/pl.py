@@ -25,10 +25,47 @@ CURRENCY_SYMBOLS = getattr(_settings, "CURRENCY_SYMBOLS", {"USD": "$"})
 
 logger = logging.getLogger(__name__)
 
+def _original_totals_str(df, pl_col='_pl_numeric'):
+    """Return a semicolon-separated string like 'EUR: €123.45; USD: $456.78' for original PL totals by Currency."""
+    try:
+        if df is None or df.empty:
+            return ""
+        tmp = df.copy()
+        # ensure numeric PL column exists
+        if pl_col not in tmp.columns:
+            if 'P/L' in tmp.columns:
+                tmp['_pl_numeric'] = pd.to_numeric(tmp['P/L'], errors='coerce').fillna(0.0)
+                plc = '_pl_numeric'
+            else:
+                tmp['_pl_numeric'] = 0.0
+                plc = '_pl_numeric'
+        else:
+            plc = pl_col
+        if 'Currency' not in tmp.columns:
+            return ""
+        totals = tmp.groupby('Currency')[plc].sum().to_dict()
+        parts = []
+        for cur, val in totals.items():
+            try:
+                parts.append(f"{cur}: {base.format_currency(val, cur)}")
+            except Exception:
+                parts.append(f"{cur}: {val:.2f}")
+        return "; ".join(parts)
+    except Exception:
+        logger.exception("_original_totals_str failed")
+        return ""
 
 def _currency_color_map():
     base_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
     return {c: base_colors[i % len(base_colors)] for i, c in enumerate(AVAILABLE_CURRENCIES)}
+
+
+def _runtime_base_currency():
+    """Return current default base currency from settings module (reads at call time)."""
+    try:
+        return getattr(_settings, "DEFAULT_BASE_CURRENCY", "USD")
+    except Exception:
+        return "USD"
 
 
 def create_daily_pl(df, exchange_rates=None, base_currency=None, account_id=None):
@@ -62,7 +99,7 @@ def create_daily_pl(df, exchange_rates=None, base_currency=None, account_id=None
     if exchange_rates is None:
         exchange_rates = getattr(_settings, "DEFAULT_EXCHANGE_RATES", {})
     if base_currency is None:
-        base_currency = getattr(_settings, "DEFAULT_BASE_CURRENCY", None)
+        base_currency = _runtime_base_currency()
     unified = base.to_unified_currency(trading_df, exchange_rates, base_currency)
 
     # aggregate by day
@@ -70,29 +107,41 @@ def create_daily_pl(df, exchange_rates=None, base_currency=None, account_id=None
     unified[date_col] = pd.to_datetime(unified[date_col], errors='coerce')
     daily = unified.set_index(date_col).resample('D')['_pl_in_base'].sum().reset_index()
 
-    fig = setup_base_figure()
+    # Build a table + chart subplot so we can show original-currency totals above the chart
     if daily.empty:
-        return fig
-    # use COLORS from settings.py directly
-    marker_colors = [COLORS['profit'] if v >= 0 else COLORS['loss'] for v in daily['_pl_in_base']]
-    logger.debug("create_daily_pl: marker colors=%s", marker_colors)
+        return setup_base_figure()
 
+    orig_totals = _original_totals_str(trading_df)
+    fig = make_subplots(rows=2, cols=1, row_heights=[0.22, 0.78],
+                        specs=[[{"type": "table"}], [{"type": "xy"}]])
+    # Stats table (single row: Original totals)
+    fig.add_trace(
+        go.Table(
+            header=dict(values=["Metric", "Value"], fill_color="lightgrey", align="left"),
+            cells=dict(values=[["Original totals"], [orig_totals]], align="left")
+        ),
+        row=1, col=1
+    )
+
+    # Chart
+    marker_colors = [COLORS['profit'] if v >= 0 else COLORS['loss'] for v in daily['_pl_in_base']]
     fig.add_trace(go.Bar(
         x=daily[date_col],
         y=daily['_pl_in_base'],
         marker_color=marker_colors,
         text=[base.format_currency(v, base_currency) for v in daily['_pl_in_base']]
-    ))
+    ), row=2, col=1)
     apply_standard_layout(fig, "Daily P/L")
+    fig.update_layout(height=max(500, 150 + len(marker_colors) * 6))
     return fig
 
 
 def create_daily_pl_vs_trades(df, exchange_rates=None, base_currency=None, account_id=None):
     # Use explicit fallback inside function so there's no dependency on name at import-time
     if exchange_rates is None:
-        exchange_rates = DEFAULT_EXCHANGE_RATES or {}
+        exchange_rates = getattr(_settings, "DEFAULT_EXCHANGE_RATES", {})
     if base_currency is None:
-        base_currency = DEFAULT_BASE_CURRENCY
+        base_currency = _runtime_base_currency()
 
     if account_id and account_id != "all":
         try:
@@ -304,30 +353,63 @@ def create_relative_balance_history(df, exchange_rates=None, base_currency=None,
 
 
 def get_market_data(df):
-    # Remove funding/charges using normalized trading data then exclude obvious non-market descriptions
-    trading_df = base.normalize_trading_df(df)
+    """
+    Return rows that represent market trading activity.
+    Prefer base.get_trading_data (already filters non-trades). Also explicitly
+    exclude any row whose Action contains 'fund' (case-insensitive) so funding
+    transfers are never shown in market PL.
+    Falls back to a looser selection if strict criteria remove everything.
+    """
+    # Prefer the canonical trading-only helper
+    try:
+        trading_df = base.get_trading_data(df)
+    except Exception:
+        logger.debug("get_market_data: base.get_trading_data failed; falling back to normalize_trading_df")
+        trading_df = base.normalize_trading_df(df)
+
     if trading_df is None:
         trading_df = pd.DataFrame()
     if trading_df.empty:
         return pd.DataFrame()
+
+    # Explicitly exclude any funding-related actions (defensive)
+    if 'Action' in trading_df.columns:
+        fund_mask = trading_df['Action'].astype(str).str.contains('fund', case=False, na=False)
+    else:
+        fund_mask = pd.Series([False] * len(trading_df), index=trading_df.index)
+
+    # Exclude common non-market descriptions as well
     excluded_patterns = ['fee', 'payable', 'interest', 'online transfer', 'deposit', 'withdraw']
     pattern = '|'.join(excluded_patterns)
-    # Use .get to be tolerant if Description is missing; coerce to string
-    desc_series = trading_df.get('Description')
+    desc_series = None
+    for cand in ('Description', 'Desc', 'Market', 'Instrument', 'Symbol'):
+        if cand in trading_df.columns:
+            desc_series = trading_df[cand].astype(str)
+            break
     if desc_series is None:
-        # try other candidate columns
-        for cand in ('Desc', 'Market', 'Instrument', 'Symbol'):
-            if cand in trading_df.columns:
-                desc_series = trading_df[cand].astype(str)
-                break
-    if desc_series is None:
-        # fallback: create empty string series
         desc_series = pd.Series([''] * len(trading_df), index=trading_df.index)
-    else:
-        desc_series = desc_series.astype(str)
-    mask = ~desc_series.str.contains(pattern, case=False, na=False)
-    # Return a copy of rows considered market-related
-    return trading_df[mask].copy()
+    excluded_mask = desc_series.fillna('').astype(str).str.contains(pattern, case=False, na=False)
+
+    # Candidate rows: trading_df & not funding & not excluded_by_desc
+    candidate_mask = (~fund_mask) & (~excluded_mask)
+    selected = trading_df[candidate_mask].copy()
+
+    logger.debug("get_market_data: total=%d fund_rows=%d excluded_by_desc=%d selected=%d",
+                 len(trading_df), int(fund_mask.sum()), int(excluded_mask.sum()), len(selected))
+    if not selected.empty:
+        logger.debug("get_market_data: sample selected rows: %s", selected.head(3).to_dict('records'))
+        return selected
+
+    # Fallbacks — be permissive but still exclude explicit funding actions
+    fallback = trading_df[~fund_mask].copy()
+    logger.debug("get_market_data: strict selection empty, falling back to non-fund rows count=%d", len(fallback))
+    if not fallback.empty:
+        logger.debug("get_market_data: sample fallback rows: %s", fallback.head(3).to_dict('records'))
+        return fallback
+
+    # Last resort: return trading_df as-is
+    logger.debug("get_market_data: nothing left after exclusion; returning trading_df (count=%d)", len(trading_df))
+    return trading_df.copy()
 
 
 def calculate_win_loss_stats(market_df):
@@ -485,12 +567,33 @@ def create_market_pl_chart(df, top_n=10, exchange_rates=None, base_currency=None
     fig = setup_base_figure()
     if agg.empty:
         logger.debug("create_market_pl_chart: agg is empty -> no data to plot")
-        return fig
+        return setup_base_figure()
 
     # ensure label col is string for plotting
     agg[label_col] = agg[label_col].astype(str)
-    fig.add_trace(go.Bar(x=agg[label_col], y=agg['_pl_in_base'], text=[base.format_currency(v, base_currency) for v in agg['_pl_in_base']]))
+    # original totals string from the market_df pre-conversion
+    orig_totals = _original_totals_str(market_df)
+    fig = make_subplots(rows=2, cols=1, row_heights=[0.22, 0.78],
+                        specs=[[{"type": "table"}], [{"type": "xy"}]])
+    fig.add_trace(
+        go.Table(
+            header=dict(values=["Metric", "Value"], fill_color="lightgrey", align="left"),
+            cells=dict(values=[["Original totals"], [orig_totals]], align="left")
+        ),
+        row=1, col=1
+    )
+    # color positive PL as profit, negative as loss using settings COLORS
+    profit_color = COLORS.get('profit', 'green')
+    loss_color = COLORS.get('loss', 'red')
+    marker_colors = [profit_color if v >= 0 else loss_color for v in agg['_pl_in_base']]
+    fig.add_trace(go.Bar(
+        x=agg[label_col],
+        y=agg['_pl_in_base'],
+        marker_color=marker_colors,
+        text=[base.format_currency(v, base_currency) for v in agg['_pl_in_base']]
+    ), row=2, col=1)
     apply_standard_layout(fig, "PL by Market")
+    fig.update_layout(height=max(600, 200 + len(agg) * 20))
     return fig
 
 # Backwards-compatible wrapper for older code that called get_trading_pl_without_funding
@@ -595,7 +698,7 @@ def create_balance_history(df, exchange_rates=None, base_currency=None, account_
         if exchange_rates is None:
             exchange_rates = DEFAULT_EXCHANGE_RATES or {}
         if base_currency is None:
-            base_currency = DEFAULT_BASE_CURRENCY
+            base_currency = _runtime_base_currency()
 
         if 'Currency' in df.columns and exchange_rates and base_currency:
             def conv_factor(curr):
@@ -640,6 +743,110 @@ def create_balance_history(df, exchange_rates=None, base_currency=None, account_
         logger.exception("create_balance_history failed: %s", exc)
         return setup_base_figure()
 
+
+def create_monthly_distribution(df, exchange_rates=None, base_currency=None, account_id=None,
+                                start_date=None, end_date=None):
+    logger.debug("create_monthly_distribution called; incoming df type=%s shape=%s", type(df), getattr(df, "shape", None))
+
+    # Prefer incoming DataFrame if it already looks normalized
+    tdf = None
+    try:
+        if isinstance(df, pd.DataFrame):
+            if ('Transaction Date' in df.columns) and (('_pl_numeric' in df.columns) or ('P/L' in df.columns)):
+                tdf = df.copy()
+                logger.debug("create_monthly_distribution: using incoming DataFrame directly")
+    except Exception:
+        logger.exception("create_monthly_distribution: error inspecting incoming df; will try normalizer")
+
+    if tdf is None:
+        try:
+            tdf = base.get_filtered_trading_df(df, account_id=account_id)
+        except Exception:
+            logger.exception("create_monthly_distribution: get_filtered_trading_df failed; falling back to original df")
+            tdf = df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame()
+
+    if not isinstance(tdf, pd.DataFrame):
+        tdf = pd.DataFrame()
+    if tdf.empty:
+        logger.debug("create_monthly_distribution: no data after normalization")
+        return setup_base_figure()
+
+    # Optional additional filtering
+    try:
+        if account_id is not None and 'account_id' in tdf.columns:
+            tdf = tdf[tdf['account_id'] == account_id]
+        if start_date is not None:
+            sd = pd.to_datetime(start_date, errors='coerce')
+            if pd.notna(sd):
+                tdf = tdf[pd.to_datetime(tdf['Transaction Date'], errors='coerce') >= sd]
+        if end_date is not None:
+            ed = pd.to_datetime(end_date, errors='coerce')
+            if pd.notna(ed):
+                tdf = tdf[pd.to_datetime(tdf['Transaction Date'], errors='coerce') <= ed]
+    except Exception:
+        logger.exception("create_monthly_distribution: optional filtering failed; continuing with available rows")
+
+    if tdf.empty:
+        logger.debug("create_monthly_distribution: empty after applying optional filters")
+        return setup_base_figure()
+
+    # unify to base currency
+    if exchange_rates is None:
+        exchange_rates = getattr(_settings, "DEFAULT_EXCHANGE_RATES", {})
+    if base_currency is None:
+        base_currency = _runtime_base_currency()
+
+    try:
+        unified = base.to_unified_currency(tdf, exchange_rates, base_currency)
+    except Exception:
+        logger.exception("create_monthly_distribution: to_unified_currency failed; attempting salvage")
+        unified = _ensure_pl_column(tdf)
+        unified['_pl_in_base'] = pd.to_numeric(unified.get('_pl_numeric', 0), errors='coerce').fillna(0.0)
+
+    if unified is None or unified.empty:
+        logger.debug("create_monthly_distribution: unified data empty")
+        return setup_base_figure()
+
+    # Determine date column
+    date_col = find_date_col(unified) or 'Transaction Date'
+    unified[date_col] = pd.to_datetime(unified[date_col], errors='coerce')
+    unified = unified.dropna(subset=[date_col])
+    if unified.empty:
+        return setup_base_figure()
+
+    # Group by month
+    unified['Month'] = unified[date_col].dt.to_period('M').dt.to_timestamp()
+    monthly = unified.groupby('Month')['_pl_in_base'].sum().reset_index().sort_values('Month')
+
+    if monthly.empty:
+        return setup_base_figure()
+
+    # Colors from settings
+    profit_color = COLORS.get('profit', 'green')
+    loss_color = COLORS.get('loss', 'red')
+    marker_colors = [profit_color if v >= 0 else loss_color for v in monthly['_pl_in_base']]
+
+    # Show original totals in a top table and chart below (same style as points.py)
+    orig_totals = _original_totals_str(tdf)
+    fig = make_subplots(rows=2, cols=1, row_heights=[0.22, 0.78],
+                        specs=[[{"type": "table"}], [{"type": "xy"}]])
+    fig.add_trace(
+        go.Table(
+            header=dict(values=["Metric", "Value"], fill_color="lightgrey", align="left"),
+            cells=dict(values=[["Original totals"], [orig_totals]], align="left")
+        ),
+        row=1, col=1
+    )
+    fig.add_trace(go.Bar(
+        x=monthly['Month'],
+        y=monthly['_pl_in_base'],
+        marker_color=marker_colors,
+        text=[base.format_currency(v, base_currency) for v in monthly['_pl_in_base']]
+    ), row=2, col=1)
+    apply_standard_layout(fig, "Monthly P/L")
+    fig.update_layout(height=max(500, 180 + len(monthly) * 6))
+    return fig
+
 __all__ = [
     "create_daily_pl",
     "create_daily_pl_vs_trades",
@@ -649,4 +856,5 @@ __all__ = [
     "get_trading_pl_without_funding",
     "create_market_pl",
     "create_balance_history",
+    "create_monthly_distribution",
 ]

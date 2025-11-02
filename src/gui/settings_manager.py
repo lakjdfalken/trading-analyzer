@@ -1,10 +1,17 @@
+import json
 import logging
+import os
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QMessageBox
+import settings as _settings
+
 from settings import (DEFAULT_EXCHANGE_RATES, AVAILABLE_CURRENCIES, 
                      DEFAULT_BASE_CURRENCY)
 
 logger = logging.getLogger(__name__)
+
+CONFIG_DIR = os.path.expanduser("~/.trading-analyzer")
+CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 
 class SettingsManager(QObject):
     accounts_updated = pyqtSignal()
@@ -29,24 +36,49 @@ class SettingsManager(QObject):
         # ... existing code ...
         self.accounts_updated.emit()  # Emit signal after deleting an account
 
+    def _load_config(self):
+        try:
+            if not os.path.isdir(CONFIG_DIR):
+                os.makedirs(CONFIG_DIR, exist_ok=True)
+            if os.path.exists(CONFIG_PATH):
+                with open(CONFIG_PATH, "r", encoding="utf-8") as fh:
+                    return json.load(fh)
+        except Exception:
+            pass
+        return {}
+
+    def _save_config(self, cfg: dict):
+        try:
+            if not os.path.isdir(CONFIG_DIR):
+                os.makedirs(CONFIG_DIR, exist_ok=True)
+            with open(CONFIG_PATH, "w", encoding="utf-8") as fh:
+                json.dump(cfg, fh, indent=2)
+        except Exception:
+            logger = __import__("logging").getLogger(__name__)
+            logger.exception("Failed to save settings config")
+
     def get_exchange_rates(self):
         """Return current exchange rates"""
         return self.exchange_rates.copy()
 
     def get_base_currency(self):
-        """Return current base currency"""
-        return self.base_currency
+        """Return the persisted base currency or fallback to settings module DEFAULT_BASE_CURRENCY."""
+        cfg = self._load_config()
+        val = cfg.get("base_currency")
+        if val:
+            return val
+        return getattr(_settings, "DEFAULT_BASE_CURRENCY", "USD")
 
-    def set_base_currency(self, new_currency):
-        """Set new base currency and recalculate rates"""
-        if new_currency not in AVAILABLE_CURRENCIES:
-            raise ValueError(f"Invalid currency: {new_currency}")
-            
-        old_currency = self.base_currency
-        self.base_currency = new_currency
-        
-        logger.info(f"Base currency changed from {old_currency} to {new_currency}")
-        return True
+    def set_base_currency(self, cur: str):
+        """Persist base currency and update runtime settings module so other modules see the change."""
+        cfg = self._load_config()
+        cfg["base_currency"] = cur
+        self._save_config(cfg)
+        try:
+            # update settings module at runtime so chart code that reads settings.* sees the new default
+            setattr(_settings, "DEFAULT_BASE_CURRENCY", cur)
+        except Exception:
+            pass
 
     def update_exchange_rate(self, currency, rate):
         """Update exchange rate for a currency"""

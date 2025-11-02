@@ -1,17 +1,11 @@
 import os
 import sqlite3
-import traceback
-import logging
-import re
+from typing import Optional, Dict, List
 import pandas as pd
 import settings as _settings
-from typing import Optional, Dict, List
 from chart_types.base import find_pl_col, coerce_pl_numeric  # centralized helpers
 import logging
 import re
-import pandas as pd
-from typing import Optional, Dict, List
-from chart_types.base import find_pl_col, coerce_pl_numeric  # centralized helpers
 
 logger = logging.getLogger(__name__)
 
@@ -599,6 +593,72 @@ class DataManager:
             return 0.0
 
         return float(trading_df.get('_pl_numeric', pd.Series(dtype=float)).sum())
+
+    def get_available_years(self) -> List[int]:
+        """
+        Return available years (ints) present in the stored trading data.
+
+        Strategy (simple, sqlite-first):
+        - If self.conn (sqlite3.Connection) and a table name exists, run a DISTINCT year query.
+        - Else if self.db_path / self.database is set, open sqlite and run the query.
+        - Else fall back to loading a DataFrame via get_all_data()/get_filtered_data() and derive years.
+        """
+        try:
+            # prefer explicit table name attributes
+            table = getattr(self, "table_name", None) or getattr(self, "table", None) or getattr(self, "transactions_table", None)
+            date_col = getattr(self, "date_col", "Transaction Date")
+
+            # 1) sqlite connection on the manager
+            conn = getattr(self, "conn", None) or getattr(self, "connection", None) or getattr(self, "db_connection", None)
+            if isinstance(conn, sqlite3.Connection) and table:
+                try:
+                    cur = conn.cursor()
+                    q = f'SELECT DISTINCT strftime(\'%Y\', "{date_col}") FROM "{table}" WHERE "{date_col}" IS NOT NULL'
+                    cur.execute(q)
+                    rows = [int(r[0]) for r in cur.fetchall() if r and r[0] is not None]
+                    years = sorted(set(rows), reverse=True)
+                    return years
+                except Exception:
+                    pass
+
+            # 2) sqlite file path
+            db_path = getattr(self, "db_path", None) or getattr(self, "database", None)
+            if db_path and table:
+                try:
+                    with sqlite3.connect(db_path) as c:
+                        cur = c.cursor()
+                        q = f'SELECT DISTINCT strftime(\'%Y\', "{date_col}") FROM "{table}" WHERE "{date_col}" IS NOT NULL'
+                        cur.execute(q)
+                        rows = [int(r[0]) for r in cur.fetchall() if r and r[0] is not None]
+                        years = sorted(set(rows), reverse=True)
+                        return years
+                except Exception:
+                    pass
+
+            # 3) Fallback: load dataframe and derive years
+            df = None
+            if hasattr(self, "get_all_data") and callable(getattr(self, "get_all_data")):
+                try:
+                    df = self.get_all_data()
+                except Exception:
+                    df = None
+            if (df is None or not isinstance(df, pd.DataFrame) or df.empty) and hasattr(self, "get_filtered_data") and callable(getattr(self, "get_filtered_data")):
+                try:
+                    df = self.get_filtered_data()
+                except Exception:
+                    df = None
+
+            if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+                return []
+
+            # choose Transaction Date (or find a date column)
+            if date_col not in df.columns:
+                date_col = next((c for c in df.columns if "date" in c.lower()), date_col)
+            df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+            years = sorted(df[date_col].dt.year.dropna().unique().astype(int).tolist(), reverse=True)
+            return years
+        except Exception:
+            return []
 
     def _classify_transactions(self, df: pd.DataFrame) -> pd.DataFrame:
         """

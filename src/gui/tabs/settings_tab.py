@@ -10,8 +10,8 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 class SettingsTab(QWidget):
-    def __init__(self, settings_manager):
-        super().__init__()
+    def __init__(self, settings_manager, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.settings_manager = settings_manager
         self.exchange_rate_inputs = {}
         self.account_combo = None  # Initialize account_combo attribute
@@ -153,11 +153,12 @@ class SettingsTab(QWidget):
         base_currency_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         base_currency_layout.addWidget(base_currency_label)
 
-        self.base_currency_combo = QComboBox()
+        self.base_currency_combo = QComboBox(self)
         self.base_currency_combo.addItems(AVAILABLE_CURRENCIES)
         self.base_currency_combo.setCurrentText(self.settings_manager.get_base_currency())
         self.base_currency_combo.setFixedWidth(80)
-        self.base_currency_combo.currentTextChanged.connect(self.change_base_currency)
+        # persist base currency when the user changes it
+        self.base_currency_combo.currentTextChanged.connect(self._on_base_currency_changed)
         base_currency_layout.addWidget(self.base_currency_combo)
 
         info_label = QLabel("(All amounts will be converted to this currency)")
@@ -695,3 +696,10 @@ class SettingsTab(QWidget):
         """Override showEvent to load accounts when the tab becomes visible"""
         super().showEvent(event)
         self.load_accounts()
+
+    def _on_base_currency_changed(self, cur: str):
+        """Persist base currency selection so charts use it across restarts."""
+        try:
+            self.settings_manager.set_base_currency(cur)
+        except Exception:
+            logging.getLogger(__name__).exception("Failed to persist base currency change")
