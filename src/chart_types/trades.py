@@ -29,7 +29,7 @@ def create_daily_trade_count(df):
         x=list(daily_trades.index),
         y=daily_trades.values,
         name='Daily Trades',
-        marker_color=COLORS['trading'],
+        marker_color=COLORS['trading'][0],
         opacity=0.6
     ))
     
@@ -38,7 +38,7 @@ def create_daily_trade_count(df):
         x=list(daily_trades.index),
         y=[avg_trades] * len(daily_trades),
         name=f'Average ({avg_trades:.1f} trades/day)',
-        line=dict(color=COLORS['trading'], dash='dash')
+        line=dict(color=COLORS['trading'][1], dash='dash')
     ))
     
     # Add summary annotation
