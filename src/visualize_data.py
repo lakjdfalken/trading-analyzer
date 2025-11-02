@@ -84,7 +84,7 @@ def create_visualization_figure(df, graph_type, exchange_rates=None, base_curren
             return create_market_pl(df)
             
         elif graph_type == 'Daily Trades':
-            from chart_types.pl import create_daily_trade_count
+            from chart_types.trades import create_daily_trade_count
             return create_daily_trade_count(df)
             
         elif graph_type == 'Daily P/L vs Trades':

@@ -102,7 +102,9 @@ def get_tax_overview_data(df, year=None, broker=None):
         return pd.DataFrame()
 
     # Add Year column for grouping
-    df['Year'] = df[date_col].dt.year
+    # avoid SettingWithCopyWarning: work on an explicit copy and use .loc for assignment
+    df = df.copy()
+    df.loc[:, 'Year'] = df[date_col].dt.year
 
     group_cols = ['Broker_Display', 'Description', 'Currency', 'Year']
 

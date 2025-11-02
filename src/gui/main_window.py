@@ -16,7 +16,7 @@ from .tabs.data_tab import DataTab
 from .tabs.graph_tab import GraphTab
 from .tabs.settings_tab import SettingsTab
 from .tabs.overview_tab import OverviewTab
-from .tabs.data_overview_tab import DataOverviewTab
+from .tabs.general_data_tab import DataOverviewTab
 
 logger = logging.getLogger(__name__)
 
@@ -85,14 +85,14 @@ class TradingAnalyzerGUI(QMainWindow):
         self.graph_tab = GraphTab(self.data_manager, self.visualization_manager, self.settings_manager)
         self.settings_tab = SettingsTab(self.settings_manager)
         self.overview_tab = OverviewTab(self.data_manager, self.visualization_manager)
-        self.data_overview_tab = DataOverviewTab(self.data_manager, self.settings_manager)
+        self.general_data_tab  = DataOverviewTab(self.data_manager, self.settings_manager)
         
         # Add tabs to widget
         self.tab_widget.addTab(self.data_tab, "Data View")
         self.tab_widget.addTab(self.graph_tab, "Graphs")
         self.tab_widget.addTab(self.settings_tab, "Settings")
         self.tab_widget.addTab(self.overview_tab, "Tax Overview")
-        self.tab_widget.addTab(self.data_overview_tab, "Data Overview")
+        self.tab_widget.addTab(self.general_data_tab , "General Data")
         
         self.main_layout.addWidget(self.tab_widget)
 
