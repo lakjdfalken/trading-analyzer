@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QFrame, QLabel,
                            QComboBox, QPushButton, QLineEdit, QTreeWidget, 
-                           QTreeWidgetItem, QSizePolicy, QMessageBox)
+                           QTreeWidgetItem, QSizePolicy, QMessageBox, QApplication,
+                           QSplitter)
 from PyQt6.QtCore import Qt
 import logging
 import sqlite3
@@ -32,27 +33,49 @@ class GraphTab(QWidget):
         self.load_accounts()  # Ensure accounts are loaded after UI setup
 
     def setup_ui(self):
-        """Setup the graph tab UI"""
+        """Setup the graph tab UI using a QSplitter so the left column is resizable."""
         layout = QHBoxLayout(self)
 
-        # Create selection frame
-        self.create_selection_frame(layout)
-        
+        # Create a horizontal splitter so the selection column and graph area are resizable
+        splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        splitter.setHandleWidth(8)
+
+        # Create selection frame (create_selection_frame will return the widget when called without args)
+        try:
+            sel_frame = self.create_selection_frame()  # returns the selection QWidget
+        except TypeError:
+            # fallback for older create_selection_frame signature that expects a layout
+            # create a temporary container and pass its layout
+            sel_frame = QFrame()
+            sel_layout = QVBoxLayout(sel_frame)
+            sel_layout.setContentsMargins(0, 0, 0, 0)
+            self.create_selection_frame(sel_layout)
+
+        sel_frame.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        sel_frame.setMinimumWidth(UI_SETTINGS.get('graph_selection_width', 260))
+
         # Create graph display area
         self.graph_display_frame = QFrame()
-        self.graph_display_frame.setSizePolicy(
-            QSizePolicy.Policy.Expanding, 
-            QSizePolicy.Policy.Expanding
-        )
-        layout.addWidget(self.graph_display_frame)
+        self.graph_display_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-    def create_selection_frame(self, parent_layout):
-        """Create the graph selection controls"""
+        # Add both panes to splitter and set initial sizes
+        splitter.addWidget(sel_frame)
+        splitter.addWidget(self.graph_display_frame)
+        splitter.setSizes([UI_SETTINGS.get('graph_selection_width', 260), 1000])
+
+        layout.addWidget(splitter)
+
+    def create_selection_frame(self, parent_layout=None):
+        """Create the left selection column. If parent_layout is provided it will add the frame to it.
+        Otherwise the created selection frame widget is returned for use (e.g., with a QSplitter)."""
         selection_frame = QFrame()
-        selection_frame.setFixedWidth(UI_SETTINGS['graph_selection_width'])
         selection_layout = QVBoxLayout(selection_frame)
+        selection_layout.setContentsMargins(8, 8, 8, 8)
+        selection_layout.setSpacing(8)
 
         # Broker selection
+        # Label above broker combo
+        selection_layout.addWidget(QLabel("Broker"))
         self.broker_combo = QComboBox()
         self.broker_combo.clear()  # Ensure it's empty before adding items
         # Deduplicate broker display names (case-insensitive, strip whitespace)
@@ -100,7 +123,12 @@ class GraphTab(QWidget):
         display_button.clicked.connect(self.display_selected_graph)
         selection_layout.addWidget(display_button)
 
-        parent_layout.addWidget(selection_frame)
+        # If caller gave a parent_layout, add selection_frame into it and return None
+        if parent_layout is not None:
+            parent_layout.addWidget(selection_frame)
+            return None
+        # Otherwise return the widget so the caller can insert it into a splitter
+        return selection_frame
 
     def create_account_filter(self, parent_layout):
         """Create account filter dropdown"""
@@ -135,20 +163,33 @@ class GraphTab(QWidget):
     def create_quick_select_buttons(self, parent_layout):
         """Create quick date selection buttons"""
         quick_select_frame = QFrame()
+        # allow the quick-select frame to use available horizontal space in the selection column
+        quick_select_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         quick_select_layout = QHBoxLayout(quick_select_frame)
+        quick_select_layout.setContentsMargins(0, 0, 0, 0)
+        quick_select_layout.setSpacing(8)
 
+        # Make buttons expand horizontally so labels are readable
         seven_days_btn = QPushButton("7 Days")
+        seven_days_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        seven_days_btn.setMinimumWidth(80)
         seven_days_btn.clicked.connect(lambda: self.set_date_range(7))
         quick_select_layout.addWidget(seven_days_btn)
 
         thirty_days_btn = QPushButton("30 Days")
+        thirty_days_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        thirty_days_btn.setMinimumWidth(90)
         thirty_days_btn.clicked.connect(lambda: self.set_date_range(30))
         quick_select_layout.addWidget(thirty_days_btn)
 
         all_btn = QPushButton("All")
+        all_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        all_btn.setMinimumWidth(60)
         all_btn.clicked.connect(self.reset_date_range)
         quick_select_layout.addWidget(all_btn)
 
+        # ensure buttons fill available width nicely
+        quick_select_layout.addStretch()
         parent_layout.addWidget(quick_select_frame)
 
     def set_date_range(self, days):

@@ -160,7 +160,12 @@ def aggregate_points(df: pd.DataFrame, mode: str = "daily") -> Dict[str, Any]:
 
 
 def create_points_view(df, mode='daily', top_n=10):
-    """Create unified points figure with stats on top and chart below."""
+    """Create unified points figure with stats on top and chart below.
+    Layout adjusted to match the style used in trades.create_daily_trade_count:
+    - compact top table (fixed header/row heights)
+    - autosize=True so the figure follows the container
+    - reduced top margin and horizontal legend
+    """
     logger.debug("create_points_view: incoming df type=%s shape=%s mode=%s", type(df), getattr(df, "shape", None), mode)
     # Prefer caller-provided DataFrame if it already contains trading rows (Opening/Closing or Transaction Date)
     dfc = None
@@ -194,104 +199,130 @@ def create_points_view(df, mode='daily', top_n=10):
         return fig
 
     stats = agg["stats"]
-    # build a 2-row layout: larger table area on top and chart below
-    # increase top row height so the stats table is larger and move it upward relative to the chart
-    fig = make_subplots(
-        rows=2,
-        cols=1,
-        row_heights=[0.32, 0.68],
-        specs=[[{"type": "table"}], [{"type": "xy"}]]
-    )
 
-    # Stats table (simple key/value)
-    stat_keys = []
-    stat_vals = []
-    # flatten stats for table readability
-    for k, v in stats.items():
-        if isinstance(v, dict):
-            stat_keys.append(k)
-            stat_vals.append("; ".join(f"{mk}:{mv:.2f}" if isinstance(mv, (float, int)) else f"{mk}:{mv}" for mk, mv in v.items()))
+    # Use a simple base figure (no top table). Show metrics as a trades.py-style annotation.
+    fig = setup_base_figure()
+    # Build a compact summary text (rounded to 1 decimal) depending on mode
+    try:
+        if mode == "daily":
+            total = float(stats.get("total_points", 0.0))
+            avg = float(stats.get("avg_per_day", 0.0))
+            num = int(stats.get("num_days", 0))
+            summary_text = (
+                f"Total Points: {total:.1f}<br>"
+                f"Average (per day): {avg:.1f}<br>"
+                f"Days: {num}"
+            )
+        elif mode == "monthly":
+            total = float(stats.get("total_points", 0.0))
+            avg = float(stats.get("avg_per_month", 0.0))
+            num = int(stats.get("num_months", 0))
+            summary_text = (
+                f"Total Points: {total:.1f}<br>"
+                f"Average (per month): {avg:.1f}<br>"
+                f"Months: {num}"
+            )
+        elif mode == "per_market":
+            total = float(stats.get("total_points", 0.0))
+            nmarkets = int(stats.get("num_markets", 0))
+            tbm = stats.get("total_by_market", {}) or {}
+            parts = []
+            for m, v in tbm.items():
+                try:
+                    parts.append(f"{m}: {float(v):.1f}")
+                except Exception:
+                    parts.append(f"{m}: {v}")
+            markets_str = "; ".join(parts)
+            summary_text = (
+                f"Total Points: {total:.1f}<br>"
+                f"Markets: {nmarkets}<br>"
+                f"{markets_str}"
+            )
         else:
-            stat_keys.append(k)
-            stat_vals.append(str(v))
-
-    # Compute table heights so the full table is visible (no internal scroll).
-    # Increase header/row heights to make the table area visually larger.
-    header_height = 36
-    row_height = 30
-
-    # Ensure a reasonable minimum chart area height and overall figure height
-    min_chart_area_px = 360
-    padding_px = 60  # margins, legend, etc.
-    total_height = int(header_height + row_height * max(1, len(stat_keys))) + min_chart_area_px + padding_px
-
-    # Add table with explicit row heights so Plotly doesn't add an internal scrollbar.
-    fig.add_trace(
-        go.Table(
-            header=dict(values=["Metric", "Value"], fill_color="lightgrey", align="left", height=header_height),
-            cells=dict(values=[stat_keys, stat_vals], align="left", height=row_height),
-        ),
-        row=1,
-        col=1,
+            summary_text = "; ".join(f"{k}: {v}" for k, v in stats.items())
+    except Exception:
+        logger.exception("Failed to build summary_text for points view")
+        summary_text = ""
+    # place annotation similarly to trades.py
+    fig.add_annotation(
+        text=summary_text,
+        xref='paper', yref='paper',
+        x=1.02, y=1,
+        showarrow=False,
+        bgcolor='white',
+        bordercolor='gray',
+        borderwidth=1
     )
-    # set preliminary figure height to accommodate the table + chart area; final resize applied later
-    fig.update_layout(height=total_height)
 
-    # Chart area
+    # Chart area (mode-specific)
     if mode == "daily":
         dfc: pd.DataFrame = agg["df"]
         if not dfc.empty:
-            fig.add_trace(go.Bar(x=dfc["Date"], y=dfc["Points"], name="Daily Points",
-                                 marker=dict(color=dfc["Points"].apply(lambda x: COLORS.get("profit", "green") if x > 0 else COLORS.get("loss", "red")))),
-                          row=2, col=1)
-            fig.add_trace(go.Scatter(x=dfc["Date"], y=dfc["Cumulative"], name="Cumulative", line=dict(color=COLORS.get("trading", "blue"))),
-                          row=2, col=1)
+            fig.add_trace(
+                go.Bar(
+                    x=dfc["Date"],
+                    y=dfc["Points"],
+                    name="Daily Points",
+                    marker=dict(color=dfc["Points"].apply(lambda x: COLORS.get("profit", "green") if x > 0 else COLORS.get("loss", "red")))
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=dfc["Date"],
+                    y=dfc["Cumulative"],
+                    name="Cumulative",
+                    line=dict(color=COLORS.get("trading", "blue"))
+                )
+            )
 
     elif mode == "monthly":
         dfc: pd.DataFrame = agg["df"]
         if not dfc.empty:
-            fig.add_trace(go.Bar(x=dfc["Month"], y=dfc["Points"], name="Monthly Points",
-                                 marker=dict(color=dfc["Points"].apply(lambda x: COLORS.get("profit", "green") if x > 0 else COLORS.get("loss", "red")))),
-                          row=2, col=1)
-            fig.add_trace(go.Scatter(x=dfc["Month"], y=dfc["Cumulative"], name="Cumulative", line=dict(color=COLORS.get("trading", "blue"))),
-                          row=2, col=1)
+            fig.add_trace(
+                go.Bar(
+                    x=dfc["Month"],
+                    y=dfc["Points"],
+                    name="Monthly Points",
+                    marker=dict(color=dfc["Points"].apply(lambda x: COLORS.get("profit", "green") if x > 0 else COLORS.get("loss", "red")))
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=dfc["Month"],
+                    y=dfc["Cumulative"],
+                    name="Cumulative",
+                    line=dict(color=COLORS.get("trading", "blue"))
+                )
+            )
 
     elif mode == "per_market":
         pivot: pd.DataFrame = agg["df"]
         if not pivot.empty:
-            # stacked/grouped bars per month per market
             markets = pivot.columns.tolist()
             for i, m in enumerate(markets):
                 fig.add_trace(
-                    go.Bar(x=pivot.index, y=pivot[m], name=m, marker=dict(color=COLORS.get("trading", "blue"))),
-                    row=2, col=1
+                    go.Bar(
+                        x=pivot.index,
+                        y=pivot[m],
+                        name=m,
+                        marker=dict(color=COLORS.get("trading", "blue"))
+                    )
                 )
-            # optionally add total line
-            total_series = pivot.sum(axis=1)
-            fig.add_trace(
-                go.Scatter(x=pivot.index, y=total_series, name="Total", line=dict(color=COLORS.get("profit", "green"))),
-                row=2, col=1
-            )
 
-    # Apply standard styling (mutates fig in-place)
+    # Apply styling and make responsive/autosize like trades.py
     apply_standard_layout(fig, f"Points - {mode.replace('_', ' ').title()}")
-
-    # Final layout: use computed height and place legend between table and chart.
-    final_height = max(total_height, 700)
     fig.update_layout(
-        height=final_height,
+        autosize=True,
         showlegend=True,
-        # move the table further up by reducing top margin
-        margin=dict(t=40, b=60, l=60, r=60),
+        margin=dict(t=36, b=60, l=60, r=60),
         legend=dict(
             orientation='h',
             yanchor='bottom',
-            # with row_heights=[0.32,0.68] the chart top is at ~0.68 in paper coords;
-            # place legend so its bottom aligns just above the chart area
-            y=0.68,
+            y=0.02,
             x=0.5,
             xanchor='center'
         )
     )
     fig.update_xaxes(tickangle=45)
+
     return fig

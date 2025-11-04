@@ -213,7 +213,7 @@ WINDOW_CONFIG = {
 # UI Component Settings
 UI_SETTINGS = {
     'broker_combo_width': 120,
-    'import_button_width': 80,
+    'import_button_width': 100,
     'theme_combo_width': 100,
     'debug_checkbox_width': 30,
     'transparency_slider': {
@@ -222,7 +222,7 @@ UI_SETTINGS = {
         'default': 100,
         'width': 200
     },
-    'graph_selection_width': 250,
+    'graph_selection_width': 230,
     'graph_list_width': 230
 }
 

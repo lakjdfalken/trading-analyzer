@@ -22,6 +22,7 @@ DEFAULT_BASE_CURRENCY = getattr(_settings, "DEFAULT_BASE_CURRENCY", "USD")
 DEFAULT_EXCHANGE_RATES = getattr(_settings, "DEFAULT_EXCHANGE_RATES", {})
 AVAILABLE_CURRENCIES = getattr(_settings, "AVAILABLE_CURRENCIES", ["USD"])
 CURRENCY_SYMBOLS = getattr(_settings, "CURRENCY_SYMBOLS", {"USD": "$"})
+DEFAULT_PLOT_MARGIN = dict(t=40, b=40, l=60, r=40)
 
 logger = logging.getLogger(__name__)
 
@@ -112,27 +113,33 @@ def create_daily_pl(df, exchange_rates=None, base_currency=None, account_id=None
         return setup_base_figure()
 
     orig_totals = _original_totals_str(trading_df)
-    fig = make_subplots(rows=2, cols=1, row_heights=[0.22, 0.78],
-                        specs=[[{"type": "table"}], [{"type": "xy"}]])
-    # Stats table (single row: Original totals)
-    fig.add_trace(
-        go.Table(
-            header=dict(values=["Metric", "Value"], fill_color="lightgrey", align="left"),
-            cells=dict(values=[["Original totals"], [orig_totals]], align="left")
-        ),
-        row=1, col=1
+    converted_total = float(daily['_pl_in_base'].sum())
+    converted_total_str = base.format_currency(converted_total, base_currency) if base_currency else f"{converted_total:.2f}"
+
+    # Use a simple base figure and place metrics as a trades.py-style annotation (keeps layout consistent)
+    fig = setup_base_figure()
+    # Annotation text (rounded, compact)
+    summary_text = f"Original totals: {orig_totals}<br>Converted total ({base_currency}): {converted_total_str}"
+    fig.add_annotation(
+        text=summary_text,
+        xref='paper', yref='paper',
+        x=1.02, y=1,
+        showarrow=False,
+        bgcolor='white',
+        bordercolor='gray',
+        borderwidth=1
     )
 
-    # Chart
-    marker_colors = [COLORS['profit'] if v >= 0 else COLORS['loss'] for v in daily['_pl_in_base']]
+    marker_colors = [COLORS.get('profit', 'green') if v >= 0 else COLORS.get('loss', 'red') for v in daily['_pl_in_base']]
     fig.add_trace(go.Bar(
         x=daily[date_col],
         y=daily['_pl_in_base'],
         marker_color=marker_colors,
         text=[base.format_currency(v, base_currency) for v in daily['_pl_in_base']]
-    ), row=2, col=1)
+    ))
     apply_standard_layout(fig, "Daily P/L")
-    fig.update_layout(height=max(500, 150 + len(marker_colors) * 6))
+    fig.update_layout(autosize=True, margin=DEFAULT_PLOT_MARGIN)
+    fig.update_xaxes(tickangle=45)
     return fig
 
 
@@ -248,7 +255,7 @@ def create_daily_pl_vs_trades(df, exchange_rates=None, base_currency=None, accou
         fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGray', row=i+1, col=1)
 
     apply_standard_layout(fig, "Daily P/L vs Trades")
-    fig.update_layout(showlegend=True, margin=dict(t=80, b=50), height=400 * len(currencies))
+    fig.update_layout(showlegend=True, margin=DEFAULT_PLOT_MARGIN, height=max(350, 360 * len(currencies)))
     return fig
 
 
@@ -334,6 +341,33 @@ def create_relative_balance_history(df, exchange_rates=None, base_currency=None,
 
         # Build Plotly figure
         fig = setup_base_figure()
+        # Build summary metrics (rounded) and show them as a trades.py-style annotation
+        try:
+            total = float(daily['cumulative'].iloc[-1]) if not daily.empty else 0.0
+            avg_per_day = float(daily['_pl_numeric'].mean()) if '_pl_numeric' in daily.columns else float(daily['cumulative'].diff().fillna(daily['cumulative']).mean())
+            num_days = int(len(daily))
+            start = pd.to_datetime(daily['Transaction Date'].min()).date() if not daily.empty else ""
+            end = pd.to_datetime(daily['Transaction Date'].max()).date() if not daily.empty else ""
+            summary_text = (
+                f"Total: {total:.1f}<br>"
+                f"Avg/day: {avg_per_day:.1f}<br>"
+                f"Days: {num_days}<br>"
+                f"{start} → {end}"
+            )
+        except Exception:
+            logger.exception("create_relative_balance_history: failed to compute summary metrics")
+            summary_text = ""
+
+        fig.add_annotation(
+            text=summary_text,
+            xref='paper', yref='paper',
+            x=1.02, y=1,
+            showarrow=False,
+            bgcolor='white',
+            bordercolor='gray',
+            borderwidth=1
+        )
+
         fig.add_trace(go.Scatter(
             x=daily['Transaction Date'],
             y=daily['cumulative'],
@@ -346,6 +380,7 @@ def create_relative_balance_history(df, exchange_rates=None, base_currency=None,
         apply_standard_layout(fig, "P/L History (Cumulative)")
         fig.update_yaxes(title_text="Cumulative P/L")
         fig.update_xaxes(title_text="Date")
+        fig.update_layout(margin=DEFAULT_PLOT_MARGIN)
         return fig
     except Exception as exc:
         logger.exception("create_relative_balance_history failed: %s", exc)
@@ -477,7 +512,7 @@ def create_win_loss_analysis(df):
                              marker=dict(size=8, color='rgba(0,128,128,0.8)'), line=dict(width=2, color='rgba(0,128,128,0.8)')),
                   row=2, col=1)
     apply_standard_layout(fig, "Win/Loss Analysis by Market")
-    fig.update_layout(title='Win/Loss Analysis by Market', barmode='group', template='plotly_white', height=800)
+    fig.update_layout(title='Win/Loss Analysis by Market', barmode='group', template='plotly_white', height=800, margin=DEFAULT_PLOT_MARGIN)
     fig.update_xaxes(title_text="Market")
     fig.update_yaxes(title_text="Count", row=1, col=1)
     fig.update_yaxes(title_text="Win Rate (%)", row=2, col=1)
@@ -571,18 +606,20 @@ def create_market_pl_chart(df, top_n=10, exchange_rates=None, base_currency=None
 
     # ensure label col is string for plotting
     agg[label_col] = agg[label_col].astype(str)
-    # original totals string from the market_df pre-conversion
     orig_totals = _original_totals_str(market_df)
-    fig = make_subplots(rows=2, cols=1, row_heights=[0.22, 0.78],
-                        specs=[[{"type": "table"}], [{"type": "xy"}]])
-    fig.add_trace(
-        go.Table(
-            header=dict(values=["Metric", "Value"], fill_color="lightgrey", align="left"),
-            cells=dict(values=[["Original totals"], [orig_totals]], align="left")
-        ),
-        row=1, col=1
+    converted_total = float(unified['_pl_in_base'].sum()) if '_pl_in_base' in unified.columns else 0.0
+    converted_total_str = base.format_currency(converted_total, base_currency) if base_currency else f"{converted_total:.2f}"
+    summary_text = f"Original totals: {orig_totals}<br>Converted total ({base_currency}): {converted_total_str}"
+    fig.add_annotation(
+        text=summary_text,
+        xref='paper', yref='paper',
+        x=1.02, y=1,
+        showarrow=False,
+        bgcolor='white',
+        bordercolor='gray',
+        borderwidth=1
     )
-    # color positive PL as profit, negative as loss using settings COLORS
+
     profit_color = COLORS.get('profit', 'green')
     loss_color = COLORS.get('loss', 'red')
     marker_colors = [profit_color if v >= 0 else loss_color for v in agg['_pl_in_base']]
@@ -591,22 +628,29 @@ def create_market_pl_chart(df, top_n=10, exchange_rates=None, base_currency=None
         y=agg['_pl_in_base'],
         marker_color=marker_colors,
         text=[base.format_currency(v, base_currency) for v in agg['_pl_in_base']]
-    ), row=2, col=1)
+    ))
     apply_standard_layout(fig, "PL by Market")
-    fig.update_layout(height=max(600, 200 + len(agg) * 20))
+    fig.update_layout(autosize=True, margin=DEFAULT_PLOT_MARGIN)
+    fig.update_xaxes(tickangle=45)
     return fig
 
-# Backwards-compatible wrapper for older code that called get_trading_pl_without_funding
-def get_trading_pl_without_funding(df, top_n=10):
-    """
-    Compatibility shim: previously returned Market P/L excluding funding/charges.
-    Delegates to create_market_pl_chart to preserve behavior.
-    """
-    return create_market_pl_chart(df, top_n=top_n)
 
-def create_market_pl(*args, **kwargs):
-    """Backward-compatible alias for create_market_pl_chart."""
-    return create_market_pl_chart(*args, **kwargs)
+def _monthly_pl_legacy(df, exchange_rates=None, base_currency=None, account_id=None,
+                        start_date=None, end_date=None):
+    """Backward-compatible wrapper for monthly P/L using create_market_pl_chart."""
+    logger.warning("create_monthly_pl is deprecated; use create_market_pl_chart with top_n param")
+    top_n = 10
+    if account_id and account_id != "all":
+        try:
+            df = df[df['account_id'] == account_id]
+        except Exception:
+            pass
+    # Fallback to original df if filtering fails
+    df = df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame()
+
+    # Use create_market_pl_chart to compute monthly P/L (top N markets)
+    return create_market_pl_chart(df, top_n=top_n, exchange_rates=exchange_rates, base_currency=base_currency)
+
 
 def create_balance_history(df, exchange_rates=None, base_currency=None, account_id=None, start_date=None, end_date=None):
     """
@@ -700,13 +744,14 @@ def create_balance_history(df, exchange_rates=None, base_currency=None, account_
         if base_currency is None:
             base_currency = _runtime_base_currency()
 
+        def conv_factor(curr):
+            try:
+                base_rate = exchange_rates.get(base_currency, 1.0) or 1.0
+                return (exchange_rates.get(curr, 1.0) or 1.0) / base_rate
+            except Exception:
+                return 1.0
+
         if 'Currency' in df.columns and exchange_rates and base_currency:
-            def conv_factor(curr):
-                try:
-                    base_rate = exchange_rates.get(base_currency, 1.0) or 1.0
-                    return (exchange_rates.get(curr, 1.0) or 1.0) / base_rate
-                except Exception:
-                    return 1.0
             df['_conv'] = df['Currency'].apply(conv_factor)
             df['_balance_in_base'] = df['Balance'] * df['_conv']
             y_col = '_balance_in_base'
@@ -716,14 +761,50 @@ def create_balance_history(df, exchange_rates=None, base_currency=None, account_
             y_label_currency = None
             df['_balance_in_base'] = df['Balance']
 
+        # Prepare original totals (per-currency last known balance) and converted total
+        try:
+            tmp = df.copy()
+            tmp = tmp.sort_values('Transaction Date')
+            if 'Currency' in tmp.columns:
+                last_by_currency = tmp.groupby('Currency', sort=False).last()
+                orig_parts = []
+                for cur, row in last_by_currency.iterrows():
+                    try:
+                        orig_parts.append(f"{cur}: {base.format_currency(row.get('Balance', 0.0), cur)}")
+                    except Exception:
+                        orig_parts.append(f"{cur}: {row.get('Balance', 0.0):.2f}")
+                orig_totals = "; ".join(orig_parts)
+                # converted total is sum of last per-currency converted balances
+                converted_total = float(last_by_currency.get('_balance_in_base', last_by_currency.get('Balance', 0)).sum())
+            else:
+                # no currency column: show single total (last balance)
+                last_balance = tmp.sort_values('Transaction Date').iloc[-1]['Balance'] if not tmp.empty else 0.0
+                orig_totals = base.format_currency(last_balance, y_label_currency or base_currency) if y_label_currency or base_currency else f"{last_balance:.2f}"
+                converted_total = float(tmp['_balance_in_base'].iloc[-1]) if not tmp.empty else 0.0
+            converted_total_str = base.format_currency(converted_total, base_currency) if base_currency else f"{converted_total:.2f}"
+        except Exception:
+            logger.exception("create_balance_history: failed to compute original/converted totals")
+            orig_totals = ""
+            converted_total_str = base.format_currency(df['_balance_in_base'].sum(), base_currency) if base_currency else f"{df['_balance_in_base'].sum():.2f}"
+
         # Resample to daily last-known balance and forward-fill
         df = df.set_index('Transaction Date').sort_index()
         daily = df['_balance_in_base'].resample('D').last().ffill().reset_index()
         if daily.empty:
             return setup_base_figure()
 
-        # Build Plotly figure (use COLORS from settings.py)
+        # Replace top table with trades.py-style annotation and keep the chart as a single subplot
         fig = setup_base_figure()
+        summary_text = f"Original totals: {orig_totals}<br>Converted total ({base_currency}): {converted_total_str}"
+        fig.add_annotation(
+            text=summary_text,
+            xref='paper', yref='paper',
+            x=1.02, y=1,
+            showarrow=False,
+            bgcolor='white',
+            bordercolor='gray',
+            borderwidth=1
+        )
         line_color = COLORS.get('trading', 'blue')
         fig.add_trace(go.Scatter(
             x=daily['Transaction Date'],
@@ -737,8 +818,8 @@ def create_balance_history(df, exchange_rates=None, base_currency=None, account_
         apply_standard_layout(fig, "Balance History")
         fig.update_yaxes(title_text=f"Balance{f' ({y_label_currency})' if y_label_currency else ''}")
         fig.update_xaxes(title_text="Date")
+        fig.update_layout(autosize=True, margin=DEFAULT_PLOT_MARGIN)
         return fig
-
     except Exception as exc:
         logger.exception("create_balance_history failed: %s", exc)
         return setup_base_figure()
@@ -828,33 +909,24 @@ def create_monthly_distribution(df, exchange_rates=None, base_currency=None, acc
 
     # Show original totals in a top table and chart below (same style as points.py)
     orig_totals = _original_totals_str(tdf)
-    fig = make_subplots(rows=2, cols=1, row_heights=[0.22, 0.78],
-                        specs=[[{"type": "table"}], [{"type": "xy"}]])
-    fig.add_trace(
-        go.Table(
-            header=dict(values=["Metric", "Value"], fill_color="lightgrey", align="left"),
-            cells=dict(values=[["Original totals"], [orig_totals]], align="left")
-        ),
-        row=1, col=1
+    fig = setup_base_figure()
+    summary_text = f"Original totals: {orig_totals}"
+    fig.add_annotation(
+        text=summary_text,
+        xref='paper', yref='paper',
+        x=1.02, y=1,
+        showarrow=False,
+        bgcolor='white',
+        bordercolor='gray',
+        borderwidth=1
     )
     fig.add_trace(go.Bar(
         x=monthly['Month'],
         y=monthly['_pl_in_base'],
         marker_color=marker_colors,
         text=[base.format_currency(v, base_currency) for v in monthly['_pl_in_base']]
-    ), row=2, col=1)
+    ))
     apply_standard_layout(fig, "Monthly P/L")
-    fig.update_layout(height=max(500, 180 + len(monthly) * 6))
+    fig.update_layout(autosize=True, margin=DEFAULT_PLOT_MARGIN)
+    fig.update_xaxes(tickangle=45)
     return fig
-
-__all__ = [
-    "create_daily_pl",
-    "create_daily_pl_vs_trades",
-    "create_relative_balance_history",
-    "create_market_pl_chart",
-    "create_win_loss_analysis",
-    "get_trading_pl_without_funding",
-    "create_market_pl",
-    "create_balance_history",
-    "create_monthly_distribution",
-]
