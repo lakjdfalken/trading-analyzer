@@ -333,26 +333,45 @@ def create_relative_balance_history(df, exchange_rates=None, base_currency=None,
 
         # Ensure PL numeric column exists and compute daily cumulative
         df = _ensure_pl_column(df)
-        df = df.set_index('Transaction Date')
-        daily = df['_pl_numeric'].resample('D').sum().reset_index()
+        
+        # Convert to base currency if requested
+        if exchange_rates is None:
+            exchange_rates = getattr(_settings, "DEFAULT_EXCHANGE_RATES", {})
+        if base_currency is None:
+            base_currency = _runtime_base_currency()        
+        
+        # Store original totals before conversion
+        orig_totals = _original_totals_str(df)
+        
+        # Convert to unified currency
+        try:
+            unified = base.to_unified_currency(df, exchange_rates, base_currency, pl_col='_pl_numeric')
+        except Exception:
+            logger.exception("create_relative_balance_history: to_unified_currency failed; using original values")
+            unified = df.copy()
+            unified['_pl_in_base'] = pd.to_numeric(unified.get('_pl_numeric', 0), errors='coerce').fillna(0.0)
+        
+        unified = unified.set_index('Transaction Date')
+        daily = unified['_pl_in_base'].resample('D').sum().reset_index()
         if daily.empty:
             return setup_base_figure()
-        daily['cumulative'] = daily['_pl_numeric'].cumsum()
+        daily['cumulative'] = daily['_pl_in_base'].cumsum()
 
         # Build Plotly figure
         fig = setup_base_figure()
         # Build summary metrics (rounded) and show them as a trades.py-style annotation
         try:
             total = float(daily['cumulative'].iloc[-1]) if not daily.empty else 0.0
-            avg_per_day = float(daily['_pl_numeric'].mean()) if '_pl_numeric' in daily.columns else float(daily['cumulative'].diff().fillna(daily['cumulative']).mean())
+            avg_per_day = float(daily['_pl_in_base'].mean()) if '_pl_in_base' in daily.columns else float(daily['cumulative'].diff().fillna(daily['cumulative']).mean())
             num_days = int(len(daily))
             start = pd.to_datetime(daily['Transaction Date'].min()).date() if not daily.empty else ""
             end = pd.to_datetime(daily['Transaction Date'].max()).date() if not daily.empty else ""
+            converted_total_str = base.format_currency(total, base_currency) if base_currency else f"{total:.2f}"
             summary_text = (
-                f"Total: {total:.1f}<br>"
+                f"Original totals: {orig_totals}<br>"
+                f"Converted total ({base_currency}): {converted_total_str}<br>"
                 f"Avg/day: {avg_per_day:.1f}<br>"
-                f"Days: {num_days}<br>"
-                f"{start} → {end}"
+                f"Days: {num_days}"
             )
         except Exception:
             logger.exception("create_relative_balance_history: failed to compute summary metrics")
