@@ -567,7 +567,7 @@ export default function Home() {
           <MultiAccountBalanceChart
             series={balanceByAccount.series}
             total={balanceByAccount.total}
-            height="100%"
+            height={550}
             showTotal={true}
             showLegend={true}
           />
