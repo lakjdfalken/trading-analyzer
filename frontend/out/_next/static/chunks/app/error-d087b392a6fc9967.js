@@ -1,0 +1,16 @@
+(self.webpackChunk_N_E=self.webpackChunk_N_E||[]).push([[601],{59393:function(e,r,t){Promise.resolve().then(t.bind(t,80449))},87461:function(e,r,t){"use strict";t.d(r,{Z:function(){return i}});var n=t(64090),c={xmlns:"http://www.w3.org/2000/svg",width:24,height:24,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2,strokeLinecap:"round",strokeLinejoin:"round"};/**
+ * @license lucide-react v0.321.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */let s=e=>e.replace(/([a-z0-9])([A-Z])/g,"$1-$2").toLowerCase().trim(),i=(e,r)=>{let t=(0,n.forwardRef)((t,i)=>{let{color:o="currentColor",size:l=24,strokeWidth:a=2,absoluteStrokeWidth:u,className:d="",children:m,...h}=t;return(0,n.createElement)("svg",{ref:i,...c,width:l,height:l,stroke:o,strokeWidth:u?24*Number(a)/Number(l):a,className:["lucide","lucide-".concat(s(e)),d].join(" "),...h},[...r.map(e=>{let[r,t]=e;return(0,n.createElement)(r,t)}),...Array.isArray(m)?m:[m]])});return t.displayName="".concat(e),t}},98998:function(e,r,t){"use strict";t.d(r,{Z:function(){return n}});/**
+ * @license lucide-react v0.321.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */let n=(0,t(87461).Z)("AlertCircle",[["circle",{cx:"12",cy:"12",r:"10",key:"1mglay"}],["line",{x1:"12",x2:"12",y1:"8",y2:"12",key:"1pkeuh"}],["line",{x1:"12",x2:"12.01",y1:"16",y2:"16",key:"4dfq90"}]])},40834:function(e,r,t){"use strict";t.d(r,{Z:function(){return n}});/**
+ * @license lucide-react v0.321.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */let n=(0,t(87461).Z)("RefreshCw",[["path",{d:"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8",key:"v9h5vc"}],["path",{d:"M21 3v5h-5",key:"1q7to0"}],["path",{d:"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16",key:"3uifl3"}],["path",{d:"M8 16H3v5",key:"1cv678"}]])},80449:function(e,r,t){"use strict";t.r(r),t.d(r,{default:function(){return o}});var n=t(3827),c=t(64090),s=t(98998),i=t(40834);function o(e){let{error:r,reset:t}=e;return c.useEffect(()=>{console.error("Application error:",r)},[r]),(0,n.jsx)("div",{className:"flex items-center justify-center min-h-screen bg-background",children:(0,n.jsxs)("div",{className:"flex flex-col items-center gap-4 text-center max-w-md p-6",children:[(0,n.jsx)(s.Z,{className:"h-12 w-12 text-red-500"}),(0,n.jsxs)("div",{children:[(0,n.jsx)("h2",{className:"text-xl font-semibold",children:"Something went wrong"}),(0,n.jsx)("p",{className:"text-muted-foreground mt-2",children:r.message||"An unexpected error occurred"})]}),(0,n.jsxs)("button",{onClick:t,className:"mt-4 flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90",children:[(0,n.jsx)(i.Z,{className:"h-4 w-4"}),"Try Again"]})]})})}}},function(e){e.O(0,[971,69,744],function(){return e(e.s=59393)}),_N_E=e.O()}]);
