@@ -1,20 +1,45 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel,
-                           QComboBox, QPushButton, QCheckBox, QSlider, QLineEdit,
-                           QMessageBox, QDialog, QFormLayout, QTextEdit, QDialogButtonBox, QSizePolicy, QScrollArea, QGridLayout)
-from PyQt6.QtCore import Qt
 import logging
 import sqlite3
-from settings import AVAILABLE_CURRENCIES, UI_SETTINGS
+
 import pandas as pd
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFormLayout,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSlider,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+from settings import AVAILABLE_CURRENCIES, BROKERS, UI_SETTINGS
 
 logger = logging.getLogger(__name__)
 
+
 class SettingsTab(QWidget):
+    # Signal emitted when user requests CSV import (broker_key, file_path, account_id)
+    import_requested = pyqtSignal(str, str, str)
+
     def __init__(self, settings_manager, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.settings_manager = settings_manager
         self.exchange_rate_inputs = {}
         self.account_combo = None  # Initialize account_combo attribute
+        self.broker_combo = None  # Initialize broker_combo attribute
         self.setup_ui()
 
         # Connect signals for account updates
@@ -56,11 +81,14 @@ class SettingsTab(QWidget):
         # Account settings
         self.create_account_settings(grid_layout, 3, 0)
 
+        # Import settings
+        self.create_import_settings(grid_layout, 4, 0)
+
         # Transparency control
-        self.create_transparency_control(grid_layout, 4, 0)
+        self.create_transparency_control(grid_layout, 5, 0)
 
         # About button
-        self.create_about_section(grid_layout, 5, 0)
+        self.create_about_section(grid_layout, 6, 0)
 
         layout.addLayout(grid_layout)
 
@@ -82,7 +110,9 @@ class SettingsTab(QWidget):
         debug_layout.setContentsMargins(5, 5, 5, 5)  # Reduced margins
 
         debug_label = QLabel("Enable Debug Mode")
-        debug_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        debug_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         debug_layout.addWidget(debug_label)
 
         self.debug_checkbox = QCheckBox()
@@ -105,7 +135,7 @@ class SettingsTab(QWidget):
         theme_layout.addWidget(theme_label)
 
         self.theme_combo = QComboBox()
-        self.theme_combo.addItems(['Light', 'Dark'])
+        self.theme_combo.addItems(["Light", "Dark"])
         self.theme_combo.setFixedWidth(100)
         self.theme_combo.currentTextChanged.connect(self.change_theme)
         theme_layout.addWidget(self.theme_combo)
@@ -119,14 +149,18 @@ class SettingsTab(QWidget):
         currency_frame = QFrame()
         currency_frame.setFrameShape(QFrame.Shape.StyledPanel)
         currency_frame.setFrameShadow(QFrame.Shadow.Raised)
-        currency_frame.setStyleSheet("QFrame { margin: 5px; padding: 5px; }")  # Reduced padding
+        currency_frame.setStyleSheet(
+            "QFrame { margin: 5px; padding: 5px; }"
+        )  # Reduced padding
         currency_layout = QVBoxLayout(currency_frame)
         currency_layout.setContentsMargins(5, 5, 5, 5)  # Reduced margins
         currency_layout.setSpacing(5)  # Reduced spacing
 
         # Title
         currency_title = QLabel("Currency Settings")
-        currency_title.setStyleSheet("font-weight: bold; font-size: 12px; margin-bottom: 5px;")  # Reduced font size and margin
+        currency_title.setStyleSheet(
+            "font-weight: bold; font-size: 12px; margin-bottom: 5px;"
+        )  # Reduced font size and margin
         currency_layout.addWidget(currency_title)
 
         # Base currency selection
@@ -150,15 +184,21 @@ class SettingsTab(QWidget):
         base_currency_layout.setSpacing(5)  # Reduced spacing
 
         base_currency_label = QLabel("Base Currency:")
-        base_currency_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        base_currency_label.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
         base_currency_layout.addWidget(base_currency_label)
 
         self.base_currency_combo = QComboBox(self)
         self.base_currency_combo.addItems(AVAILABLE_CURRENCIES)
-        self.base_currency_combo.setCurrentText(self.settings_manager.get_base_currency())
+        self.base_currency_combo.setCurrentText(
+            self.settings_manager.get_base_currency()
+        )
         self.base_currency_combo.setFixedWidth(80)
         # persist base currency when the user changes it
-        self.base_currency_combo.currentTextChanged.connect(self._on_base_currency_changed)
+        self.base_currency_combo.currentTextChanged.connect(
+            self._on_base_currency_changed
+        )
         base_currency_layout.addWidget(self.base_currency_combo)
 
         info_label = QLabel("(All amounts will be converted to this currency)")
@@ -171,11 +211,15 @@ class SettingsTab(QWidget):
     def create_exchange_rates_section(self, parent_layout):
         """Create exchange rates section with improved layout"""
         rates_title = QLabel("Exchange Rates")
-        rates_title.setStyleSheet("font-weight: bold; font-size: 12px; margin-top: 5px;")
+        rates_title.setStyleSheet(
+            "font-weight: bold; font-size: 12px; margin-top: 5px;"
+        )
         parent_layout.addWidget(rates_title)
 
         base_currency = self.settings_manager.get_base_currency()
-        rates_info = QLabel(f"Enter how much 1 unit of each currency equals in {base_currency}")
+        rates_info = QLabel(
+            f"Enter how much 1 unit of each currency equals in {base_currency}"
+        )
         rates_info.setStyleSheet("font-size: 10px; color: gray; margin-bottom: 5px;")
         self.rates_info_label = rates_info
         parent_layout.addWidget(rates_info)
@@ -245,7 +289,9 @@ class SettingsTab(QWidget):
         trans_layout.setContentsMargins(5, 5, 5, 5)  # Reduced margins
 
         trans_label = QLabel("Window Transparency")
-        trans_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        trans_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         trans_layout.addWidget(trans_label)
 
         self.trans_slider = QSlider(Qt.Orientation.Horizontal)
@@ -253,7 +299,9 @@ class SettingsTab(QWidget):
         self.trans_slider.setValue(100)
         self.trans_slider.setFixedWidth(200)
         self.trans_slider.valueChanged.connect(self.change_transparency)
-        trans_layout.addWidget(self.trans_slider, alignment=Qt.AlignmentFlag.AlignHCenter)
+        trans_layout.addWidget(
+            self.trans_slider, alignment=Qt.AlignmentFlag.AlignHCenter
+        )
 
         parent_layout.addWidget(trans_frame, row, col)
 
@@ -319,7 +367,7 @@ class SettingsTab(QWidget):
                 "Base Currency Changed",
                 f"Base currency changed to {new_base_currency}.\n"
                 f"Exchange rates have been recalculated.\n"
-                f"Please verify the rates are correct."
+                f"Please verify the rates are correct.",
             )
 
     def update_exchange_rate(self, currency, text):
@@ -345,14 +393,14 @@ class SettingsTab(QWidget):
     def show_preferences_dialog(self):
         """Show preferences dialog (called from menu)"""
         dialog = QDialog(self)
-        dialog.setWindowTitle('Preferences')
+        dialog.setWindowTitle("Preferences")
         layout = QVBoxLayout()
 
         # Theme settings
         theme_layout = QHBoxLayout()
         theme_layout.addWidget(QLabel("Theme:"))
         theme_combo = QComboBox()
-        theme_combo.addItems(['Light', 'Dark'])
+        theme_combo.addItems(["Light", "Dark"])
         theme_combo.setCurrentText(self.settings_manager.theme)
         theme_combo.currentTextChanged.connect(self.change_theme)
         theme_layout.addWidget(theme_combo)
@@ -372,8 +420,8 @@ class SettingsTab(QWidget):
         trans_layout.addWidget(QLabel("Window Transparency"))
         trans_slider = QSlider(Qt.Orientation.Horizontal)
         trans_slider.setRange(
-            UI_SETTINGS['transparency_slider']['min'],
-            UI_SETTINGS['transparency_slider']['max']
+            UI_SETTINGS["transparency_slider"]["min"],
+            UI_SETTINGS["transparency_slider"]["max"],
         )
         trans_slider.setValue(self.settings_manager.transparency)
         trans_slider.valueChanged.connect(self.change_transparency)
@@ -383,19 +431,110 @@ class SettingsTab(QWidget):
         dialog.setLayout(layout)
         dialog.exec()
 
+    def create_import_settings(self, parent_layout, row, col):
+        """Create import settings section with broker selection and import button"""
+        import_frame = QFrame()
+        import_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        import_frame.setFrameShadow(QFrame.Shadow.Raised)
+        import_frame.setStyleSheet("QFrame { margin: 5px; padding: 5px; }")
+        import_layout = QVBoxLayout(import_frame)
+        import_layout.setContentsMargins(5, 5, 5, 5)
+        import_layout.setSpacing(5)
+
+        # Title
+        import_title = QLabel("Import Data")
+        import_title.setStyleSheet(
+            "font-weight: bold; font-size: 12px; margin-bottom: 5px;"
+        )
+        import_layout.addWidget(import_title)
+
+        # Broker selection and import button row
+        import_controls_layout = QHBoxLayout()
+        import_controls_layout.setContentsMargins(0, 0, 0, 0)
+        import_controls_layout.setSpacing(5)
+
+        broker_label = QLabel("Select Broker:")
+        broker_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        import_controls_layout.addWidget(broker_label)
+
+        self.broker_combo = QComboBox()
+        self.broker_combo.addItems(list(BROKERS.values()))
+        self.broker_combo.setFixedWidth(UI_SETTINGS["broker_combo_width"])
+        import_controls_layout.addWidget(self.broker_combo)
+
+        import_button = QPushButton("Import CSV")
+        import_button.setFixedWidth(UI_SETTINGS["import_button_width"])
+        import_button.clicked.connect(self.import_csv)
+        import_controls_layout.addWidget(import_button)
+
+        import_controls_layout.addStretch()
+        import_layout.addLayout(import_controls_layout)
+
+        parent_layout.addWidget(import_frame, row, col)
+
+    def import_csv(self):
+        """Handle CSV import from selected broker."""
+        # Get selected account
+        selected_account_id = None
+        if self.account_combo:
+            selected_account_id = self.account_combo.currentData()
+        if not selected_account_id or selected_account_id == "all":
+            QMessageBox.warning(
+                self,
+                "Account Selection",
+                "Please select an account before importing data",
+            )
+            return
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select CSV File", "", "CSV Files (*.csv)"
+        )
+
+        if file_path:
+            selected_broker = self.broker_combo.currentText()
+            if selected_broker == "Select Broker":
+                QMessageBox.warning(
+                    self,
+                    "Broker Selection",
+                    "Please select a broker before importing",
+                )
+                return
+
+            # Find the correct broker key
+            broker_key = None
+            for k, v in BROKERS.items():
+                if v == selected_broker:
+                    broker_key = k
+                    break
+
+            if not broker_key or broker_key == "none":
+                QMessageBox.warning(
+                    self,
+                    "Broker Selection",
+                    "Please select a valid broker before importing",
+                )
+                return
+
+            # Emit signal with import details
+            self.import_requested.emit(broker_key, file_path, str(selected_account_id))
+
     def create_account_settings(self, parent_layout, row, col):
         """Create account settings section with improved layout"""
         account_frame = QFrame()
         account_frame.setFrameShape(QFrame.Shape.StyledPanel)
         account_frame.setFrameShadow(QFrame.Shadow.Raised)
-        account_frame.setStyleSheet("QFrame { margin: 5px; padding: 5px; }")  # Reduced padding
+        account_frame.setStyleSheet(
+            "QFrame { margin: 5px; padding: 5px; }"
+        )  # Reduced padding
         account_layout = QVBoxLayout(account_frame)
         account_layout.setContentsMargins(5, 5, 5, 5)  # Reduced margins
         account_layout.setSpacing(5)  # Reduced spacing
 
         # Title
         account_title = QLabel("Account Settings")
-        account_title.setStyleSheet("font-weight: bold; font-size: 12px; margin-bottom: 5px;")  # Reduced font size and margin
+        account_title.setStyleSheet(
+            "font-weight: bold; font-size: 12px; margin-bottom: 5px;"
+        )  # Reduced font size and margin
         account_layout.addWidget(account_title)
 
         # Account selection
@@ -409,7 +548,9 @@ class SettingsTab(QWidget):
 
         self.account_combo = QComboBox()
         self.account_combo.addItem("All Accounts", "all")
-        self.account_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.account_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         account_select_layout.addWidget(self.account_combo)
 
         account_layout.addLayout(account_select_layout)
@@ -454,25 +595,30 @@ class SettingsTab(QWidget):
         layout.addRow("Initial Balance:", initial_balance)
         layout.addRow("Notes:", notes)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addRow(buttons)
 
         if dialog.exec():
             try:
-                conn = sqlite3.connect('trading.db')
+                conn = sqlite3.connect("trading.db")
                 cursor = conn.cursor()
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO accounts (account_name, broker_name, currency, initial_balance, notes)
                     VALUES (?, ?, ?, ?, ?)
-                """, (
-                    account_name.text(),
-                    broker_name.text(),
-                    currency.currentText(),
-                    float(initial_balance.text()) if initial_balance.text() else 0,
-                    notes.toPlainText()
-                ))
+                """,
+                    (
+                        account_name.text(),
+                        broker_name.text(),
+                        currency.currentText(),
+                        float(initial_balance.text()) if initial_balance.text() else 0,
+                        notes.toPlainText(),
+                    ),
+                )
                 conn.commit()
                 conn.close()
                 self.load_accounts()
@@ -483,7 +629,7 @@ class SettingsTab(QWidget):
     def load_accounts(self):
         """Load accounts into the combo box"""
         try:
-            conn = sqlite3.connect('trading.db')
+            conn = sqlite3.connect("trading.db")
             accounts_df = pd.read_sql_query("SELECT * FROM accounts", conn)
             conn.close()
 
@@ -491,7 +637,9 @@ class SettingsTab(QWidget):
             self.account_combo.addItem("All Accounts", "all")
 
             for _, row in accounts_df.iterrows():
-                self.account_combo.addItem(f"{row['account_name']} ({row['account_id']})", row['account_id'])
+                self.account_combo.addItem(
+                    f"{row['account_name']} ({row['account_id']})", row["account_id"]
+                )
 
         except Exception as e:
             logger.error(f"Failed to load accounts: {str(e)}")
@@ -502,19 +650,25 @@ class SettingsTab(QWidget):
         selected_account_id = self.account_combo.currentData()
 
         if not selected_account_id or selected_account_id == "all":
-            QMessageBox.warning(self, "Account Selection", "Please select an account to edit")
+            QMessageBox.warning(
+                self, "Account Selection", "Please select an account to edit"
+            )
             return
 
         # Fetch the account details from the database
         try:
-            conn = sqlite3.connect('trading.db')
+            conn = sqlite3.connect("trading.db")
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM accounts WHERE account_id = ?", (selected_account_id,))
+            cursor.execute(
+                "SELECT * FROM accounts WHERE account_id = ?", (selected_account_id,)
+            )
             account_data = cursor.fetchone()
             conn.close()
 
             if not account_data:
-                QMessageBox.warning(self, "Error", "Selected account not found in database")
+                QMessageBox.warning(
+                    self, "Error", "Selected account not found in database"
+                )
                 return
 
             # Create a dialog for editing the account
@@ -526,12 +680,22 @@ class SettingsTab(QWidget):
             # Convert each value to a string explicitly
             account_id = QLineEdit(str(account_data[0]))  # Convert to string
             account_id.setReadOnly(True)  # Account ID should not be editable
-            account_name = QLineEdit(str(account_data[1]) if account_data[1] is not None else "")
-            broker_name = QLineEdit(str(account_data[2]) if account_data[2] is not None else "")
+            account_name = QLineEdit(
+                str(account_data[1]) if account_data[1] is not None else ""
+            )
+            broker_name = QLineEdit(
+                str(account_data[2]) if account_data[2] is not None else ""
+            )
             currency = QComboBox()
             currency.addItems(AVAILABLE_CURRENCIES)
-            currency.setCurrentText(str(account_data[3]) if account_data[3] is not None else AVAILABLE_CURRENCIES[0])
-            initial_balance = QLineEdit(str(account_data[4]) if account_data[4] is not None else "0")
+            currency.setCurrentText(
+                str(account_data[3])
+                if account_data[3] is not None
+                else AVAILABLE_CURRENCIES[0]
+            )
+            initial_balance = QLineEdit(
+                str(account_data[4]) if account_data[4] is not None else "0"
+            )
             notes = QTextEdit()
             notes.setText(str(account_data[5]) if account_data[5] is not None else "")
 
@@ -542,36 +706,50 @@ class SettingsTab(QWidget):
             layout.addRow("Initial Balance:", initial_balance)
             layout.addRow("Notes:", notes)
 
-            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Ok
+                | QDialogButtonBox.StandardButton.Cancel
+            )
             buttons.accepted.connect(dialog.accept)
             buttons.rejected.connect(dialog.reject)
             layout.addRow(buttons)
 
             if dialog.exec():
                 try:
-                    conn = sqlite3.connect('trading.db')
+                    conn = sqlite3.connect("trading.db")
                     cursor = conn.cursor()
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         UPDATE accounts
                         SET account_name = ?, broker_name = ?, currency = ?, initial_balance = ?, notes = ?
                         WHERE account_id = ?
-                    """, (
-                        account_name.text(),
-                        broker_name.text(),
-                        currency.currentText(),
-                        float(initial_balance.text()) if initial_balance.text() else 0,
-                        notes.toPlainText(),
-                        account_id.text()
-                    ))
+                    """,
+                        (
+                            account_name.text(),
+                            broker_name.text(),
+                            currency.currentText(),
+                            float(initial_balance.text())
+                            if initial_balance.text()
+                            else 0,
+                            notes.toPlainText(),
+                            account_id.text(),
+                        ),
+                    )
                     conn.commit()
                     conn.close()
                     self.load_accounts()
-                    QMessageBox.information(self, "Success", "Account updated successfully")
+                    QMessageBox.information(
+                        self, "Success", "Account updated successfully"
+                    )
                 except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Failed to update account: {str(e)}")
+                    QMessageBox.critical(
+                        self, "Error", f"Failed to update account: {str(e)}"
+                    )
 
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to fetch account details: {str(e)}")
+            QMessageBox.critical(
+                self, "Error", f"Failed to fetch account details: {str(e)}"
+            )
 
     def delete_account(self):
         """Delete an existing account"""
@@ -579,7 +757,9 @@ class SettingsTab(QWidget):
         selected_account_id = self.account_combo.currentData()
 
         if not selected_account_id or selected_account_id == "all":
-            QMessageBox.warning(self, "Account Selection", "Please select an account to delete")
+            QMessageBox.warning(
+                self, "Account Selection", "Please select an account to delete"
+            )
             return
 
         # Confirm deletion with the user
@@ -589,7 +769,7 @@ class SettingsTab(QWidget):
             f"Are you sure you want to delete account {selected_account_id}?\n"
             "This action cannot be undone.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.No:
@@ -597,11 +777,14 @@ class SettingsTab(QWidget):
 
         try:
             # Check if there are any transactions associated with this account
-            conn = sqlite3.connect('trading.db')
+            conn = sqlite3.connect("trading.db")
             cursor = conn.cursor()
 
             # Count transactions for this account
-            cursor.execute("SELECT COUNT(*) FROM broker_transactions WHERE account_id = ?", (selected_account_id,))
+            cursor.execute(
+                "SELECT COUNT(*) FROM broker_transactions WHERE account_id = ?",
+                (selected_account_id,),
+            )
             transaction_count = cursor.fetchone()[0]
 
             if transaction_count > 0:
@@ -612,7 +795,7 @@ class SettingsTab(QWidget):
                     f"Found {transaction_count} transactions associated with this account.\n"
                     "What would you like to do with these transactions?",
                     "Delete Transactions|Reassign Transactions|Cancel",
-                    QMessageBox.StandardButton.Cancel
+                    QMessageBox.StandardButton.Cancel,
                 )
 
                 if transaction_reply == QMessageBox.StandardButton.Cancel:
@@ -621,11 +804,21 @@ class SettingsTab(QWidget):
 
                 if transaction_reply == 0:  # Delete Transactions
                     # Delete the account and its transactions
-                    cursor.execute("DELETE FROM broker_transactions WHERE account_id = ?", (selected_account_id,))
-                    cursor.execute("DELETE FROM accounts WHERE account_id = ?", (selected_account_id,))
+                    cursor.execute(
+                        "DELETE FROM broker_transactions WHERE account_id = ?",
+                        (selected_account_id,),
+                    )
+                    cursor.execute(
+                        "DELETE FROM accounts WHERE account_id = ?",
+                        (selected_account_id,),
+                    )
                     conn.commit()
                     conn.close()
-                    QMessageBox.information(self, "Success", "Account and associated transactions deleted successfully")
+                    QMessageBox.information(
+                        self,
+                        "Success",
+                        "Account and associated transactions deleted successfully",
+                    )
                 elif transaction_reply == 1:  # Reassign Transactions
                     # Show dialog to select new account for transactions
                     reassign_dialog = QDialog(self)
@@ -633,25 +826,39 @@ class SettingsTab(QWidget):
                     reassign_layout = QVBoxLayout(reassign_dialog)
 
                     # Get list of other accounts
-                    cursor.execute("SELECT account_id, account_name FROM accounts WHERE account_id != ?", (selected_account_id,))
+                    cursor.execute(
+                        "SELECT account_id, account_name FROM accounts WHERE account_id != ?",
+                        (selected_account_id,),
+                    )
                     other_accounts = cursor.fetchall()
 
                     if not other_accounts:
-                        QMessageBox.warning(self, "Error", "No other accounts available to reassign transactions")
+                        QMessageBox.warning(
+                            self,
+                            "Error",
+                            "No other accounts available to reassign transactions",
+                        )
                         conn.close()
                         return
 
                     # Create account selection
-                    account_label = QLabel("Select account to reassign transactions to:")
+                    account_label = QLabel(
+                        "Select account to reassign transactions to:"
+                    )
                     reassign_layout.addWidget(account_label)
 
                     account_combo = QComboBox()
                     for account_id, account_name in other_accounts:
-                        account_combo.addItem(f"{account_name} ({account_id})", account_id)
+                        account_combo.addItem(
+                            f"{account_name} ({account_id})", account_id
+                        )
                     reassign_layout.addWidget(account_combo)
 
                     # Add buttons
-                    buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+                    buttons = QDialogButtonBox(
+                        QDialogButtonBox.StandardButton.Ok
+                        | QDialogButtonBox.StandardButton.Cancel
+                    )
                     buttons.accepted.connect(reassign_dialog.accept)
                     buttons.rejected.connect(reassign_dialog.reject)
                     reassign_layout.addWidget(buttons)
@@ -662,24 +869,29 @@ class SettingsTab(QWidget):
                         # Reassign transactions to new account
                         cursor.execute(
                             "UPDATE broker_transactions SET account_id = ? WHERE account_id = ?",
-                            (new_account_id, selected_account_id)
+                            (new_account_id, selected_account_id),
                         )
 
                         # Delete the account
-                        cursor.execute("DELETE FROM accounts WHERE account_id = ?", (selected_account_id,))
+                        cursor.execute(
+                            "DELETE FROM accounts WHERE account_id = ?",
+                            (selected_account_id,),
+                        )
                         conn.commit()
                         conn.close()
                         QMessageBox.information(
                             self,
                             "Success",
-                            f"Account deleted successfully. Transactions reassigned to account {new_account_id}"
+                            f"Account deleted successfully. Transactions reassigned to account {new_account_id}",
                         )
                     else:
                         conn.close()
                         return
             else:
                 # No transactions, just delete the account
-                cursor.execute("DELETE FROM accounts WHERE account_id = ?", (selected_account_id,))
+                cursor.execute(
+                    "DELETE FROM accounts WHERE account_id = ?", (selected_account_id,)
+                )
                 conn.commit()
                 conn.close()
                 QMessageBox.information(self, "Success", "Account deleted successfully")
@@ -689,7 +901,7 @@ class SettingsTab(QWidget):
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to delete account: {str(e)}")
-            if 'conn' in locals():
+            if "conn" in locals():
                 conn.close()
 
     def showEvent(self, event):
@@ -702,4 +914,6 @@ class SettingsTab(QWidget):
         try:
             self.settings_manager.set_base_currency(cur)
         except Exception:
-            logging.getLogger(__name__).exception("Failed to persist base currency change")
+            logging.getLogger(__name__).exception(
+                "Failed to persist base currency change"
+            )
