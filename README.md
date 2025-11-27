@@ -1,173 +1,228 @@
-# Trading Analyzer
+# Trading Analyzer v2.0.0
 
-A modern web-based tool for analyzing trading data and generating insights from broker transaction exports.
+A modern desktop application for analyzing trading data and generating insights from broker transaction exports.
+
+![Trading Analyzer Dashboard](docs/screenshot.png)
+
+## Download
+
+### Pre-built Releases
+
+| Platform | Download |
+|----------|----------|
+| macOS | [TradingAnalyzer-macOS.dmg](https://github.com/lakjdfalken/trading-analyzer/releases/latest/download/TradingAnalyzer-macOS.dmg) |
+| Windows | [TradingAnalyzer-Windows-x64.zip](https://github.com/lakjdfalken/trading-analyzer/releases/latest/download/TradingAnalyzer-Windows-x64.zip) |
+
+Or visit the [Releases page](https://github.com/lakjdfalken/trading-analyzer/releases) for all versions.
 
 ## Features
 
-- **Dashboard**: Real-time KPIs, balance history, monthly P/L, win rate by instrument
-- **Transactions**: Browse, search, and filter all trades with pagination
-- **Analytics**: Daily P/L, drawdown analysis, hourly/weekday performance, streaks, trade duration
-- **Import**: CSV import with automatic column mapping for multiple brokers
-- **Multi-Account**: Support for multiple trading accounts and brokers
-- **Multi-Currency**: Currency conversion and per-currency analysis
-- **Dark Mode**: Modern UI built with Next.js and Tailwind CSS
+### Dashboard
+- Real-time KPIs: Total P/L, Win Rate, Profit Factor, Max Drawdown
+- Balance history chart with multi-account support
+- Monthly P/L breakdown
+- Win rate by instrument
+- Recent trades overview
 
-## Architecture
+### Transactions
+- Browse, search, and filter all trades
+- Sort by any column
+- Date range filtering
+- Export to CSV
+- Pagination with customizable page size
 
-- **Frontend**: Next.js 14, TypeScript, Tailwind CSS, shadcn/ui, Recharts
-- **Backend**: FastAPI (Python), SQLite database
-- **Desktop**: Standalone app via PyInstaller + pywebview
+### Analytics
+- Daily P/L heatmap
+- Drawdown analysis with peak-to-trough calculation
+- Hourly performance patterns
+- Weekday performance breakdown
+- Win/loss streaks
+- Trade duration statistics
 
-## Prerequisites
+### Data Management
+- CSV import with automatic column mapping
+- Support for multiple brokers
+- Multi-account tracking
+- Multi-currency support with conversion
 
+### User Interface
+- Modern dark mode UI
+- Responsive charts with tooltips
+- Expandable chart views
+- Persistent filter preferences
+
+## Supported Brokers
+
+- **Trade Nation** (Serial column format)
+- **TD365** (Ref. No. column format)
+- **Generic CSV** (configurable column mapping)
+
+## Installation
+
+### Option 1: Download Pre-built App (Recommended)
+
+1. Download the appropriate installer for your platform from the [Releases page](https://github.com/lakjdfalken/trading-analyzer/releases)
+2. **macOS**: Open the DMG and drag to Applications. On first run, right-click and select "Open" to bypass Gatekeeper
+3. **Windows**: Extract the ZIP and run `Trading Analyzer.exe`
+
+### Option 2: Run from Source
+
+**Prerequisites:**
 - Python 3.9+
 - Node.js 18+
 
-## Quick Start
+**Setup:**
 
-### Option 1: Development Mode (Recommended for Development)
-
-**Terminal 1 - Start the API server:**
 ```bash
+# Clone repository
+git clone https://github.com/lakjdfalken/trading-analyzer.git
 cd trading-analyzer
+
+# Setup Python environment
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python run_api.py
-```
 
-**Terminal 2 - Start the frontend:**
-```bash
-cd trading-analyzer/frontend
-npm install
-npm run dev
-```
-
-Open http://localhost:3000
-
-### Option 2: Production Mode (Single Server)
-
-```bash
 # Build frontend
 cd frontend
 npm install
 npm run build
 cd ..
 
-# Run (serves both API and frontend)
-python run_api.py
-```
-
-Open http://localhost:8000
-
-### Option 3: Standalone Desktop App
-
-```bash
+# Run the application
 python app.py
 ```
 
-This opens a native window with the full application.
+### Option 3: Development Mode
 
-## Building Standalone Executables
+**Terminal 1 - API Server:**
+```bash
+source .venv/bin/activate
+python run_api.py
+```
+
+**Terminal 2 - Frontend Dev Server:**
+```bash
+cd frontend
+npm run dev
+```
+
+Open http://localhost:3000
+
+## CSV Import Format
+
+The application accepts CSV exports with the following columns:
+
+| Column | Description |
+|--------|-------------|
+| Transaction Date | Date/time of the trade |
+| Serial / Ref. No. | Unique reference number |
+| Action | Buy/Sell action |
+| Description | Instrument name |
+| Amount | Position size |
+| Open Period | Entry date/time |
+| Opening | Entry price |
+| Closing | Exit price |
+| P/L | Profit/Loss |
+| Status | Trade status |
+| Balance | Account balance after trade |
+| Currency | Trade currency |
+
+## Building from Source
 
 ### macOS
 
 ```bash
-# Setup
-python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-
-# Build frontend
-cd frontend && npm install && npm run build && cd ..
-
-# Build app
+cd frontend && npm run build && cd ..
 pyinstaller trading_analyzer.spec
 
+# Remove quarantine attribute
+xattr -cr "dist/Trading Analyzer.app"
+
 # Run
-xattr -cr "dist/Trading Analyzer.app"  # Remove quarantine
 open "dist/Trading Analyzer.app"
 ```
 
 ### Windows
 
 ```powershell
-# Setup
-python -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
-
-# Build frontend
 cd frontend
-npm install
 npm run build
 cd ..
-
-# Build app
 pyinstaller trading_analyzer.spec
 
 # Run
 dist\Trading Analyzer\Trading Analyzer.exe
 ```
 
-## Supported Brokers
-
-- **Trade Nation** (Serial column format)
-- **TD365** (Ref. No. column format)
-- **Generic** (configurable column mapping)
-
-## CSV Import
-
-The application accepts CSV exports with the following columns:
-- Transaction Date
-- Serial / Ref. No. (reference number)
-- Action
-- Description
-- Amount
-- Open Period
-- Opening / Closing prices
-- P/L
-- Status
-- Balance
-- Currency
-
-## API Documentation
-
-When the API server is running, visit:
-- Swagger UI: http://localhost:8000/api/docs
-- ReDoc: http://localhost:8000/api/redoc
-
-## Project Structure
+## Architecture
 
 ```
 trading-analyzer/
-├── frontend/              # Next.js frontend
+├── frontend/                 # Next.js 14 frontend
 │   ├── src/
-│   │   ├── app/          # Pages (dashboard, transactions, analytics, etc.)
-│   │   ├── components/   # React components
-│   │   └── store/        # Zustand state management
+│   │   ├── app/             # Pages (dashboard, transactions, analytics)
+│   │   ├── components/      # React components (charts, KPIs, trades)
+│   │   ├── store/           # Zustand state management
+│   │   └── api/             # API client
 │   └── package.json
 ├── src/
-│   ├── api/              # FastAPI backend
-│   │   ├── routers/      # API endpoints
-│   │   ├── models/       # Pydantic schemas
-│   │   └── services/     # Database services
-│   ├── create_database.py
-│   ├── import_data.py
-│   └── settings.py
-├── app.py                # Standalone app entry point
-├── run_api.py            # API server runner
-├── trading_analyzer.spec # PyInstaller config
+│   ├── api/                 # FastAPI backend
+│   │   ├── routers/         # API endpoints
+│   │   ├── models/          # Pydantic schemas
+│   │   └── services/        # Database & currency services
+│   ├── create_database.py   # Database schema
+│   ├── import_data.py       # CSV import logic
+│   ├── db_path.py           # Cross-platform database path
+│   └── settings.py          # Configuration
+├── app.py                   # Desktop app entry point
+├── run_api.py               # API server runner
+├── trading_analyzer.spec    # PyInstaller configuration
 └── requirements.txt
 ```
 
+## API Documentation
+
+When running in development mode, API documentation is available at:
+- Swagger UI: http://localhost:8000/api/docs
+- ReDoc: http://localhost:8000/api/redoc
+
+## Data Storage
+
+The application stores data in a platform-specific location:
+
+| Platform | Location |
+|----------|----------|
+| macOS | `~/Library/Application Support/TradingAnalyzer/trading.db` |
+| Windows | `%LOCALAPPDATA%\TradingAnalyzer\trading.db` |
+| Linux | `~/.local/share/TradingAnalyzer/trading.db` |
+
+## What's New in v2.0.0
+
+- **Standalone Desktop App**: Native application for macOS and Windows
+- **Improved Charts**: Win Rate by Instrument now displays proper market names
+- **Enhanced Export**: CSV export for filtered transactions
+- **Better KPIs**: Corrected Max Drawdown calculation (peak-to-trough)
+- **Date Filtering**: Persistent date range selection across sessions
+- **UI Improvements**: Tooltips explaining KPI calculations
+- **Performance**: Optimized data fetching and caching
+
 ## License
 
-MIT License - See LICENSE file for details
+MIT License - See [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
-Contributions are welcome:
-- Open an issue to discuss proposed changes
-- Submit a pull request with improvements
-- Share bug reports or feature requests
+Contributions are welcome! Please:
+
+1. Open an issue to discuss proposed changes
+2. Fork the repository
+3. Create a feature branch
+4. Submit a pull request
+
+## Support
+
+- [Open an issue](https://github.com/lakjdfalken/trading-analyzer/issues) for bug reports
+- [Discussions](https://github.com/lakjdfalken/trading-analyzer/discussions) for questions and ideas
