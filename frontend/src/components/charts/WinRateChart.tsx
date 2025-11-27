@@ -53,7 +53,7 @@ interface CustomTooltipProps {
   label?: string;
 }
 
-function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
+function CustomTooltip({ active, payload }: CustomTooltipProps) {
   if (!active || !payload || payload.length === 0) {
     return null;
   }
@@ -62,7 +62,7 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
 
   return (
     <div className="bg-popover border border-border rounded-lg shadow-lg p-3 text-sm">
-      <p className="font-medium text-foreground mb-2">{label}</p>
+      <p className="font-medium text-foreground mb-2">{data.name}</p>
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-4">
           <span className="text-muted-foreground">Win Rate:</span>
@@ -94,6 +94,82 @@ function getBarColor(winRate: number): string {
   return "#EF4444"; // Red for poor
 }
 
+// Custom tick component for X-axis
+interface CustomXAxisTickProps {
+  x?: number;
+  y?: number;
+  index?: number;
+  payload?: { value: string | number };
+  data: WinRateData[];
+}
+
+function CustomXAxisTick({ x, y, index, payload, data }: CustomXAxisTickProps) {
+  if (x === undefined || y === undefined) return null;
+
+  // Use index to get the name directly from data array
+  // payload.value from Recharts can be unreliable (sometimes returns index)
+  const idx = index ?? 0;
+  const item = data[idx];
+  const displayName = item?.name ?? String(payload?.value ?? idx);
+  const truncatedName =
+    displayName.length > 15
+      ? displayName.substring(0, 13) + "..."
+      : displayName;
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={0}
+        y={0}
+        dy={10}
+        textAnchor="end"
+        fill="hsl(var(--muted-foreground))"
+        fontSize={10}
+        transform="rotate(-45)"
+      >
+        {truncatedName}
+      </text>
+    </g>
+  );
+}
+
+// Custom tick component for Y-axis (vertical layout)
+interface CustomYAxisTickProps {
+  x?: number;
+  y?: number;
+  index?: number;
+  payload?: { value: string | number };
+  data: WinRateData[];
+}
+
+function CustomYAxisTick({ x, y, index, payload, data }: CustomYAxisTickProps) {
+  if (x === undefined || y === undefined) return null;
+
+  // Use index to get the name directly from data array
+  const idx = index ?? 0;
+  const item = data[idx];
+  const displayName = item?.name ?? String(payload?.value ?? idx);
+  const truncatedName =
+    displayName.length > 20
+      ? displayName.substring(0, 18) + "..."
+      : displayName;
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={-5}
+        y={0}
+        dy={4}
+        textAnchor="end"
+        fill="hsl(var(--muted-foreground))"
+        fontSize={11}
+      >
+        {truncatedName}
+      </text>
+    </g>
+  );
+}
+
 export function WinRateChart({
   data,
   height = 300,
@@ -101,14 +177,13 @@ export function WinRateChart({
   showLabels = true,
   className,
   layout = "horizontal",
-  colors = defaultColors,
 }: WinRateChartProps) {
   if (!data || data.length === 0) {
     return (
       <div
         className={cn(
           "flex items-center justify-center text-muted-foreground",
-          className
+          className,
         )}
         style={{ height }}
       >
@@ -128,8 +203,8 @@ export function WinRateChart({
           margin={{
             top: 20,
             right: 30,
-            left: isVertical ? 80 : 20,
-            bottom: 5,
+            left: isVertical ? 120 : 20,
+            bottom: isVertical ? 5 : 80,
           }}
         >
           <CartesianGrid
@@ -152,19 +227,21 @@ export function WinRateChart({
               <YAxis
                 type="category"
                 dataKey="name"
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                tick={(props) => <CustomYAxisTick {...props} data={data} />}
                 tickLine={{ stroke: "hsl(var(--border))" }}
                 axisLine={{ stroke: "hsl(var(--border))" }}
-                width={70}
+                width={115}
               />
             </>
           ) : (
             <>
               <XAxis
                 dataKey="name"
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                tick={(props) => <CustomXAxisTick {...props} data={data} />}
                 tickLine={{ stroke: "hsl(var(--border))" }}
                 axisLine={{ stroke: "hsl(var(--border))" }}
+                height={80}
+                interval={0}
               />
               <YAxis
                 domain={[0, 100]}
@@ -209,13 +286,6 @@ export function WinRateChart({
               />
             )}
           </Bar>
-
-          {/* Reference line at 50% */}
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="hsl(var(--muted-foreground))"
-            strokeOpacity={0.5}
-          />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -246,7 +316,7 @@ export function StackedWinLossChart({
       <div
         className={cn(
           "flex items-center justify-center text-muted-foreground",
-          className
+          className,
         )}
         style={{ height }}
       >
@@ -260,7 +330,7 @@ export function StackedWinLossChart({
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={data}
-          margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+          margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
         >
           <CartesianGrid
             strokeDasharray="3 3"
@@ -269,9 +339,11 @@ export function StackedWinLossChart({
           />
           <XAxis
             dataKey="name"
-            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+            tick={(props) => <CustomXAxisTick {...props} data={data} />}
             tickLine={{ stroke: "hsl(var(--border))" }}
             axisLine={{ stroke: "hsl(var(--border))" }}
+            height={80}
+            interval={0}
           />
           <YAxis
             tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
