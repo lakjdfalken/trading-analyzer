@@ -55,7 +55,7 @@ Or visit the [Releases page](https://github.com/lakjdfalken/trading-analyzer/rel
 
 - **Trade Nation** (Serial column format)
 - **TD365** (Ref. No. column format)
-- **Generic CSV** (configurable column mapping)
+- **Generic CSV** (auto-detects common column names)
 
 ## Installation
 
