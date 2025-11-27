@@ -159,7 +159,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon="docs/icon.icns" if is_macos else ("docs/icon.ico" if is_windows else None),
+    icon="docs/icon.icns" if is_macos and Path("docs/icon.icns").exists() else ("docs/icon.ico" if is_windows and Path("docs/icon.ico").exists() else None),
 )
 
 coll = COLLECT(
