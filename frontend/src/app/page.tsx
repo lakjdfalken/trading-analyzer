@@ -339,6 +339,8 @@ export default function Home() {
           kpis.profitFactor >= 1.5
             ? ("success" as const)
             : ("default" as const),
+        tooltip:
+          "Total profits ÷ Total losses. Values above 1.0 mean you're profitable overall. Above 1.5 is considered good.",
       },
       {
         title: "Max Drawdown",
@@ -347,7 +349,9 @@ export default function Home() {
         icon: Percent,
         trend: { value: 1.5, isPositive: false },
         variant:
-          kpis.maxDrawdown > -10 ? ("warning" as const) : ("danger" as const),
+          kpis.maxDrawdown > 10 ? ("danger" as const) : ("warning" as const),
+        tooltip:
+          "Largest percentage drop from a peak balance to a subsequent low point. Lower is better.",
       },
     ];
   }, [kpis, displayCurrency, formatAmount]);
@@ -563,7 +567,6 @@ export default function Home() {
               maxItems={5}
               showHeader
               title="Recent Trades"
-              onViewAll={() => console.log("View all trades")}
               loading={loading.recentTrades}
             />
           </div>

@@ -2,25 +2,20 @@
 
 import * as React from "react";
 import {
-  Settings,
-  Moon,
-  Sun,
-  Monitor,
-  Bell,
-  BellOff,
   DollarSign,
-  Percent,
-  Clock,
-  Globe,
   Save,
   RotateCcw,
   Check,
-  AlertCircle,
   RefreshCw,
   Trash2,
   Database,
   AlertTriangle,
+  Settings,
+  Moon,
+  Sun,
+  Monitor,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 
 import { cn } from "@/lib/utils";
 import {
@@ -34,33 +29,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CurrencySelector, ShowConvertedToggle } from "@/components/currency";
 import { useCurrencyStore } from "@/store/currency";
-
-// Settings types
-type Theme = "light" | "dark" | "system";
-type DateFormat = "MM/DD/YYYY" | "DD/MM/YYYY" | "YYYY-MM-DD";
-type TimeFormat = "12h" | "24h";
-
-interface UserPreferences {
-  theme: Theme;
-  dateFormat: DateFormat;
-  timeFormat: TimeFormat;
-  showPercent: boolean;
-  showNotifications: boolean;
-  dailyLossLimit: number;
-  maxPositionSize: number;
-  defaultInstrument: string;
-}
-
-const defaultPreferences: UserPreferences = {
-  theme: "dark",
-  dateFormat: "MM/DD/YYYY",
-  timeFormat: "12h",
-  showPercent: true,
-  showNotifications: true,
-  dailyLossLimit: 500,
-  maxPositionSize: 10000,
-  defaultInstrument: "US30",
-};
 
 // Exchange rates that can be edited
 const EDITABLE_CURRENCIES = ["SEK", "DKK", "EUR", "USD", "GBP", "NOK", "CHF"];
@@ -96,8 +64,8 @@ function calculateRatesRelativeTo(
 }
 
 export default function SettingsPage() {
-  const [preferences, setPreferences] =
-    React.useState<UserPreferences>(defaultPreferences);
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [hasChanges, setHasChanges] = React.useState(false);
   const [editingRates, setEditingRates] = React.useState(false);
@@ -141,6 +109,11 @@ export default function SettingsPage() {
     setDefaultCurrency,
     formatAmount,
   } = useCurrencyStore();
+
+  // Set mounted state for theme hydration
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Fetch accounts for data management
   React.useEffect(() => {
@@ -195,8 +168,6 @@ export default function SettingsPage() {
 
   // Track changes - include currency store changes
   React.useEffect(() => {
-    const prefsChanged =
-      JSON.stringify(preferences) !== JSON.stringify(defaultPreferences);
     const currencyChanged =
       initialCurrency !== null && defaultCurrency !== initialCurrency;
     const showConvertedChanged =
@@ -206,11 +177,8 @@ export default function SettingsPage() {
       exchangeRates?.rates &&
       JSON.stringify(localRates) !== JSON.stringify(exchangeRates.rates);
 
-    setHasChanges(
-      prefsChanged || currencyChanged || showConvertedChanged || !!ratesChanged,
-    );
+    setHasChanges(currencyChanged || showConvertedChanged || !!ratesChanged);
   }, [
-    preferences,
     defaultCurrency,
     showConverted,
     initialCurrency,
@@ -244,7 +212,6 @@ export default function SettingsPage() {
 
   // Handle reset
   const handleReset = () => {
-    setPreferences(defaultPreferences);
     // Reset currency to initial saved value
     if (initialCurrency) {
       setDefaultCurrency(initialCurrency);
@@ -253,14 +220,6 @@ export default function SettingsPage() {
     const resetRates = calculateRatesRelativeTo(initialCurrency || "SEK");
     setLocalRates(resetRates);
     setEditingRates(false);
-  };
-
-  // Update preference
-  const updatePreference = <K extends keyof UserPreferences>(
-    key: K,
-    value: UserPreferences[K],
-  ) => {
-    setPreferences((prev) => ({ ...prev, [key]: value }));
   };
 
   // Update exchange rate
@@ -473,7 +432,6 @@ export default function SettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Theme */}
               <div>
                 <label className="text-sm font-medium mb-3 block">Theme</label>
                 <div className="flex gap-2">
@@ -489,11 +447,11 @@ export default function SettingsPage() {
                       <Button
                         key={option.value}
                         variant={
-                          preferences.theme === option.value
+                          mounted && theme === option.value
                             ? "default"
                             : "outline"
                         }
-                        onClick={() => updatePreference("theme", option.value)}
+                        onClick={() => setTheme(option.value)}
                         className="gap-2"
                       >
                         <Icon className="h-4 w-4" />
@@ -502,264 +460,6 @@ export default function SettingsPage() {
                     );
                   })}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Display Preferences */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Globe className="h-5 w-5" />
-                Display Preferences
-              </CardTitle>
-              <CardDescription>Configure how data is displayed</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Date Format */}
-              <div>
-                <label className="text-sm font-medium mb-3 block">
-                  <Clock className="h-4 w-4 inline mr-2" />
-                  Date Format
-                </label>
-                <div className="flex gap-2">
-                  {(
-                    [
-                      { value: "MM/DD/YYYY", label: "MM/DD/YYYY" },
-                      { value: "DD/MM/YYYY", label: "DD/MM/YYYY" },
-                      { value: "YYYY-MM-DD", label: "YYYY-MM-DD" },
-                    ] as const
-                  ).map((option) => (
-                    <Button
-                      key={option.value}
-                      variant={
-                        preferences.dateFormat === option.value
-                          ? "default"
-                          : "outline"
-                      }
-                      size="sm"
-                      onClick={() =>
-                        updatePreference("dateFormat", option.value)
-                      }
-                    >
-                      {option.label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Time Format */}
-              <div>
-                <label className="text-sm font-medium mb-3 block">
-                  Time Format
-                </label>
-                <div className="flex gap-2">
-                  {(
-                    [
-                      { value: "12h", label: "12-hour (AM/PM)" },
-                      { value: "24h", label: "24-hour" },
-                    ] as const
-                  ).map((option) => (
-                    <Button
-                      key={option.value}
-                      variant={
-                        preferences.timeFormat === option.value
-                          ? "default"
-                          : "outline"
-                      }
-                      size="sm"
-                      onClick={() =>
-                        updatePreference("timeFormat", option.value)
-                      }
-                    >
-                      {option.label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Show Percent */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <label className="text-sm font-medium">
-                    <Percent className="h-4 w-4 inline mr-2" />
-                    Show P&L Percentage
-                  </label>
-                  <p className="text-sm text-muted-foreground">
-                    Display percentage values alongside absolute P&L
-                  </p>
-                </div>
-                <Button
-                  variant={preferences.showPercent ? "default" : "outline"}
-                  size="sm"
-                  onClick={() =>
-                    updatePreference("showPercent", !preferences.showPercent)
-                  }
-                >
-                  {preferences.showPercent ? "On" : "Off"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Notifications */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bell className="h-5 w-5" />
-                Notifications
-              </CardTitle>
-              <CardDescription>
-                Configure alerts and notifications
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <label className="text-sm font-medium">
-                    Enable Notifications
-                  </label>
-                  <p className="text-sm text-muted-foreground">
-                    Receive alerts for trades and risk limits
-                  </p>
-                </div>
-                <Button
-                  variant={
-                    preferences.showNotifications ? "default" : "outline"
-                  }
-                  size="sm"
-                  onClick={() =>
-                    updatePreference(
-                      "showNotifications",
-                      !preferences.showNotifications,
-                    )
-                  }
-                  className="gap-2"
-                >
-                  {preferences.showNotifications ? (
-                    <>
-                      <Bell className="h-4 w-4" />
-                      On
-                    </>
-                  ) : (
-                    <>
-                      <BellOff className="h-4 w-4" />
-                      Off
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Risk Management */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertCircle className="h-5 w-5" />
-                Risk Management
-              </CardTitle>
-              <CardDescription>
-                Set trading limits and risk parameters
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Daily Loss Limit */}
-              <div>
-                <label className="text-sm font-medium mb-3 block">
-                  Daily Loss Limit ({defaultCurrency})
-                </label>
-                <div className="flex items-center gap-4">
-                  <input
-                    type="range"
-                    min="100"
-                    max="2000"
-                    step="50"
-                    value={preferences.dailyLossLimit}
-                    onChange={(e) =>
-                      updatePreference("dailyLossLimit", Number(e.target.value))
-                    }
-                    className="flex-1 h-2 bg-secondary rounded-lg appearance-none cursor-pointer"
-                  />
-                  <div className="w-24">
-                    <input
-                      type="number"
-                      value={preferences.dailyLossLimit}
-                      onChange={(e) =>
-                        updatePreference(
-                          "dailyLossLimit",
-                          Number(e.target.value),
-                        )
-                      }
-                      className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm"
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Trading will be paused when daily loss reaches this limit
-                </p>
-              </div>
-
-              {/* Max Position Size */}
-              <div>
-                <label className="text-sm font-medium mb-3 block">
-                  Maximum Position Size ({defaultCurrency})
-                </label>
-                <div className="flex items-center gap-4">
-                  <input
-                    type="range"
-                    min="1000"
-                    max="50000"
-                    step="1000"
-                    value={preferences.maxPositionSize}
-                    onChange={(e) =>
-                      updatePreference(
-                        "maxPositionSize",
-                        Number(e.target.value),
-                      )
-                    }
-                    className="flex-1 h-2 bg-secondary rounded-lg appearance-none cursor-pointer"
-                  />
-                  <div className="w-24">
-                    <input
-                      type="number"
-                      value={preferences.maxPositionSize}
-                      onChange={(e) =>
-                        updatePreference(
-                          "maxPositionSize",
-                          Number(e.target.value),
-                        )
-                      }
-                      className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm"
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Maximum exposure per position
-                </p>
-              </div>
-
-              {/* Default Instrument */}
-              <div>
-                <label className="text-sm font-medium mb-3 block">
-                  Default Instrument
-                </label>
-                <select
-                  value={preferences.defaultInstrument}
-                  onChange={(e) =>
-                    updatePreference("defaultInstrument", e.target.value)
-                  }
-                  className="w-full max-w-xs px-3 py-2 bg-background border border-input rounded-md text-sm"
-                >
-                  <option value="US30">US30 (Dow Jones)</option>
-                  <option value="GER40">GER40 (DAX)</option>
-                  <option value="NAS100">NAS100 (NASDAQ)</option>
-                  <option value="UK100">UK100 (FTSE)</option>
-                  <option value="SPX500">SPX500 (S&P 500)</option>
-                </select>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Default instrument for new trades
-                </p>
               </div>
             </CardContent>
           </Card>

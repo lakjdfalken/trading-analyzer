@@ -8,17 +8,12 @@ Provides methods to:
 """
 
 import json
-import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-# Database path - relative to project root
-DATABASE_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
-    "trading.db",
-)
+from db_path import DATABASE_PATH
 
 # Default exchange rates (to SEK as base)
 DEFAULT_EXCHANGE_RATES = {

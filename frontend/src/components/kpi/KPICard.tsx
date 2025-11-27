@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { LucideIcon } from "lucide-react";
+import { LucideIcon, Info } from "lucide-react";
 import { useCurrencyStore } from "@/store/currency";
 
 export interface KPICardProps {
@@ -20,6 +20,8 @@ export interface KPICardProps {
   currency?: string;
   /** Whether to show the value as a currency amount */
   isCurrency?: boolean;
+  /** Tooltip text shown on info icon hover */
+  tooltip?: string;
 }
 
 const variantStyles = {
@@ -46,6 +48,7 @@ export function KPICard({
   className,
   currency,
   isCurrency = false,
+  tooltip,
 }: KPICardProps) {
   const { formatWithConversion, formatAmount } = useCurrencyStore();
 
@@ -73,8 +76,16 @@ export function KPICard({
   return (
     <Card className={cn(variantStyles[variant], className)}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
+        <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
           {title}
+          {tooltip && (
+            <span className="relative group">
+              <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+              <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-popover text-popover-foreground text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal w-48 text-center z-50 pointer-events-none border border-border">
+                {tooltip}
+              </span>
+            </span>
+          )}
         </CardTitle>
         {Icon && <Icon className={cn("h-4 w-4", iconVariantStyles[variant])} />}
       </CardHeader>

@@ -5,9 +5,10 @@ Provides endpoints for advanced analytics and performance metrics.
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from api.models import (
     DailyPnLDataPoint,
@@ -18,7 +19,7 @@ from api.models import (
     TradeDurationStats,
     WeekdayPerformance,
 )
-from api.services.database import db
+from api.services.database import db, get_db_connection
 
 router = APIRouter()
 
@@ -644,4 +645,88 @@ async def get_position_size_analysis(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error fetching position size analysis: {str(e)}"
+        )
+
+
+class FundingDataPoint(BaseModel):
+    """Funding data point for deposits/withdrawals chart."""
+
+    date: str
+    deposits: float
+    withdrawals: float
+    net: float
+    cumulative: float
+
+
+@router.get("/funding", response_model=List[FundingDataPoint])
+async def get_funding_data(
+    start_date: Optional[datetime] = Query(None, alias="from"),
+    end_date: Optional[datetime] = Query(None, alias="to"),
+):
+    """
+    Get deposits and withdrawals data for the date range.
+
+    Fund receivable = deposits (money coming in)
+    Fund payable = withdrawals (money going out)
+
+    Args:
+        start_date: Start of date range
+        end_date: End of date range
+
+    Returns:
+        List of funding data points with deposits, withdrawals, and cumulative totals
+    """
+    try:
+        conditions = ["(\"Action\" = 'Fund receivable' OR \"Action\" = 'Fund payable')"]
+        params: List[Any] = []
+
+        if start_date:
+            conditions.append('"Transaction Date" >= ?')
+            params.append(start_date.strftime("%Y-%m-%d"))
+        if end_date:
+            conditions.append('"Transaction Date" <= ?')
+            params.append(end_date.strftime("%Y-%m-%d"))
+
+        where_clause = " AND ".join(conditions)
+
+        query = f"""
+            SELECT
+                DATE("Transaction Date") as date,
+                SUM(CASE WHEN "Action" = 'Fund receivable' THEN COALESCE("P/L", 0) ELSE 0 END) as deposits,
+                SUM(CASE WHEN "Action" = 'Fund payable' THEN ABS(COALESCE("P/L", 0)) ELSE 0 END) as withdrawals
+            FROM broker_transactions
+            WHERE {where_clause}
+            GROUP BY DATE("Transaction Date")
+            ORDER BY date ASC
+        """
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+        result = []
+        cumulative = 0.0
+
+        for row in rows:
+            date_str = row[0]
+            deposits = float(row[1] or 0)
+            withdrawals = float(row[2] or 0)
+            net = deposits - withdrawals
+            cumulative += net
+
+            result.append(
+                FundingDataPoint(
+                    date=date_str,
+                    deposits=round(deposits, 2),
+                    withdrawals=round(withdrawals, 2),
+                    net=round(net, 2),
+                    cumulative=round(cumulative, 2),
+                )
+            )
+
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching funding data: {str(e)}"
         )

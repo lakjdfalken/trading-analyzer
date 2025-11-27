@@ -42,6 +42,7 @@ export { StreakChart } from "./StreakChart";
 export { TradeDurationChart } from "./TradeDurationChart";
 export { CumulativePnLChart } from "./CumulativePnLChart";
 export { PositionSizeChart } from "./PositionSizeChart";
+export { FundingChart } from "./FundingChart";
 
 export type {
   ChartType,

@@ -39,6 +39,7 @@ import { StreakChart } from "@/components/charts/StreakChart";
 import { TradeDurationChart } from "@/components/charts/TradeDurationChart";
 import { CumulativePnLChart } from "@/components/charts/CumulativePnLChart";
 import { PositionSizeChart } from "@/components/charts/PositionSizeChart";
+import { FundingChart } from "@/components/charts/FundingChart";
 import type { AccountSeries } from "@/components/charts/MultiAccountBalanceChart";
 import type { AccountPnLSeries } from "@/components/charts/MultiAccountMonthlyPnLChart";
 import { DateRangePicker } from "@/components/filters/DateRangePicker";
@@ -139,6 +140,18 @@ export default function AnalyticsPage() {
     }>;
     sizePnLCorrelation: Array<{ size: number; pnl: number }>;
   } | null>(null);
+  const [fundingData, setFundingData] = React.useState<
+    Array<{
+      date: string;
+      deposits: number;
+      withdrawals: number;
+      net: number;
+      cumulative: number;
+    }>
+  >([]);
+  const [equityCurve, setEquityCurve] = React.useState<
+    Array<{ date: string; balance: number }>
+  >([]);
 
   const {
     dateRange,
@@ -191,6 +204,8 @@ export default function AnalyticsPage() {
         streakRes,
         durationRes,
         positionSizeRes,
+        fundingRes,
+        equityCurveRes,
       ] = await Promise.allSettled([
         fetch(`${API_BASE}/api/dashboard/balance${queryString}`),
         fetch(`${API_BASE}/api/dashboard/monthly-pnl${queryString}`),
@@ -203,6 +218,8 @@ export default function AnalyticsPage() {
         fetch(`${API_BASE}/api/analytics/streaks${queryString}`),
         fetch(`${API_BASE}/api/analytics/trade-duration${queryString}`),
         fetch(`${API_BASE}/api/analytics/position-size${queryString}`),
+        fetch(`${API_BASE}/api/analytics/funding${queryString}`),
+        fetch(`${API_BASE}/api/dashboard/equity-curve${queryString}`),
       ]);
 
       if (balanceRes.status === "fulfilled" && balanceRes.value.ok) {
@@ -280,6 +297,21 @@ export default function AnalyticsPage() {
       if (positionSizeRes.status === "fulfilled" && positionSizeRes.value.ok) {
         const positionSizeResult = await positionSizeRes.value.json();
         setPositionSizeData(positionSizeResult);
+      }
+
+      // Process funding data
+      if (fundingRes.status === "fulfilled" && fundingRes.value.ok) {
+        const fundingResult = await fundingRes.value.json();
+        setFundingData(fundingResult);
+      }
+
+      // Process equity curve (P/L based, excludes funding)
+      if (equityCurveRes.status === "fulfilled" && equityCurveRes.value.ok) {
+        const equityCurveResponse = await equityCurveRes.value.json();
+        const equityData = Array.isArray(equityCurveResponse)
+          ? equityCurveResponse
+          : equityCurveResponse.data || [];
+        setEquityCurve(equityData);
       }
 
       setInitialized(true);
@@ -419,12 +451,13 @@ export default function AnalyticsPage() {
     {
       id: "drawdown",
       title: "Drawdown Analysis",
-      description: "Historical drawdown periods and recovery",
+      description:
+        "Historical drawdown periods and recovery (P/L only, excludes deposits/withdrawals)",
       category: "risk",
       icon: TrendingDown,
       component: (
         <DrawdownChart
-          balanceData={balanceHistory}
+          balanceData={equityCurve}
           height={300}
           currency={displayCurrency}
         />
@@ -500,6 +533,20 @@ export default function AnalyticsPage() {
       component: (
         <PositionSizeChart
           data={positionSizeData}
+          height={300}
+          currency={displayCurrency}
+        />
+      ),
+    },
+    {
+      id: "funding",
+      title: "Deposits & Withdrawals",
+      description: "Track account deposits and withdrawals over time",
+      category: "pnl",
+      icon: Wallet,
+      component: (
+        <FundingChart
+          data={fundingData}
           height={300}
           currency={displayCurrency}
         />
@@ -685,13 +732,62 @@ export default function AnalyticsPage() {
                 layout="horizontal"
               />
             )}
-            {/* Placeholder for other charts */}
-            {!["equity-curve", "monthly-pnl", "win-rate-instrument"].includes(
-              expandedChart,
-            ) && (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                <p>Expanded view coming soon</p>
-              </div>
+            {expandedChart === "daily-pnl" && (
+              <DailyPnLChart
+                data={dailyPnL}
+                height={600}
+                currency={displayCurrency}
+              />
+            )}
+            {expandedChart === "drawdown" && (
+              <DrawdownChart
+                balanceData={equityCurve}
+                height={600}
+                currency={displayCurrency}
+              />
+            )}
+            {expandedChart === "trade-duration" && (
+              <TradeDurationChart data={tradeDuration} height={600} />
+            )}
+            {expandedChart === "hourly-performance" && (
+              <HourlyPerformanceChart
+                data={hourlyPerformance}
+                height={600}
+                currency={displayCurrency}
+                metric="pnl"
+              />
+            )}
+            {expandedChart === "weekday-performance" && (
+              <WeekdayPerformanceChart
+                data={weekdayPerformance}
+                height={600}
+                currency={displayCurrency}
+                metric="pnl"
+              />
+            )}
+            {expandedChart === "win-loss-streak" && (
+              <StreakChart data={streakData} height={600} />
+            )}
+            {expandedChart === "cumulative-pnl" && (
+              <CumulativePnLChart
+                data={dailyPnL}
+                height={600}
+                currency={displayCurrency}
+              />
+            )}
+            {expandedChart === "position-size" && (
+              <PositionSizeChart
+                data={positionSizeData}
+                height={600}
+                currency={displayCurrency}
+              />
+            )}
+            {expandedChart === "funding" && (
+              <FundingChart
+                data={fundingData}
+                height={600}
+                currency={displayCurrency}
+              />
             )}
           </div>
         </ExpandedChartModal>

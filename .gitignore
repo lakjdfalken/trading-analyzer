@@ -20,3 +20,5 @@ dist/
 build/
 frontend/node_modules/
 frontend/.next/
+frontend/out/
+frontend/tsconfig.tsbuildinfo

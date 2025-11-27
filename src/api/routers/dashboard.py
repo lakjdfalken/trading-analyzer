@@ -129,6 +129,24 @@ async def get_balance_history(
         )
 
 
+@router.get("/equity-curve", response_model=BalanceHistoryResponse)
+async def get_equity_curve(
+    start_date: Optional[datetime] = Query(None, alias="from"),
+    end_date: Optional[datetime] = Query(None, alias="to"),
+):
+    """Get equity curve based on cumulative P/L excluding funding transactions."""
+    try:
+        result = db.get_equity_curve(
+            start_date=start_date,
+            end_date=end_date,
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching equity curve: {str(e)}"
+        )
+
+
 @router.get("/monthly-pnl", response_model=MonthlyPnLResponse)
 async def get_monthly_pnl(
     start_date: Optional[datetime] = Query(None, alias="from"),

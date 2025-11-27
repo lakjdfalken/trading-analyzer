@@ -27,6 +27,7 @@ sys.path.insert(
 
 from api.services.database import execute_query, get_db_connection
 from create_database import create_db_schema
+from db_path import DATABASE_PATH
 from import_data import import_transaction_data
 
 router = APIRouter()
@@ -519,14 +520,8 @@ async def get_database_stats():
         }
 
     # Get database file size
-    db_path = os.path.join(
-        os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        ),
-        "trading.db",
-    )
-    if os.path.exists(db_path):
-        stats["database_size_bytes"] = os.path.getsize(db_path)
+    if os.path.exists(DATABASE_PATH):
+        stats["database_size_bytes"] = os.path.getsize(DATABASE_PATH)
 
     return DatabaseStats(
         totalTransactions=stats["total_transactions"],

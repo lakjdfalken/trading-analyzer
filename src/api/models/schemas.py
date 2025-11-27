@@ -106,8 +106,6 @@ class KPIMetrics(BaseModel):
     open_positions: int = Field(alias="openPositions")
     total_exposure: float = Field(alias="totalExposure")
     avg_trade_duration: int = Field(alias="avgTradeDuration")  # in minutes
-    daily_loss_used: float = Field(alias="dailyLossUsed")
-    daily_loss_limit: float = Field(alias="dailyLossLimit")
     currency: Optional[str] = None
 
     class Config:
@@ -361,15 +359,7 @@ class AccountInfo(BaseModel):
 class UserPreferences(BaseModel):
     """User preferences settings."""
 
-    theme: str = "dark"
     currency: str = "USD"
-    date_format: str = Field("MM/DD/YYYY", alias="dateFormat")
-    time_format: str = Field("12h", alias="timeFormat")
-    show_percent: bool = Field(True, alias="showPercent")
-    show_notifications: bool = Field(True, alias="showNotifications")
-    daily_loss_limit: float = Field(500, alias="dailyLossLimit")
-    max_position_size: float = Field(10000, alias="maxPositionSize")
-    default_instrument: str = Field("US30", alias="defaultInstrument")
 
     class Config:
         populate_by_name = True

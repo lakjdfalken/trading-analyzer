@@ -41,7 +41,9 @@ The standalone app bundles:
 - Visual C++ Build Tools (for some Python packages)
 - Download from: https://visualstudio.microsoft.com/visual-cpp-build-tools/
 
-## Quick Build
+---
+
+## Quick Build (Local)
 
 ### Using the Build Script (Recommended)
 
@@ -61,26 +63,34 @@ python scripts/build_standalone.py --create-installer
 
 ### Manual Build Steps
 
-#### Step 1: Install Python Dependencies
+#### Step 1: Clean Previous Builds
 
 ```bash
-cd trading-analyzer
-pip install -r requirements.txt
-pip install pyinstaller pywebview
+rm -rf dist build .venv
+rm -rf frontend/.next frontend/node_modules/.cache
+rm -rf src/__pycache__ src/**/__pycache__
 ```
 
-#### Step 2: Build the Frontend
+#### Step 2: Create Fresh Virtual Environment
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+#### Step 3: Build the Frontend
 
 ```bash
 cd frontend
-npm install
+npm ci  # Clean install (recommended for releases)
 npm run build
 cd ..
 ```
 
 This creates static files in `frontend/out/`.
 
-#### Step 3: Build the Executable
+#### Step 4: Build the Executable
 
 ```bash
 pyinstaller trading_analyzer.spec
@@ -90,20 +100,96 @@ pyinstaller trading_analyzer.spec
 
 ### macOS
 - **App Bundle**: `dist/Trading Analyzer.app`
-- **Run**: Double-click the app or `open "dist/Trading Analyzer.app"`
+- **Run**: `xattr -cr "dist/Trading Analyzer.app"` then double-click or `open "dist/Trading Analyzer.app"`
 
 ### Windows
 - **Executable**: `dist/Trading Analyzer/Trading Analyzer.exe`
 - **Run**: Double-click the executable
 
+---
+
+## Automated Releases with GitHub Actions
+
+The repository includes a GitHub Actions workflow that automatically builds releases for both Windows and macOS.
+
+### How It Works
+
+The workflow (`.github/workflows/build-release.yml`) is triggered when you:
+1. **Push a version tag** (e.g., `v1.0.0`, `v2.1.3`)
+2. **Manually trigger** the workflow from GitHub Actions tab
+
+### Creating a Release (Recommended Method)
+
+#### Step 1: Commit Your Changes
+
+```bash
+git add .
+git commit -m "Release v1.0.0 - Description of changes"
+```
+
+#### Step 2: Create and Push a Version Tag
+
+```bash
+# Create a tag
+git tag v1.0.0
+
+# Push the tag to GitHub
+git push origin v1.0.0
+
+# Also push your commits if not already pushed
+git push origin main
+```
+
+#### Step 3: Wait for Build
+
+GitHub Actions will automatically:
+1. Build the Windows executable (.exe in a zip)
+2. Build the macOS app (.dmg)
+3. Create a GitHub Release with both files attached
+
+#### Step 4: Download Artifacts
+
+Once complete, find your release at:
+`https://github.com/YOUR_USERNAME/trading-analyzer/releases`
+
+### Version Tag Format
+
+Use semantic versioning: `vMAJOR.MINOR.PATCH`
+
+Examples:
+- `v1.0.0` - Initial release
+- `v1.1.0` - New features added
+- `v1.1.1` - Bug fixes
+- `v2.0.0` - Major changes/breaking changes
+
+### Manual Workflow Trigger
+
+You can also trigger a build without creating a release:
+
+1. Go to **Actions** tab in your GitHub repository
+2. Select **Build Release** workflow
+3. Click **Run workflow**
+4. Optionally enter a version name
+5. Click **Run workflow**
+
+Build artifacts will be available for download from the workflow run (not as a release).
+
+### What Gets Built
+
+| Platform | Output File | Contents |
+|----------|-------------|----------|
+| Windows | `TradingAnalyzer-Windows-x64.zip` | Folder with .exe and dependencies |
+| macOS | `TradingAnalyzer-macOS.dmg` | Disk image with .app bundle |
+
+---
+
 ## Distribution
 
 ### macOS
 
-#### Creating a DMG
+#### Creating a DMG (Manual)
 
 ```bash
-# After building the app
 hdiutil create -volname "Trading Analyzer" \
     -srcfolder "dist/Trading Analyzer.app" \
     -ov -format UDZO \
@@ -145,16 +231,32 @@ xcrun stapler staple "dist/Trading Analyzer.app"
 
 ### Windows
 
+#### Creating a ZIP Distribution (Manual)
+
+```powershell
+Compress-Archive -Path "dist\Trading Analyzer" -DestinationPath "dist\TradingAnalyzer-Windows.zip"
+```
+
 #### Creating an Installer with NSIS
 
 1. Install NSIS from https://nsis.sourceforge.io
 2. Create an installer script or use Inno Setup
 
-#### Creating a ZIP Distribution
+---
 
-```powershell
-Compress-Archive -Path "dist\Trading Analyzer" -DestinationPath "dist\TradingAnalyzer-Windows.zip"
-```
+## Pre-Release Checklist
+
+Before creating a release tag:
+
+- [ ] All features tested and working
+- [ ] No console errors in browser dev tools
+- [ ] Import/export functionality works
+- [ ] Charts display correctly (including expanded views)
+- [ ] Update version number if hardcoded anywhere
+- [ ] Commit all changes
+- [ ] Update CHANGELOG.md (if maintained)
+
+---
 
 ## Troubleshooting
 
@@ -195,14 +297,8 @@ sudo dnf install python3-gobject webkit2gtk3
 
 The bundled app includes Python runtime and all dependencies. To reduce size:
 
-1. Use `--onefile` mode (slower startup but single file):
-   ```python
-   # In spec file, change COLLECT to single file EXE
-   ```
-
-2. Use UPX compression (already enabled in spec file)
-
-3. Exclude unnecessary packages in the spec file
+1. Use UPX compression (already enabled in spec file)
+2. Exclude unnecessary packages in the spec file
 
 ### Database Location
 
@@ -210,7 +306,14 @@ The SQLite database (`trading.db`) is created in:
 - **Development**: Project root directory
 - **Standalone App**: Same directory as the executable
 
-To use a fixed location (e.g., user's home directory), modify `src/api/services/database.py`.
+### GitHub Actions Build Fails
+
+Common issues:
+1. **npm ci fails**: Ensure `package-lock.json` is committed
+2. **PyInstaller fails**: Check that all imports in the code are in `requirements.txt`
+3. **Missing frontend/out**: The frontend build step must complete before PyInstaller
+
+---
 
 ## Development Mode
 
@@ -229,6 +332,8 @@ npm run dev
 ```
 
 Access at http://localhost:3000
+
+---
 
 ## Architecture
 
@@ -253,54 +358,7 @@ Access at http://localhost:3000
 └─────────────────────────────────────────┘
 ```
 
-## CI/CD Integration
-
-For automated builds, see `.github/workflows/build.yml` (if available) or create one:
-
-```yaml
-name: Build Desktop App
-
-on:
-  release:
-    types: [created]
-
-jobs:
-  build-macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      - run: pip install -r requirements.txt pyinstaller pywebview
-      - run: cd frontend && npm ci && npm run build
-      - run: pyinstaller trading_analyzer.spec
-      - uses: actions/upload-artifact@v3
-        with:
-          name: macos-app
-          path: dist/Trading Analyzer.app
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      - run: pip install -r requirements.txt pyinstaller pywebview
-      - run: cd frontend && npm ci && npm run build
-      - run: pyinstaller trading_analyzer.spec
-      - uses: actions/upload-artifact@v3
-        with:
-          name: windows-app
-          path: dist/Trading Analyzer/
-```
+---
 
 ## Support
 

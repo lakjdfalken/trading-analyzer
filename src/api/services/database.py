@@ -5,7 +5,6 @@ Provides methods to query the SQLite database and return data
 in formats suitable for the API responses.
 """
 
-import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -13,11 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
-# Database path - relative to project root
-DATABASE_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
-    "trading.db",
-)
+from db_path import DATABASE_PATH
 
 
 @contextmanager
@@ -388,7 +383,7 @@ class TradingDatabase:
                         WHEN 4 THEN 'Apr' WHEN 5 THEN 'May' WHEN 6 THEN 'Jun'
                         WHEN 7 THEN 'Jul' WHEN 8 THEN 'Aug' WHEN 9 THEN 'Sep'
                         WHEN 10 THEN 'Oct' WHEN 11 THEN 'Nov' WHEN 12 THEN 'Dec'
-                    END as month,
+                    END || ' ' || strftime('%Y', "Transaction Date") as month,
                     SUM("P/L") as pnl,
                     COUNT(*) as trades,
                     ROUND(
@@ -423,7 +418,7 @@ class TradingDatabase:
                     WHEN 4 THEN 'Apr' WHEN 5 THEN 'May' WHEN 6 THEN 'Jun'
                     WHEN 7 THEN 'Jul' WHEN 8 THEN 'Aug' WHEN 9 THEN 'Sep'
                     WHEN 10 THEN 'Oct' WHEN 11 THEN 'Nov' WHEN 12 THEN 'Dec'
-                END as month,
+                END || ' ' || strftime('%Y', "Transaction Date") as month,
                 SUM("P/L") as pnl,
                 COUNT(*) as trades,
                 ROUND(
@@ -494,7 +489,7 @@ class TradingDatabase:
                     WHEN 4 THEN 'Apr' WHEN 5 THEN 'May' WHEN 6 THEN 'Jun'
                     WHEN 7 THEN 'Jul' WHEN 8 THEN 'Aug' WHEN 9 THEN 'Sep'
                     WHEN 10 THEN 'Oct' WHEN 11 THEN 'Nov' WHEN 12 THEN 'Dec'
-                END as month,
+                END || ' ' || strftime('%Y', "Transaction Date") as month,
                 SUM("P/L") as pnl,
                 COUNT(*) as trades,
                 ROUND(
@@ -557,6 +552,76 @@ class TradingDatabase:
         """
 
         return execute_query(query, tuple(params))
+
+    @staticmethod
+    def _calculate_max_drawdown(
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        instruments: Optional[List[str]] = None,
+        account_id: Optional[int] = None,
+    ) -> float:
+        """
+        Calculate maximum drawdown as peak-to-trough percentage decline.
+
+        Returns the largest percentage drop from a peak to a subsequent trough
+        in the balance history.
+        """
+        conditions = [
+            "\"Action\" NOT LIKE '%Fund%' AND \"Action\" NOT LIKE '%Charge%' "
+            "AND \"Action\" NOT LIKE '%Deposit%' AND \"Action\" NOT LIKE '%Withdraw%'"
+        ]
+        params = []
+
+        if start_date:
+            conditions.append('"Transaction Date" >= ?')
+            params.append(start_date.isoformat())
+
+        if end_date:
+            conditions.append('"Transaction Date" <= ?')
+            params.append(end_date.isoformat())
+
+        if instruments:
+            placeholders = ",".join("?" * len(instruments))
+            conditions.append(f'"Description" IN ({placeholders})')
+            params.extend(instruments)
+
+        if account_id:
+            conditions.append("account_id = ?")
+            params.append(account_id)
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        # Get balance history ordered by date
+        query = f"""
+            SELECT "Balance"
+            FROM broker_transactions
+            WHERE {where_clause}
+            ORDER BY "Transaction Date" ASC, "Transaction ID" ASC
+        """
+
+        results = execute_query(query, tuple(params))
+
+        if not results:
+            return 0.0
+
+        balances = [row.get("Balance", 0) or 0 for row in results]
+
+        if not balances:
+            return 0.0
+
+        # Calculate max drawdown using peak-to-trough method
+        peak = balances[0]
+        max_drawdown = 0.0
+
+        for balance in balances:
+            if balance > peak:
+                peak = balance
+            elif peak > 0:
+                drawdown = (peak - balance) / peak * 100
+                if drawdown > max_drawdown:
+                    max_drawdown = drawdown
+
+        return max_drawdown
 
     @staticmethod
     def get_kpi_metrics(
@@ -632,9 +697,9 @@ class TradingDatabase:
         total_losses = losing_trades * avg_loss if losing_trades > 0 else 1
         profit_factor = total_wins / total_losses if total_losses > 0 else 0
 
-        # Calculate max drawdown (simplified)
-        max_drawdown = (
-            ((max_balance - min_balance) / max_balance * 100) if max_balance > 0 else 0
+        # Calculate max drawdown (peak-to-trough)
+        max_drawdown = TradingDatabase._calculate_max_drawdown(
+            start_date, end_date, instruments, None
         )
 
         # Get today's stats
@@ -656,7 +721,7 @@ class TradingDatabase:
             "avgWin": round(avg_win, 2),
             "avgLoss": round(avg_loss, 2),
             "profitFactor": round(profit_factor, 2),
-            "maxDrawdown": round(-max_drawdown, 1),
+            "maxDrawdown": round(max_drawdown, 1),
             "totalTrades": total_trades,
             "winningTrades": winning_trades,
             "losingTrades": losing_trades,
@@ -665,8 +730,6 @@ class TradingDatabase:
             "openPositions": 0,  # Would need real-time data
             "totalExposure": 0,  # Would need real-time data
             "avgTradeDuration": 120,  # Default 2 hours, would need calculation
-            "dailyLossUsed": 0,  # Would need calculation
-            "dailyLossLimit": 500,  # Default, should come from settings
             "currency": currency,
         }
 
@@ -701,6 +764,74 @@ class TradingDatabase:
             ORDER BY account_name
         """
         return execute_query(query)
+
+    @staticmethod
+    def get_equity_curve(
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get equity curve based on cumulative P/L excluding funding.
+
+        This provides a true trading performance curve without deposits/withdrawals
+        affecting the drawdown calculations.
+        """
+        conditions = [
+            "\"Action\" NOT LIKE '%Fund%' AND \"Action\" NOT LIKE '%Charge%' "
+            "AND \"Action\" NOT LIKE '%Deposit%' AND \"Action\" NOT LIKE '%Withdraw%'"
+        ]
+        params = []
+
+        if start_date:
+            conditions.append('"Transaction Date" >= ?')
+            params.append(start_date.isoformat())
+
+        if end_date:
+            conditions.append('"Transaction Date" <= ?')
+            params.append(end_date.isoformat())
+
+        where_clause = " AND ".join(conditions)
+
+        # Get the primary currency used (most common)
+        currency_query = f"""
+            SELECT "Currency", COUNT(*) as cnt
+            FROM broker_transactions
+            WHERE {where_clause} AND "Currency" IS NOT NULL
+            GROUP BY "Currency"
+            ORDER BY cnt DESC
+            LIMIT 1
+        """
+        currency_results = execute_query(currency_query, tuple(params))
+        currency = currency_results[0].get("Currency") if currency_results else None
+
+        query = f"""
+            SELECT
+                DATE("Transaction Date") as date,
+                SUM("P/L") as daily_pnl,
+                SUM(SUM("P/L")) OVER (ORDER BY DATE("Transaction Date")) as cumulative_pnl
+            FROM broker_transactions
+            WHERE {where_clause}
+            GROUP BY DATE("Transaction Date")
+            ORDER BY date ASC
+        """
+
+        data = execute_query(query, tuple(params))
+
+        # Transform to equity curve format (starting from 0)
+        equity_data = []
+        for point in data:
+            equity_data.append(
+                {
+                    "date": point["date"],
+                    "balance": point["cumulative_pnl"] or 0,
+                    "dailyPnl": point["daily_pnl"] or 0,
+                }
+            )
+
+        return {
+            "data": equity_data,
+            "currency": currency,
+        }
 
     @staticmethod
     def get_daily_pnl(

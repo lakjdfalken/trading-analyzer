@@ -6,6 +6,7 @@ from datetime import datetime
 
 import pandas as pd
 
+from db_path import DATABASE_PATH
 from file_handler import clean_csv_format, detect_file_format
 from logger import setup_logger
 from settings import COLUMN_MAPPINGS
@@ -444,7 +445,7 @@ def import_transaction_data(file_path, broker_name="default", account_id=None):
     final_df["account_id"] = int(account_id)
 
     # Connect to database and check for existing records
-    conn = sqlite3.connect("trading.db")
+    conn = sqlite3.connect(DATABASE_PATH)
     try:
         cursor = conn.cursor()
         cursor.execute(
@@ -519,7 +520,7 @@ def import_transaction_data(file_path, broker_name="default", account_id=None):
         conn.close()
 
     # Verify the import by reading back from the database
-    conn = sqlite3.connect("trading.db")
+    conn = sqlite3.connect(DATABASE_PATH)
     result_df = pd.read_sql("SELECT * FROM broker_transactions", conn)
     conn.close()
 

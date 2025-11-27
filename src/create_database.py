@@ -1,17 +1,20 @@
-import sqlite3
 import logging
+import sqlite3
+
+from db_path import DATABASE_PATH
 from logger import setup_logger
 
 logger = logging.getLogger(__name__)
 
+
 def create_db_schema():
-    conn = sqlite3.connect('trading.db')
+    conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
 
-    logger.info("Creating database.")
+    logger.info(f"Creating database at {DATABASE_PATH}")
 
     # Create accounts table with INTEGER account_id
-    cursor.execute('''
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS accounts (
         account_id INTEGER PRIMARY KEY AUTOINCREMENT,
         account_name TEXT,
@@ -20,10 +23,10 @@ def create_db_schema():
         initial_balance DECIMAL(10,2),
         notes TEXT
     )
-    ''')
+    """)
 
     # Create broker_transactions table with INTEGER account_id and foreign key constraint
-    cursor.execute('''
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS broker_transactions (
         transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
         broker_name TEXT,
@@ -45,7 +48,7 @@ def create_db_schema():
         account_id INTEGER NOT NULL,
         FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
     )
-    ''')
+    """)
 
     conn.commit()
     conn.close()
