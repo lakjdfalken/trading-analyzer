@@ -419,6 +419,21 @@ export const useDashboardStore = create<DashboardState>()(
           // Reset isInitialized after rehydration so data fetches on new page load
           if (state) {
             state.isInitialized = false;
+            // Convert persisted date strings back to Date objects
+            if (state.dateRange) {
+              if (
+                state.dateRange.from &&
+                typeof state.dateRange.from === "string"
+              ) {
+                state.dateRange.from = new Date(state.dateRange.from);
+              }
+              if (
+                state.dateRange.to &&
+                typeof state.dateRange.to === "string"
+              ) {
+                state.dateRange.to = new Date(state.dateRange.to);
+              }
+            }
           }
         },
       },

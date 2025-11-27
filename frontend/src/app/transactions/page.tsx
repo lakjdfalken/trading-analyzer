@@ -29,10 +29,8 @@ import { useDashboardStore } from "@/store/dashboard";
 import type { Trade } from "@/components/trades/RecentTradesList";
 import type { DateRangePreset } from "@/components/filters/types";
 
-// API base URL
-// Use relative URL for same-origin requests (works with any port)
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, "") || "";
+// API base URL - use empty string for same-origin requests
+const API_BASE = "";
 
 // Sort configuration
 type SortField =
@@ -61,6 +59,32 @@ export default function TransactionsPage() {
   const [currentPage, setCurrentPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(20);
 
+  // Local date range state - default to last 3 days
+  const [localDateRange, setLocalDateRange] = React.useState<{
+    from: Date | undefined;
+    to: Date | undefined;
+    preset: DateRangePreset;
+  }>({
+    from: undefined,
+    to: undefined,
+    preset: "custom",
+  });
+
+  // Initialize date range on client side to avoid hydration issues
+  const [isClient, setIsClient] = React.useState(false);
+  React.useEffect(() => {
+    const now = new Date();
+    const threeDaysAgo = new Date(now);
+    threeDaysAgo.setDate(now.getDate() - 3);
+    threeDaysAgo.setHours(0, 0, 0, 0);
+    setLocalDateRange({
+      from: threeDaysAgo,
+      to: now,
+      preset: "custom",
+    });
+    setIsClient(true);
+  }, []);
+
   // Sort state
   const [sortConfig, setSortConfig] = React.useState<SortConfig>({
     field: "entryTime",
@@ -80,24 +104,37 @@ export default function TransactionsPage() {
   // Currency store
   const { formatAmount } = useCurrencyStore();
 
-  // Store state
-  const {
-    dateRange,
-    recentTrades,
-    loading,
-    setDateRange,
-    setRecentTrades,
-    setLoading,
-    isInitialized,
-    setInitialized,
-  } = useDashboardStore();
+  // Export notification state
+  const [exportNotification, setExportNotification] = React.useState<
+    string | null
+  >(null);
 
-  // Fetch data on mount - always fetch fresh data for transactions page
+  // Local trades state for this page
+  const [trades, setTrades] = React.useState<Trade[]>([]);
+  const [isLoading, setIsLoading] = React.useState(false);
+
+  // Fetch data when date range changes
   React.useEffect(() => {
+    if (!isClient || !localDateRange.from) return;
+
     const fetchData = async () => {
-      setLoading("recentTrades", true);
+      setIsLoading(true);
       try {
-        const response = await fetch(`${API_BASE}/api/trades/recent?limit=100`);
+        const params = new URLSearchParams({ limit: "500" });
+        if (localDateRange.from) {
+          // Format as ISO without milliseconds: YYYY-MM-DDTHH:mm:ssZ
+          const fromDate =
+            localDateRange.from.toISOString().split(".")[0] + "Z";
+          params.append("from", fromDate);
+        }
+        if (localDateRange.to) {
+          const endOfDay = new Date(localDateRange.to);
+          endOfDay.setHours(23, 59, 59, 0);
+          const toDate = endOfDay.toISOString().split(".")[0] + "Z";
+          params.append("to", toDate);
+        }
+        const url = `/api/trades/recent?${params.toString()}`;
+        const response = await fetch(url);
         if (response.ok) {
           const tradesData = await response.json();
           // Map API response to frontend Trade type
@@ -123,18 +160,14 @@ export default function TransactionsPage() {
             pnlPercent: t.pnl_percent || t.pnlPercent || 0,
             currency: t.currency,
           }));
-          setRecentTrades(mappedTrades);
+          setTrades(mappedTrades);
         }
-        setInitialized(true);
       } finally {
-        setLoading("recentTrades", false);
+        setIsLoading(false);
       }
     };
     fetchData();
-  }, [setLoading, setRecentTrades, setInitialized]);
-
-  // Use trades from store
-  const trades = recentTrades;
+  }, [localDateRange, isClient]);
 
   // Get unique instruments for filter
   const availableInstruments = React.useMemo(() => {
@@ -255,11 +288,12 @@ export default function TransactionsPage() {
     to: Date | undefined;
     preset?: DateRangePreset;
   }) => {
-    setDateRange({
+    setLocalDateRange({
       from: newRange.from,
       to: newRange.to,
       preset: newRange.preset || "custom",
     });
+    setCurrentPage(1); // Reset to first page when date range changes
   };
 
   // Clear filters
@@ -277,6 +311,65 @@ export default function TransactionsPage() {
     filters.instruments.length > 0 ||
     filters.direction !== "all" ||
     filters.outcome !== "all";
+
+  const handleExport = () => {
+    const tradesToExport = sortedTrades.length > 0 ? sortedTrades : trades;
+    if (tradesToExport.length === 0) return;
+
+    const headers = [
+      "Date",
+      "Time",
+      "Instrument",
+      "Direction",
+      "Entry Price",
+      "Exit Price",
+      "Quantity",
+      "P&L",
+      "P&L %",
+      "Currency",
+    ];
+
+    const csvRows = [
+      headers.join(","),
+      ...tradesToExport.map((trade) => {
+        const entryDate = new Date(trade.entryTime);
+        return [
+          entryDate.toLocaleDateString("en-US"),
+          entryDate.toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          trade.instrument,
+          trade.direction,
+          trade.entryPrice,
+          trade.exitPrice ?? "",
+          trade.quantity,
+          trade.pnl,
+          trade.pnlPercent,
+          trade.currency ?? "",
+        ].join(",");
+      }),
+    ];
+
+    const csvContent = csvRows.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `transactions_${new Date().toISOString().split("T")[0]}.csv`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setExportNotification(
+      `Exported ${tradesToExport.length} transactions to CSV`,
+    );
+    setTimeout(() => setExportNotification(null), 3000);
+  };
 
   // Calculate summary stats
   const summaryStats = React.useMemo(() => {
@@ -301,21 +394,39 @@ export default function TransactionsPage() {
               </h1>
               <p className="text-muted-foreground mt-1">
                 View and analyze all your trading transactions
+                {trades.length >= 500 && (
+                  <span className="ml-2 text-amber-500">
+                    (Showing max 500 trades - narrow date range for more)
+                  </span>
+                )}
               </p>
             </div>
             <div className="flex items-center gap-3">
               <DateRangePicker
                 dateRange={{
-                  from: dateRange.from,
-                  to: dateRange.to,
-                  preset: dateRange.preset,
+                  from: localDateRange.from,
+                  to: localDateRange.to,
+                  preset: localDateRange.preset,
                 }}
                 onDateRangeChange={handleDateRangeChange}
               />
-              <Button variant="outline" size="sm" className="gap-2">
-                <Download className="h-4 w-4" />
-                Export
-              </Button>
+              <div className="relative">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={handleExport}
+                  disabled={trades.length === 0}
+                >
+                  <Download className="h-4 w-4" />
+                  Export
+                </Button>
+                {exportNotification && (
+                  <div className="absolute top-full right-0 mt-2 px-3 py-2 bg-green-500 text-white text-sm rounded-md shadow-lg whitespace-nowrap z-50">
+                    {exportNotification}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

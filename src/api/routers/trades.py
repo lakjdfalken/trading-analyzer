@@ -17,7 +17,7 @@ router = APIRouter()
 
 @router.get("/recent", response_model=List[Trade])
 async def get_recent_trades(
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=500),
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
     instruments: Optional[List[str]] = Query(None),
@@ -26,7 +26,7 @@ async def get_recent_trades(
     Get the most recent trades.
 
     Args:
-        limit: Maximum number of trades to return (1-100)
+        limit: Maximum number of trades to return (1-500)
         start_date: Filter trades from this date
         end_date: Filter trades until this date
         instruments: Filter by specific instruments

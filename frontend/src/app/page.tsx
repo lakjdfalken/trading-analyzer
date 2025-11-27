@@ -101,10 +101,16 @@ export default function Home() {
   const buildQueryString = React.useCallback(() => {
     const params = new URLSearchParams();
     if (dateRange.from) {
-      params.append("from", dateRange.from.toISOString());
+      const fromDate =
+        dateRange.from instanceof Date
+          ? dateRange.from
+          : new Date(dateRange.from);
+      params.append("from", fromDate.toISOString().split(".")[0] + "Z");
     }
     if (dateRange.to) {
-      params.append("to", dateRange.to.toISOString());
+      const toDate =
+        dateRange.to instanceof Date ? dateRange.to : new Date(dateRange.to);
+      params.append("to", toDate.toISOString().split(".")[0] + "Z");
     }
     return params.toString() ? `?${params.toString()}` : "";
   }, [dateRange.from, dateRange.to]);
@@ -128,6 +134,7 @@ export default function Home() {
         instrumentsRes,
         balanceByAccRes,
         monthlyByAccRes,
+        winRateRes,
       ] = await Promise.allSettled([
         fetch(`${API_BASE}/api/dashboard/kpis${queryString}`),
         fetch(`${API_BASE}/api/dashboard/balance${queryString}`),
@@ -138,6 +145,7 @@ export default function Home() {
         fetch(`${API_BASE}/api/instruments`),
         fetch(`${API_BASE}/api/dashboard/balance-by-account${queryString}`),
         fetch(`${API_BASE}/api/dashboard/monthly-pnl-by-account${queryString}`),
+        fetch(`${API_BASE}/api/dashboard/win-rate-by-instrument${queryString}`),
       ]);
 
       // Process KPIs
@@ -220,6 +228,12 @@ export default function Home() {
       if (monthlyByAccRes.status === "fulfilled" && monthlyByAccRes.value.ok) {
         const monthlyByAccData = await monthlyByAccRes.value.json();
         setMonthlyPnLByAccount(monthlyByAccData);
+      }
+
+      // Process win rate by instrument
+      if (winRateRes.status === "fulfilled" && winRateRes.value.ok) {
+        const winRateData = await winRateRes.value.json();
+        setWinRateByInstrument(winRateData);
       }
 
       setLastUpdated(new Date());
