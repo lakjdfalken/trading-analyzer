@@ -78,6 +78,7 @@ hiddenimports = [
     "api.services.currency",
     # Source modules
     "create_database",
+    "db_path",
     "file_handler",
     "import_data",
     "logger",
@@ -184,8 +185,8 @@ if is_macos:
             "CFBundleDisplayName": "Trading Analyzer",
             "CFBundleGetInfoString": "Trading Analyzer - Portfolio Analysis Tool",
             "CFBundleIdentifier": "com.tradinganalyzer.app",
-            "CFBundleVersion": "1.0.0",
-            "CFBundleShortVersionString": "1.0.0",
+            "CFBundleVersion": "2.0.0",
+            "CFBundleShortVersionString": "2.0.0",
             "NSHighResolutionCapable": True,
             "NSRequiresAquaSystemAppearance": False,  # Support dark mode
             "LSMinimumSystemVersion": "10.13.0",
