@@ -5,4 +5,24 @@ FastAPI backend for the Trading Analyzer frontend.
 Provides endpoints for dashboard data, trades, KPIs, and analytics.
 """
 
-__version__ = "1.0.0"
+from pathlib import Path
+
+
+def _get_version() -> str:
+    """Read version from VERSION file."""
+    # Try multiple possible locations for VERSION file
+    possible_paths = [
+        Path(__file__).parent.parent.parent / "VERSION",  # src/api -> src -> root
+        Path(__file__).parent.parent.parent.parent
+        / "VERSION",  # In case of different structure
+        Path.cwd() / "VERSION",  # Current working directory
+    ]
+
+    for version_path in possible_paths:
+        if version_path.exists():
+            return version_path.read_text().strip()
+
+    return "0.0.0"  # Fallback version
+
+
+__version__ = _get_version()

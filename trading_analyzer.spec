@@ -20,6 +20,13 @@ from pathlib import Path
 
 block_cipher = None
 
+# Read version from VERSION file
+VERSION_FILE = Path(SPECPATH) / "VERSION"
+if VERSION_FILE.exists():
+    APP_VERSION = VERSION_FILE.read_text().strip()
+else:
+    APP_VERSION = "0.0.0"
+
 # Determine platform
 is_macos = sys.platform == "darwin"
 is_windows = sys.platform == "win32"
@@ -199,8 +206,8 @@ if is_macos:
             "CFBundleDisplayName": "Trading Analyzer",
             "CFBundleGetInfoString": "Trading Analyzer - Portfolio Analysis Tool",
             "CFBundleIdentifier": "com.tradinganalyzer.app",
-            "CFBundleVersion": "2.0.0",
-            "CFBundleShortVersionString": "2.0.0",
+            "CFBundleVersion": APP_VERSION,
+            "CFBundleShortVersionString": APP_VERSION,
             "NSHighResolutionCapable": True,
             "NSRequiresAquaSystemAppearance": False,  # Support dark mode
             "LSMinimumSystemVersion": "10.13.0",

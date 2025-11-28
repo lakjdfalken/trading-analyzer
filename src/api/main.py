@@ -16,6 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from api import __version__
+
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -42,7 +44,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Trading Analyzer API",
     description="Backend API for the Trading Analyzer dashboard",
-    version="1.0.0",
+    version=__version__,
     lifespan=lifespan,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
@@ -78,7 +80,7 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "1.0.0",
+        "version": __version__,
     }
 
 
@@ -87,7 +89,7 @@ async def root():
     """API root endpoint."""
     return {
         "message": "Trading Analyzer API",
-        "version": "1.0.0",
+        "version": __version__,
         "docs": "/api/docs",
     }
 
