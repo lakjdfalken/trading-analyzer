@@ -1,4 +1,4 @@
-# Trading Analyzer v2.0.0
+# Trading Analyzer
 
 A modern desktop application for analyzing trading data and generating insights from broker transaction exports.
 
@@ -183,6 +183,36 @@ trading-analyzer/
 └── requirements.txt
 ```
 
+## Versioning
+
+The app version is managed from a single `VERSION` file in the project root.
+
+**To release a new version:**
+
+```bash
+# 1. Update VERSION file
+echo "2.1.0" > VERSION
+
+# 2. Sync version to frontend package.json
+python scripts/sync_version.py
+
+# 3. Commit and tag
+git add -A
+git commit -m "Bump version to 2.1.0"
+git tag v2.1.0
+git push origin main --tags
+```
+
+**Version locations (auto-synced):**
+
+| File | How it's updated |
+|------|------------------|
+| `VERSION` | Single source of truth (edit manually) |
+| `src/api/__init__.py` | Reads `VERSION` at runtime |
+| `src/api/main.py` | Uses `__version__` from api package |
+| `trading_analyzer.spec` | Reads `VERSION` at build time |
+| `frontend/package.json` | Updated by `scripts/sync_version.py` |
+
 ## API Documentation
 
 When running in development mode, API documentation is available at:
@@ -199,15 +229,20 @@ The application stores data in a platform-specific location:
 | Windows | `%LOCALAPPDATA%\TradingAnalyzer\trading.db` |
 | Linux | `~/.local/share/TradingAnalyzer/trading.db` |
 
-## What's New in v2.0.0
+## Changelog
+
+### v2.0.0
 
 - **Standalone Desktop App**: Native application for macOS and Windows
 - **Improved Charts**: Win Rate by Instrument now displays proper market names
+- **Points Analytics**: New points/pips tracking by instrument with configurable multipliers
 - **Enhanced Export**: CSV export for filtered transactions
 - **Better KPIs**: Corrected Max Drawdown calculation (peak-to-trough)
 - **Date Filtering**: Persistent date range selection across sessions
 - **UI Improvements**: Tooltips explaining KPI calculations
+- **Currency Conversion**: Multi-currency support with conversion toggle
 - **Performance**: Optimized data fetching and caching
+- **Versioning**: Single `VERSION` file for all version management
 
 ## License
 

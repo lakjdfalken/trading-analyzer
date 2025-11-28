@@ -263,8 +263,16 @@ export const apiClient = {
   },
 
   // Health check
-  health: async (): Promise<{ status: string }> => {
-    return fetchApi<{ status: string }>("/api/health");
+  health: async (): Promise<{ status: string; version: string }> => {
+    return fetchApi<{ status: string; version: string }>("/api/health");
+  },
+
+  // Get app version
+  getVersion: async (): Promise<string> => {
+    const response = await fetchApi<{ status: string; version: string }>(
+      "/api/health",
+    );
+    return response.version;
   },
 };
 

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { apiClient } from "@/api/client";
 
 interface NavItem {
   label: string;
@@ -53,6 +54,14 @@ const navItems: NavItem[] = [
 export function Header() {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [version, setVersion] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    apiClient
+      .getVersion()
+      .then(setVersion)
+      .catch(() => setVersion(null));
+  }, []);
 
   const isActive = (href: string) => {
     if (href === "/") {
@@ -71,6 +80,11 @@ export function Header() {
             <span className="font-semibold text-lg hidden sm:inline-block">
               Trading Analyzer
             </span>
+            {version && (
+              <span className="text-xs text-muted-foreground hidden sm:inline-block">
+                v{version}
+              </span>
+            )}
           </Link>
 
           {/* Desktop Navigation */}
