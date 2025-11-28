@@ -140,6 +140,7 @@ SUPPORTED_BROKERS = [
 async def get_accounts():
     """Get all trading accounts."""
     try:
+        # First try with transaction count join
         query = """
             SELECT
                 a.account_id,
@@ -154,7 +155,23 @@ async def get_accounts():
             GROUP BY a.account_id
             ORDER BY a.broker_name, a.account_name
         """
-        results = execute_query(query)
+        try:
+            results = execute_query(query)
+        except Exception:
+            # Fallback: broker_transactions table might not exist yet
+            query = """
+                SELECT
+                    account_id,
+                    account_name,
+                    broker_name,
+                    currency,
+                    initial_balance,
+                    notes,
+                    0 as transaction_count
+                FROM accounts
+                ORDER BY broker_name, account_name
+            """
+            results = execute_query(query)
 
         if not results:
             return []

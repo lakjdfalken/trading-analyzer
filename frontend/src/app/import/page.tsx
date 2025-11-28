@@ -85,12 +85,12 @@ export default function ImportPage() {
     null,
   );
 
-  // New account form
-  const [showNewAccount, setShowNewAccount] = React.useState(false);
+  // New account form - show by default when no accounts exist
+  const [showNewAccount, setShowNewAccount] = React.useState(true);
   const [newAccountName, setNewAccountName] = React.useState("");
   const [newAccountBroker, setNewAccountBroker] = React.useState("");
   const [newAccountCurrency, setNewAccountCurrency] = React.useState("SEK");
-  const [newAccountBalance, setNewAccountBalance] = React.useState(0);
+
   const [newAccountNotes, setNewAccountNotes] = React.useState("");
 
   // Fetch data
@@ -98,33 +98,52 @@ export default function ImportPage() {
     setIsLoading(true);
     setError(null);
 
+    // Fetch brokers first - this should always work
     try {
-      const [accountsRes, brokersRes, statsRes] = await Promise.all([
+      const brokersRes = await fetch(`${API_BASE}/api/import/brokers`);
+      if (brokersRes.ok) {
+        const brokersData = await brokersRes.json();
+        setBrokers(brokersData);
+      }
+    } catch (err) {
+      console.error("Failed to fetch brokers:", err);
+    }
+
+    // Fetch accounts and stats - may fail on first run
+    try {
+      const [accountsRes, statsRes] = await Promise.allSettled([
         fetch(`${API_BASE}/api/import/accounts`),
-        fetch(`${API_BASE}/api/import/brokers`),
         fetch(`${API_BASE}/api/import/stats`),
       ]);
 
-      if (!accountsRes.ok || !brokersRes.ok || !statsRes.ok) {
-        throw new Error("Failed to fetch data");
+      // Process accounts
+      if (accountsRes.status === "fulfilled" && accountsRes.value.ok) {
+        const accountsData = await accountsRes.value.json();
+        setAccounts(accountsData);
+
+        // Select first account by default, hide new account form if accounts exist
+        if (accountsData.length > 0) {
+          if (!selectedAccountId) {
+            setSelectedAccountId(accountsData[0].account_id);
+          }
+          setShowNewAccount(false);
+        } else {
+          setShowNewAccount(true);
+        }
+      } else {
+        // No accounts or failed to fetch - show new account form
+        setAccounts([]);
+        setShowNewAccount(true);
       }
 
-      const [accountsData, brokersData, statsData] = await Promise.all([
-        accountsRes.json(),
-        brokersRes.json(),
-        statsRes.json(),
-      ]);
-
-      setAccounts(accountsData);
-      setBrokers(brokersData);
-      setStats(statsData);
-
-      // Select first account by default
-      if (accountsData.length > 0 && !selectedAccountId) {
-        setSelectedAccountId(accountsData[0].account_id);
+      // Process stats
+      if (statsRes.status === "fulfilled" && statsRes.value.ok) {
+        const statsData = await statsRes.value.json();
+        setStats(statsData);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data");
+      console.error("Failed to fetch data:", err);
+      setShowNewAccount(true);
     } finally {
       setIsLoading(false);
     }
@@ -187,7 +206,7 @@ export default function ImportPage() {
           accountName: newAccountName,
           brokerName: newAccountBroker,
           currency: newAccountCurrency,
-          initialBalance: newAccountBalance,
+          initialBalance: 0,
           notes: newAccountNotes || null,
         }),
       });
@@ -202,7 +221,7 @@ export default function ImportPage() {
       setNewAccountName("");
       setNewAccountBroker("");
       setNewAccountCurrency("SEK");
-      setNewAccountBalance(0);
+
       setNewAccountNotes("");
       await fetchData();
     } catch (err) {
@@ -416,6 +435,12 @@ export default function ImportPage() {
                 {/* New Account Form */}
                 {showNewAccount && (
                   <div className="p-3 border rounded-lg space-y-3 mb-4">
+                    {accounts.length === 0 && (
+                      <div className="text-sm text-muted-foreground mb-2 pb-2 border-b">
+                        <strong>Welcome!</strong> Create your first account to
+                        start importing trading data.
+                      </div>
+                    )}
                     <input
                       type="text"
                       placeholder="Account Name"
@@ -446,15 +471,6 @@ export default function ImportPage() {
                       <option value="GBP">GBP</option>
                       <option value="DKK">DKK</option>
                     </select>
-                    <input
-                      type="number"
-                      placeholder="Initial Balance"
-                      value={newAccountBalance}
-                      onChange={(e) =>
-                        setNewAccountBalance(parseFloat(e.target.value) || 0)
-                      }
-                      className="w-full px-3 py-2 bg-background border rounded-md text-sm"
-                    />
                     <textarea
                       placeholder="Notes (optional)"
                       value={newAccountNotes}
@@ -482,11 +498,19 @@ export default function ImportPage() {
                 )}
 
                 {/* Account List */}
-                {accounts.length === 0 ? (
+                {accounts.length === 0 && !showNewAccount ? (
                   <div className="text-muted-foreground text-sm text-center py-4">
-                    No accounts yet. Create one to start importing data.
+                    <p className="mb-2">No accounts yet.</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowNewAccount(true)}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Create Account
+                    </Button>
                   </div>
-                ) : (
+                ) : accounts.length === 0 ? null : (
                   accounts.map((account) => (
                     <div
                       key={account.account_id}
