@@ -299,42 +299,45 @@ export default function Home() {
     return [
       {
         title: "Total P&L",
-        value: formatAmount(kpis.totalPnl, currency),
+        value: kpis.totalPnl,
         subtitle: "Last 30 days",
         icon: DollarSign,
-        trend: { value: 12.5, isPositive: kpis.totalPnl >= 0 },
         variant:
           kpis.totalPnl >= 0 ? ("success" as const) : ("danger" as const),
+        isCurrency: true,
+        currency,
       },
       {
         title: "Win Rate",
         value: `${kpis.winRate.toFixed(1)}%`,
         subtitle: `${kpis.totalTrades} trades`,
         icon: Target,
-        trend: { value: 3.2, isPositive: kpis.winRate >= 50 },
         variant:
           kpis.winRate >= 50 ? ("success" as const) : ("warning" as const),
       },
       {
         title: "Avg Win",
-        value: formatAmount(kpis.avgWin, currency),
+        value: kpis.avgWin,
         subtitle: "Per winning trade",
         icon: TrendingUp,
         variant: "default" as const,
+        isCurrency: true,
+        currency,
       },
       {
         title: "Avg Loss",
-        value: formatAmount(kpis.avgLoss, currency),
+        value: kpis.avgLoss,
         subtitle: "Per losing trade",
         icon: TrendingDown,
         variant: "danger" as const,
+        isCurrency: true,
+        currency,
       },
       {
         title: "Profit Factor",
         value: kpis.profitFactor.toFixed(2),
         subtitle: "Risk/Reward ratio",
         icon: BarChart3,
-        trend: { value: 0.15, isPositive: kpis.profitFactor >= 1 },
         variant:
           kpis.profitFactor >= 1.5
             ? ("success" as const)
@@ -347,14 +350,13 @@ export default function Home() {
         value: `${kpis.maxDrawdown.toFixed(1)}%`,
         subtitle: "Peak to trough",
         icon: Percent,
-        trend: { value: 1.5, isPositive: false },
         variant:
           kpis.maxDrawdown > 10 ? ("danger" as const) : ("warning" as const),
         tooltip:
           "Largest percentage drop from a peak balance to a subsequent low point. Lower is better.",
       },
     ];
-  }, [kpis, displayCurrency, formatAmount]);
+  }, [kpis, displayCurrency]);
 
   // Format balance data for chart
   const formattedBalanceData = React.useMemo(() => {
