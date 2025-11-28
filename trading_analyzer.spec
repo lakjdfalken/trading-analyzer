@@ -34,6 +34,17 @@ datas = [
     (str(ROOT_DIR / "frontend" / "out"), "frontend/out"),
 ]
 
+# Add pythonnet runtime DLLs for Windows (required for pywebview EdgeChromium backend)
+if is_windows:
+    try:
+        import pythonnet
+        pythonnet_dir = Path(pythonnet.__file__).parent
+        pythonnet_runtime = pythonnet_dir / "runtime"
+        if pythonnet_runtime.exists():
+            datas.append((str(pythonnet_runtime), "pythonnet/runtime"))
+    except ImportError:
+        pass  # pythonnet not installed, skip
+
 # Filter out non-existent paths
 datas = [(src, dst) for src, dst in datas if Path(src).exists()]
 
@@ -99,6 +110,9 @@ elif is_windows:
         "webview.platforms.edgechromium",
         "clr",
         "pythonnet",
+        "clr_loader",
+        "clr_loader.ffi",
+        "clr_loader.util",
     ])
 elif is_linux:
     hiddenimports.extend([
