@@ -34,6 +34,9 @@ export type {
   StackedWinLossChartProps,
 } from "./WinRateChart";
 
+export { PointsChart } from "./PointsChart";
+export type { PointsChartProps, PointsData } from "./PointsChart";
+
 export { DailyPnLChart } from "./DailyPnLChart";
 export { DrawdownChart } from "./DrawdownChart";
 export { HourlyPerformanceChart } from "./HourlyPerformanceChart";

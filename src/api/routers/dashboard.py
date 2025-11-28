@@ -185,6 +185,24 @@ async def get_win_rate_by_instrument(
         )
 
 
+@router.get("/points-by-instrument")
+async def get_points_by_instrument(
+    start_date: Optional[datetime] = Query(None, alias="from"),
+    end_date: Optional[datetime] = Query(None, alias="to"),
+):
+    """Get points/pips statistics grouped by instrument."""
+    try:
+        points_data = db.get_points_by_instrument(
+            start_date=start_date,
+            end_date=end_date,
+        )
+        return points_data
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching points data: {str(e)}"
+        )
+
+
 @router.get("/balance-by-account")
 async def get_balance_history_by_account(
     start_date: Optional[datetime] = Query(None, alias="from"),

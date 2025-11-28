@@ -40,6 +40,8 @@ import { TradeDurationChart } from "@/components/charts/TradeDurationChart";
 import { CumulativePnLChart } from "@/components/charts/CumulativePnLChart";
 import { PositionSizeChart } from "@/components/charts/PositionSizeChart";
 import { FundingChart } from "@/components/charts/FundingChart";
+import { PointsChart } from "@/components/charts/PointsChart";
+import type { PointsData } from "@/components/charts/PointsChart";
 import type { AccountSeries } from "@/components/charts/MultiAccountBalanceChart";
 import type { AccountPnLSeries } from "@/components/charts/MultiAccountMonthlyPnLChart";
 import { DateRangePicker } from "@/components/filters/DateRangePicker";
@@ -152,6 +154,9 @@ export default function AnalyticsPage() {
   const [equityCurve, setEquityCurve] = React.useState<
     Array<{ date: string; balance: number }>
   >([]);
+  const [pointsByInstrument, setPointsByInstrument] = React.useState<
+    PointsData[]
+  >([]);
 
   const {
     dateRange,
@@ -206,6 +211,7 @@ export default function AnalyticsPage() {
         positionSizeRes,
         fundingRes,
         equityCurveRes,
+        pointsRes,
       ] = await Promise.allSettled([
         fetch(`${API_BASE}/api/dashboard/balance${queryString}`),
         fetch(`${API_BASE}/api/dashboard/monthly-pnl${queryString}`),
@@ -220,6 +226,7 @@ export default function AnalyticsPage() {
         fetch(`${API_BASE}/api/analytics/position-size${queryString}`),
         fetch(`${API_BASE}/api/analytics/funding${queryString}`),
         fetch(`${API_BASE}/api/dashboard/equity-curve${queryString}`),
+        fetch(`${API_BASE}/api/dashboard/points-by-instrument${queryString}`),
       ]);
 
       if (balanceRes.status === "fulfilled" && balanceRes.value.ok) {
@@ -312,6 +319,12 @@ export default function AnalyticsPage() {
           ? equityCurveResponse
           : equityCurveResponse.data || [];
         setEquityCurve(equityData);
+      }
+
+      // Process points by instrument
+      if (pointsRes.status === "fulfilled" && pointsRes.value.ok) {
+        const pointsData = await pointsRes.value.json();
+        setPointsByInstrument(pointsData);
       }
 
       setInitialized(true);
@@ -431,6 +444,22 @@ export default function AnalyticsPage() {
           data={winRateByInstrument}
           height={300}
           layout="horizontal"
+        />
+      ),
+    },
+    {
+      id: "points-by-instrument",
+      title: "Points by Instrument",
+      description:
+        "Total points/pips earned per instrument (Gold=0.1pts, Index=1pt, Forex=pips)",
+      category: "instruments",
+      icon: Target,
+      component: (
+        <PointsChart
+          data={pointsByInstrument}
+          height={300}
+          layout="horizontal"
+          metric="totalPoints"
         />
       ),
     },
@@ -730,6 +759,14 @@ export default function AnalyticsPage() {
                 data={winRateByInstrument}
                 height={600}
                 layout="horizontal"
+              />
+            )}
+            {expandedChart === "points-by-instrument" && (
+              <PointsChart
+                data={pointsByInstrument}
+                height={600}
+                layout="horizontal"
+                metric="totalPoints"
               />
             )}
             {expandedChart === "daily-pnl" && (

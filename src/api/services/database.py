@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from db_path import DATABASE_PATH
+from settings import DEFAULT_POINT_MULTIPLIER, MARKET_POINT_MULTIPLIERS
 
 
 @contextmanager
@@ -552,6 +553,141 @@ class TradingDatabase:
         """
 
         return execute_query(query, tuple(params))
+
+    @staticmethod
+    def get_points_by_instrument(
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get points/pips statistics per instrument.
+
+        Points are calculated based on price movement:
+        - Gold: 0.1 price movement = 1 point (multiplier 10)
+        - Indexes: 1.0 price movement = 1 point (multiplier 1)
+        - Forex: pip-based calculation (e.g., 0.0001 = 1 pip for EUR/USD)
+        """
+        conditions = [
+            "\"Action\" NOT LIKE '%Fund%' AND \"Action\" NOT LIKE '%Charge%' "
+            "AND \"Action\" NOT LIKE '%Deposit%' AND \"Action\" NOT LIKE '%Withdraw%'",
+            '"Opening" IS NOT NULL AND "Opening" > 0',
+            '"Closing" IS NOT NULL AND "Closing" > 0',
+        ]
+        params = []
+
+        if start_date:
+            conditions.append('"Transaction Date" >= ?')
+            params.append(start_date.isoformat())
+
+        if end_date:
+            conditions.append('"Transaction Date" <= ?')
+            params.append(end_date.isoformat())
+
+        where_clause = " AND ".join(conditions)
+
+        query = f"""
+            SELECT
+                "Description" as name,
+                "Action" as action,
+                "Opening" as entry_price,
+                "Closing" as exit_price,
+                "P/L" as pnl,
+                "Amount" as amount
+            FROM broker_transactions
+            WHERE {where_clause}
+        """
+
+        trades = execute_query(query, tuple(params))
+
+        # Group by instrument and calculate points
+        instrument_stats: Dict[str, Dict[str, Any]] = {}
+
+        for trade in trades:
+            name = trade["name"]
+            entry = trade["entry_price"] or 0
+            exit_price = trade["exit_price"] or 0
+            pnl = trade["pnl"] or 0
+            action = (trade["action"] or "").lower()
+            amount = abs(trade["amount"] or 1)
+
+            if entry == 0 or exit_price == 0:
+                continue
+
+            # Determine multiplier based on instrument name
+            multiplier = DEFAULT_POINT_MULTIPLIER
+            for market_key, mult in MARKET_POINT_MULTIPLIERS.items():
+                if market_key.lower() in name.lower():
+                    multiplier = mult
+                    break
+
+            # Calculate raw price difference
+            price_diff = exit_price - entry
+
+            # Determine direction from action or P/L
+            is_long = "buy" in action or "long" in action
+            if not is_long and not ("sell" in action or "short" in action):
+                # Infer from P/L and price movement
+                is_long = (price_diff > 0 and pnl > 0) or (price_diff < 0 and pnl < 0)
+
+            # Calculate points (positive if profitable direction)
+            if is_long:
+                points = price_diff * multiplier
+            else:
+                points = -price_diff * multiplier
+
+            # Initialize instrument stats if needed
+            if name not in instrument_stats:
+                instrument_stats[name] = {
+                    "name": name,
+                    "totalPoints": 0,
+                    "winPoints": 0,
+                    "lossPoints": 0,
+                    "trades": 0,
+                    "wins": 0,
+                    "losses": 0,
+                    "avgPointsPerTrade": 0,
+                    "avgWinPoints": 0,
+                    "avgLossPoints": 0,
+                    "multiplier": multiplier,
+                }
+
+            stats = instrument_stats[name]
+            stats["totalPoints"] += points
+            stats["trades"] += 1
+
+            if pnl >= 0:
+                stats["winPoints"] += points
+                stats["wins"] += 1
+            else:
+                stats["lossPoints"] += points
+                stats["losses"] += 1
+
+        # Calculate averages
+        results = []
+        for name, stats in instrument_stats.items():
+            if stats["trades"] >= 3:  # Minimum trades threshold
+                stats["avgPointsPerTrade"] = round(
+                    stats["totalPoints"] / stats["trades"], 2
+                )
+                stats["avgWinPoints"] = (
+                    round(stats["winPoints"] / stats["wins"], 2)
+                    if stats["wins"] > 0
+                    else 0
+                )
+                stats["avgLossPoints"] = (
+                    round(stats["lossPoints"] / stats["losses"], 2)
+                    if stats["losses"] > 0
+                    else 0
+                )
+                stats["totalPoints"] = round(stats["totalPoints"], 2)
+                stats["winPoints"] = round(stats["winPoints"], 2)
+                stats["lossPoints"] = round(stats["lossPoints"], 2)
+                results.append(stats)
+
+        # Sort by total trades descending
+        results.sort(key=lambda x: x["trades"], reverse=True)
+
+        return results[:10]  # Top 10 instruments
 
     @staticmethod
     def _calculate_max_drawdown(
