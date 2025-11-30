@@ -38,6 +38,8 @@ import { WeekdayPerformanceChart } from "@/components/charts/WeekdayPerformanceC
 import { StreakChart } from "@/components/charts/StreakChart";
 import { TradeDurationChart } from "@/components/charts/TradeDurationChart";
 import { CumulativePnLChart } from "@/components/charts/CumulativePnLChart";
+import { MultiAccountCumulativePnLChart } from "@/components/charts/MultiAccountCumulativePnLChart";
+import type { AccountPnLSeries as CumulativePnLAccountSeries } from "@/components/charts/MultiAccountCumulativePnLChart";
 import { PositionSizeChart } from "@/components/charts/PositionSizeChart";
 import { FundingChart } from "@/components/charts/FundingChart";
 import { PointsChart } from "@/components/charts/PointsChart";
@@ -105,6 +107,19 @@ export default function AnalyticsPage() {
   const [dailyPnL, setDailyPnL] = React.useState<
     Array<{ date: string; pnl: number; cumulativePnl: number; trades: number }>
   >([]);
+  const [dailyPnLByAccount, setDailyPnLByAccount] = React.useState<{
+    series: CumulativePnLAccountSeries[];
+    total: {
+      accountName: string;
+      currency?: string;
+      data: Array<{
+        date: string;
+        pnl: number;
+        trades: number;
+        cumulativePnl: number;
+      }>;
+    };
+  } | null>(null);
   const [hourlyPerformance, setHourlyPerformance] = React.useState<
     Array<{ hour: number; pnl: number; trades: number; winRate: number }>
   >([]);
@@ -204,6 +219,7 @@ export default function AnalyticsPage() {
         balanceByAccRes,
         monthlyByAccRes,
         dailyPnLRes,
+        dailyPnLByAccRes,
         hourlyRes,
         weekdayRes,
         streakRes,
@@ -219,6 +235,7 @@ export default function AnalyticsPage() {
         fetch(`${API_BASE}/api/dashboard/balance-by-account${queryString}`),
         fetch(`${API_BASE}/api/dashboard/monthly-pnl-by-account${queryString}`),
         fetch(`${API_BASE}/api/analytics/daily-pnl${queryString}`),
+        fetch(`${API_BASE}/api/analytics/daily-pnl-by-account${queryString}`),
         fetch(`${API_BASE}/api/analytics/performance/hourly${queryString}`),
         fetch(`${API_BASE}/api/analytics/performance/weekday${queryString}`),
         fetch(`${API_BASE}/api/analytics/streaks${queryString}`),
@@ -274,6 +291,15 @@ export default function AnalyticsPage() {
       if (dailyPnLRes.status === "fulfilled" && dailyPnLRes.value.ok) {
         const dailyPnLData = await dailyPnLRes.value.json();
         setDailyPnL(dailyPnLData);
+      }
+
+      // Process daily P&L by account
+      if (
+        dailyPnLByAccRes.status === "fulfilled" &&
+        dailyPnLByAccRes.value.ok
+      ) {
+        const dailyPnLByAccData = await dailyPnLByAccRes.value.json();
+        setDailyPnLByAccount(dailyPnLByAccData);
       }
 
       // Process hourly performance
@@ -545,13 +571,20 @@ export default function AnalyticsPage() {
       description: "Running total of profits and losses",
       category: "pnl",
       icon: TrendingUp,
-      component: (
-        <CumulativePnLChart
-          data={dailyPnL}
-          height={300}
-          currency={displayCurrency}
-        />
-      ),
+      component:
+        dailyPnLByAccount && dailyPnLByAccount.series.length > 1 ? (
+          <MultiAccountCumulativePnLChart
+            series={dailyPnLByAccount.series}
+            height={300}
+            showLegend={true}
+          />
+        ) : (
+          <CumulativePnLChart
+            data={dailyPnL}
+            height={300}
+            currency={displayCurrency}
+          />
+        ),
     },
     {
       id: "position-size",
@@ -805,13 +838,20 @@ export default function AnalyticsPage() {
             {expandedChart === "win-loss-streak" && (
               <StreakChart data={streakData} height={600} />
             )}
-            {expandedChart === "cumulative-pnl" && (
-              <CumulativePnLChart
-                data={dailyPnL}
-                height={600}
-                currency={displayCurrency}
-              />
-            )}
+            {expandedChart === "cumulative-pnl" &&
+              (dailyPnLByAccount && dailyPnLByAccount.series.length > 1 ? (
+                <MultiAccountCumulativePnLChart
+                  series={dailyPnLByAccount.series}
+                  height={600}
+                  showLegend={true}
+                />
+              ) : (
+                <CumulativePnLChart
+                  data={dailyPnL}
+                  height={600}
+                  currency={displayCurrency}
+                />
+              ))}
             {expandedChart === "position-size" && (
               <PositionSizeChart
                 data={positionSizeData}

@@ -41,17 +41,6 @@ datas = [
     (str(ROOT_DIR / "frontend" / "out"), "frontend/out"),
 ]
 
-# Add pythonnet runtime DLLs for Windows (required for pywebview EdgeChromium backend)
-if is_windows:
-    try:
-        import pythonnet
-        pythonnet_dir = Path(pythonnet.__file__).parent
-        pythonnet_runtime = pythonnet_dir / "runtime"
-        if pythonnet_runtime.exists():
-            datas.append((str(pythonnet_runtime), "pythonnet/runtime"))
-    except ImportError:
-        pass  # pythonnet not installed, skip
-
 # Filter out non-existent paths
 datas = [(src, dst) for src, dst in datas if Path(src).exists()]
 
@@ -74,8 +63,6 @@ hiddenimports = [
     "anyio",
     "anyio._backends",
     "anyio._backends._asyncio",
-    "webview",
-    "webview.platforms",
     "sqlite3",
     "pandas",
     "numpy",
@@ -103,31 +90,6 @@ hiddenimports = [
     "settings",
 ]
 
-# Platform-specific hidden imports
-if is_macos:
-    hiddenimports.extend([
-        "webview.platforms.cocoa",
-        "Foundation",
-        "AppKit",
-        "WebKit",
-    ])
-elif is_windows:
-    hiddenimports.extend([
-        "webview.platforms.winforms",
-        "webview.platforms.edgechromium",
-        "clr",
-        "pythonnet",
-        "clr_loader",
-        "clr_loader.ffi",
-        "clr_loader.util",
-    ])
-elif is_linux:
-    hiddenimports.extend([
-        "webview.platforms.gtk",
-        "gi",
-        "gi.repository",
-    ])
-
 # Binary exclusions (reduce size)
 excludes = [
     "tkinter",
@@ -144,6 +106,8 @@ excludes = [
     "PIL",
     "IPython",
     "jupyter",
+    "webview",
+    "pywebview",
 ]
 
 a = Analysis(
@@ -174,7 +138,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,  # Show console window for debugging
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

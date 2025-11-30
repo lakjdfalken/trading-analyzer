@@ -9,6 +9,5 @@ pydantic>=2.5.0
 python-multipart>=0.0.6
 aiofiles>=23.0.0
 
-# Standalone Desktop App
-pywebview>=4.3.0
+# Standalone Desktop App Build
 pyinstaller>=6.0.0

@@ -4,19 +4,18 @@ Trading Analyzer - Standalone Desktop Application
 
 Launches the Trading Analyzer as a standalone desktop app with:
 - Embedded FastAPI backend server
-- Native webview window displaying the frontend
+- Auto-opens in user's default browser
 
 Works on macOS, Windows, and Linux.
 """
 
 import logging
-import os
 import signal
 import socket
-import subprocess
 import sys
 import threading
 import time
+import webbrowser
 from contextlib import closing
 from pathlib import Path
 
@@ -34,7 +33,6 @@ sys.path.insert(0, str(SRC_DIR))
 
 # Global references
 api_server = None
-webview_window = None
 
 
 def find_free_port(start_port: int = 8000, max_attempts: int = 100) -> int:
@@ -136,7 +134,7 @@ def get_frontend_url(api_port: int) -> str:
         logger.info("Using static frontend build")
         return f"http://127.0.0.1:{api_port}"
 
-    # Fallback: try to use Next.js dev server or show API docs
+    # Fallback: show API docs
     logger.warning("No frontend available, showing API documentation")
     return f"http://127.0.0.1:{api_port}/api/docs"
 
@@ -183,7 +181,7 @@ def ensure_database():
 
 def run_app():
     """Main entry point for the standalone app."""
-    global api_server, webview_window
+    global api_server
 
     logger.info("Starting Trading Analyzer...")
 
@@ -215,55 +213,21 @@ def run_app():
     frontend_url = get_frontend_url(api_port)
     logger.info(f"Opening frontend at {frontend_url}")
 
-    # Create webview window
+    # Open in default browser
+    webbrowser.open(frontend_url)
+
+    print(f"\n{'=' * 50}")
+    print(f"Trading Analyzer is running!")
+    print(f"Open in browser: {frontend_url}")
+    print(f"Press Ctrl+C to stop")
+    print(f"{'=' * 50}\n")
+
+    # Keep running until interrupted
     try:
-        import webview
-
-        webview_window = webview.create_window(
-            title="Trading Analyzer",
-            url=frontend_url,
-            width=1400,
-            height=900,
-            min_size=(1024, 768),
-            resizable=True,
-            fullscreen=False,
-            frameless=False,
-            easy_drag=False,
-            text_select=True,
-        )
-
-        def on_closing():
-            """Handle window close event."""
-            logger.info("Closing application...")
-            if api_server:
-                api_server.stop()
-            return True
-
-        webview_window.events.closing += on_closing
-
-        # Start webview (blocking call)
-        webview.start(debug=False)
-
-    except ImportError:
-        logger.error("pywebview is not installed. Install with: pip install pywebview")
-        logger.info(f"You can still access the app at: {frontend_url}")
-
-        # Keep running without webview
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            pass
-    except Exception as e:
-        logger.error(f"Failed to create webview window: {e}")
-        logger.info(f"You can still access the app at: {frontend_url}")
-
-        # Keep running without webview
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            pass
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
     finally:
         if api_server:
             api_server.stop()

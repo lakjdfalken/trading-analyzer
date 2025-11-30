@@ -38,6 +38,7 @@ export default function Home() {
   const { formatAmount, defaultCurrency } = useCurrencyStore();
   const [dataCurrency, setDataCurrency] = React.useState<string | null>(null);
   const [hasHydrated, setHasHydrated] = React.useState(false);
+  const [version, setVersion] = React.useState<string | null>(null);
 
   // Expanded chart state
   const [expandedChart, setExpandedChart] = React.useState<string | null>(null);
@@ -95,6 +96,14 @@ export default function Home() {
   // Wait for Zustand store to hydrate before fetching with date range
   React.useEffect(() => {
     setHasHydrated(true);
+  }, []);
+
+  // Fetch version on mount
+  React.useEffect(() => {
+    fetch(`${API_BASE}/api/health`)
+      .then((res) => res.json())
+      .then((data) => setVersion(data.version))
+      .catch(() => setVersion(null));
   }, []);
 
   // Build query string with date range - extracted to avoid stale closures
@@ -472,12 +481,17 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Last updated */}
-          {lastUpdated && (
-            <p className="text-xs text-muted-foreground mt-2">
-              Last updated: {lastUpdated.toLocaleTimeString()}
-            </p>
-          )}
+          {/* Last updated and version */}
+          <div className="flex items-center gap-4 mt-2">
+            {lastUpdated && (
+              <p className="text-xs text-muted-foreground">
+                Last updated: {lastUpdated.toLocaleTimeString()}
+              </p>
+            )}
+            {version && (
+              <p className="text-xs text-muted-foreground">v{version}</p>
+            )}
+          </div>
         </div>
       </header>
 

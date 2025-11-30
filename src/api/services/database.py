@@ -1005,6 +1005,107 @@ class TradingDatabase:
 
         return execute_query(query, tuple(params))
 
+    @staticmethod
+    def get_daily_pnl_by_account(
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> Dict[str, Any]:
+        """Get daily P&L data per account for multi-account charting."""
+        conditions = [
+            "\"Action\" NOT LIKE '%Fund%' AND \"Action\" NOT LIKE '%Charge%' "
+            "AND \"Action\" NOT LIKE '%Deposit%' AND \"Action\" NOT LIKE '%Withdraw%'"
+        ]
+        params = []
+
+        if start_date:
+            conditions.append('"Transaction Date" >= ?')
+            params.append(start_date.isoformat())
+
+        if end_date:
+            conditions.append('"Transaction Date" <= ?')
+            params.append(end_date.isoformat())
+
+        where_clause = " AND ".join(conditions)
+
+        # Get all accounts with their info
+        accounts_query = """
+            SELECT a.account_id, a.account_name, a.broker_name, a.currency
+            FROM accounts a
+            WHERE EXISTS (
+                SELECT 1 FROM broker_transactions bt
+                WHERE bt.account_id = a.account_id
+            )
+        """
+        accounts = execute_query(accounts_query, ())
+
+        # Get daily P&L per account
+        series = []
+        for account in accounts:
+            acc_id = account["account_id"]
+            acc_name = account["account_name"] or f"Account {acc_id}"
+            acc_currency = account["currency"]
+
+            query = f"""
+                SELECT
+                    DATE("Transaction Date") as date,
+                    SUM("P/L") as pnl,
+                    COUNT(*) as trades,
+                    SUM(SUM("P/L")) OVER (ORDER BY DATE("Transaction Date")) as cumulativePnl
+                FROM broker_transactions
+                WHERE {where_clause} AND account_id = ?
+                GROUP BY DATE("Transaction Date")
+                ORDER BY date ASC
+            """
+            acc_params = list(params) + [acc_id]
+            data = execute_query(query, tuple(acc_params))
+
+            if data:
+                series.append(
+                    {
+                        "accountId": acc_id,
+                        "accountName": acc_name,
+                        "currency": acc_currency,
+                        "data": data,
+                    }
+                )
+
+        # Find the most common currency across accounts
+        currency_counts: Dict[str, int] = {}
+        for s in series:
+            curr = s.get("currency")
+            if curr:
+                currency_counts[curr] = currency_counts.get(curr, 0) + 1
+
+        most_common_currency = None
+        max_count = 0
+        for curr, count in currency_counts.items():
+            if count > max_count:
+                max_count = count
+                most_common_currency = curr
+
+        # Get total daily P&L across all accounts
+        total_query = f"""
+            SELECT
+                DATE("Transaction Date") as date,
+                SUM("P/L") as pnl,
+                COUNT(*) as trades,
+                SUM(SUM("P/L")) OVER (ORDER BY DATE("Transaction Date")) as cumulativePnl
+            FROM broker_transactions
+            WHERE {where_clause}
+            GROUP BY DATE("Transaction Date")
+            ORDER BY date ASC
+        """
+        total_data = execute_query(total_query, tuple(params))
+
+        return {
+            "series": series,
+            "total": {
+                "accountName": "Total",
+                "currency": most_common_currency,
+                "data": total_data,
+            },
+        }
+
 
 # Create singleton instance
 db = TradingDatabase()

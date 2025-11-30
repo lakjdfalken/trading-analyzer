@@ -51,6 +51,33 @@ async def get_daily_pnl(
         )
 
 
+@router.get("/daily-pnl-by-account")
+async def get_daily_pnl_by_account(
+    start_date: Optional[datetime] = Query(None, alias="from"),
+    end_date: Optional[datetime] = Query(None, alias="to"),
+):
+    """
+    Get daily P&L data per account for multi-account charting.
+
+    Args:
+        start_date: Start of date range
+        end_date: End of date range
+
+    Returns:
+        Object with series (per account) and total (all accounts)
+    """
+    try:
+        result = db.get_daily_pnl_by_account(
+            start_date=start_date,
+            end_date=end_date,
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching daily P&L by account: {str(e)}"
+        )
+
+
 @router.get("/performance/hourly", response_model=List[HourlyPerformance])
 async def get_hourly_performance(
     start_date: Optional[datetime] = Query(None, alias="from"),
