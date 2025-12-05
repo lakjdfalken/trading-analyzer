@@ -323,11 +323,11 @@ async def format_currency(
 async def format_with_conversion(
     amount: float = Query(..., description="Amount to format"),
     original_currency: str = Query(..., alias="originalCurrency"),
-    target_currency: str = Query(None, alias="targetCurrency"),
+    target_currency: str = Query(
+        ..., alias="targetCurrency", description="Target currency (required)"
+    ),
 ):
     """Format amount with optional conversion display."""
-    if target_currency is None:
-        target_currency = CurrencyService.get_default_currency()
 
     result = CurrencyService.format_with_conversion(
         amount, original_currency, target_currency

@@ -26,7 +26,7 @@ interface FundingDataPoint {
 interface FundingChartProps {
   data: FundingDataPoint[];
   height?: number;
-  currency?: string;
+  currency: string;
 }
 
 interface CustomTooltipProps {
@@ -106,7 +106,7 @@ function CustomTooltip({
 export function FundingChart({
   data,
   height = 300,
-  currency = "USD",
+  currency,
 }: FundingChartProps) {
   const { formatAmount } = useCurrencyStore();
 

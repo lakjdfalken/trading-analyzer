@@ -13,7 +13,7 @@ import {
   Legend,
   ReferenceLine,
 } from "recharts";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { useCurrencyStore } from "@/store/currency";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, Check } from "lucide-react";
@@ -67,8 +67,16 @@ export interface MultiAccountMonthlyPnLChartProps {
 
 interface ChartDataPoint {
   month: string;
+  month_key?: string;
   cumulativePnl?: number;
+  monthlyTotal?: number;
   [key: string]: string | number | undefined;
+}
+
+interface YearlyTotal {
+  year: string;
+  pnl: number;
+  trades: number;
 }
 
 interface CustomTooltipProps {
@@ -82,6 +90,7 @@ interface CustomTooltipProps {
   }>;
   label?: string;
   currency: string;
+  accountCurrencies: Map<string, string>;
   formatAmount: (amount: number, currency: string) => string;
 }
 
@@ -90,6 +99,7 @@ function CustomTooltip({
   payload,
   label,
   currency,
+  accountCurrencies,
   formatAmount,
 }: CustomTooltipProps) {
   if (!active || !payload || payload.length === 0) {
@@ -98,12 +108,17 @@ function CustomTooltip({
 
   const cumulativePnl = payload[0]?.payload?.cumulativePnl;
 
+  // Use backend's converted monthly total if available
+  const monthlyTotal = payload[0]?.payload?.monthlyTotal;
+
   return (
     <div className="bg-popover border border-border rounded-lg shadow-lg p-3 min-w-[180px]">
       <p className="text-sm font-medium text-foreground mb-2">{label}</p>
       <div className="space-y-1.5">
         {payload.map((entry, index) => {
           const isProfit = entry.value >= 0;
+          // Use the account's native currency if available, otherwise fall back to display currency
+          const entryCurrency = accountCurrencies.get(entry.name) || currency;
           return (
             <div
               key={index}
@@ -125,14 +140,32 @@ function CustomTooltip({
                 )}
               >
                 {isProfit ? "+" : ""}
-                {formatAmount(entry.value, currency)}
+                {formatAmount(entry.value, entryCurrency)}
               </span>
             </div>
           );
         })}
+        {/* Monthly total - from backend's converted total */}
+        {monthlyTotal !== undefined && payload.length > 1 && (
+          <div className="flex items-center justify-between gap-4 pt-1.5 mt-1.5 border-t border-border">
+            <span className="text-xs text-muted-foreground">Month P&L</span>
+            <span
+              className={cn(
+                "text-sm font-semibold",
+                monthlyTotal >= 0 ? "text-green-500" : "text-red-500",
+              )}
+            >
+              {monthlyTotal >= 0 ? "+" : ""}
+              {formatAmount(monthlyTotal, currency)}
+            </span>
+          </div>
+        )}
+        {/* Cumulative total from start */}
         {cumulativePnl !== undefined && (
           <div className="flex items-center justify-between gap-4 pt-1.5 mt-1.5 border-t border-border">
-            <span className="text-xs text-muted-foreground">Total P&L</span>
+            <span className="text-xs text-muted-foreground">
+              Cumulative P&L
+            </span>
             <span
               className={cn(
                 "text-sm font-semibold",
@@ -299,16 +332,6 @@ export function MultiAccountMonthlyPnLChart({
   const { formatAmount } = useCurrencyStore();
   const { defaultCurrency } = useSettingsStore();
 
-  // Simple conversion function - backend should handle this
-  const convert = React.useCallback(
-    (amount: number, _from: string, _to: string) => {
-      // Note: Proper conversion should be done by the backend
-      // This is a placeholder that returns the original amount
-      return amount;
-    },
-    [],
-  );
-
   // Track selected accounts (empty = all with conversion)
   const [selectedAccountIds, setSelectedAccountIds] = React.useState<number[]>(
     [],
@@ -367,24 +390,25 @@ export function MultiAccountMonthlyPnLChart({
     return series.filter((s) => selectedAccountIds.includes(s.accountId));
   }, [series, selectedAccountIds]);
 
-  // Convert PnL if needed
+  // Backend already converts PnL to target currency
+  // No frontend conversion needed - just pass through the values
   const convertPnL = React.useCallback(
-    (pnl: number, fromCurrency: string | undefined): number => {
-      if (displayMode === "native" || !fromCurrency) {
-        return pnl;
-      }
-      if (fromCurrency === displayCurrency) {
-        return pnl;
-      }
-      const converted = convert(pnl, fromCurrency, displayCurrency);
-      return converted ?? pnl;
+    (pnl: number, _fromCurrency: string | undefined): number => {
+      return pnl;
     },
-    [displayMode, displayCurrency, convert],
+    [],
   );
 
   // Merge all series data into a single dataset
+  // When showing all accounts (converted mode), use the backend's pre-converted total data
   const chartData = React.useMemo(() => {
     const monthMap = new Map<string, ChartDataPoint>();
+
+    // When in converted mode with all accounts, use backend's total which is already converted
+    const useBackendTotal =
+      selectedAccountIds.length === 0 &&
+      total?.data &&
+      displayMode === "converted";
 
     // Get all unique months from all series
     const allMonths = new Set<string>();
@@ -403,8 +427,17 @@ export function MultiAccountMonthlyPnLChart({
     Array.from(allMonths)
       .sort()
       .forEach((monthKey) => {
-        monthMap.set(monthKey, { month: monthKey });
+        monthMap.set(monthKey, { month: monthKey, month_key: monthKey });
       });
+
+    // Build a lookup from backend total for converted values
+    const backendTotalByMonth = new Map<string, number>();
+    if (total?.data) {
+      total.data.forEach((point) => {
+        const key = point.month_key || point.month;
+        backendTotalByMonth.set(key, point.pnl);
+      });
+    }
 
     // Add account data - first initialize all accounts to 0 for all months
     const allMonthKeys = Array.from(allMonths).sort();
@@ -421,8 +454,16 @@ export function MultiAccountMonthlyPnLChart({
         const key = point.month_key || point.month;
         const existing = monthMap.get(key);
         if (existing) {
-          const convertedPnL = convertPnL(point.pnl, account.currency);
-          existing[account.accountName] = convertedPnL;
+          // Use native values for per-account display
+          existing[account.accountName] = point.pnl;
+          // Store backend's converted monthly total for tooltip
+          if (backendTotalByMonth.has(key)) {
+            existing.monthlyTotal = backendTotalByMonth.get(key);
+          }
+          // Keep the month_key for yearly totals calculation
+          if (point.month_key) {
+            existing.month_key = point.month_key;
+          }
           if (point.month && point.month.length <= 3) {
             existing.month = point.month;
           }
@@ -432,49 +473,96 @@ export function MultiAccountMonthlyPnLChart({
 
     // Add total data if showing all accounts
     if (showTotal && total?.data && selectedAccountIds.length === 0) {
-      // Recalculate total from converted values
-      const months = Array.from(monthMap.keys());
-      months.forEach((monthKey) => {
-        const point = monthMap.get(monthKey)!;
-        let totalValue = 0;
-        filteredSeries.forEach((account) => {
-          const value = point[account.accountName];
-          if (typeof value === "number") {
-            totalValue += value;
-          }
-        });
-        point["Total"] = totalValue;
+      // Use backend's pre-converted total
+      total.data.forEach((point) => {
+        const key = point.month_key || point.month;
+        const existing = monthMap.get(key);
+        if (existing) {
+          existing["Total"] = point.pnl;
+        }
       });
     }
 
     // Sort by month and calculate cumulative P&L
     const sortedData = Array.from(monthMap.values()).sort((a, b) => {
-      const aKey = a.month;
-      const bKey = b.month;
+      const aKey = a.month_key || a.month;
+      const bKey = b.month_key || b.month;
       return aKey.localeCompare(bKey);
     });
 
     // Calculate cumulative P&L across all months
+    // Use backend total if available (already converted), otherwise sum account values
     let runningTotal = 0;
     sortedData.forEach((point) => {
-      // Sum all account values for this month
+      const monthKey = point.month_key || point.month;
       let monthTotal = 0;
-      filteredSeries.forEach((account) => {
-        const value = point[account.accountName];
-        if (typeof value === "number") {
-          monthTotal += value;
+
+      if (useBackendTotal && backendTotalByMonth.has(monthKey)) {
+        // Use backend's converted total for this month
+        monthTotal = backendTotalByMonth.get(monthKey) || 0;
+      } else {
+        // Sum all account values for this month
+        filteredSeries.forEach((account) => {
+          const value = point[account.accountName];
+          if (typeof value === "number") {
+            monthTotal += value;
+          }
+        });
+        // Also include Total if present
+        if (typeof point["Total"] === "number") {
+          monthTotal = point["Total"] as number;
         }
-      });
-      // Also include Total if present
-      if (typeof point["Total"] === "number") {
-        monthTotal = point["Total"] as number;
       }
+
       runningTotal += monthTotal;
       point.cumulativePnl = runningTotal;
     });
 
     return sortedData;
   }, [filteredSeries, total, showTotal, selectedAccountIds, convertPnL]);
+
+  // Calculate yearly totals from chart data
+  const yearlyTotals = React.useMemo(() => {
+    const totals: Record<string, YearlyTotal> = {};
+
+    chartData.forEach((point) => {
+      // Extract year from month_key (YYYY-MM) or month
+      let year: string;
+      const monthKey = point.month_key as string | undefined;
+      if (monthKey && monthKey.match(/^\d{4}-\d{2}$/)) {
+        year = monthKey.substring(0, 4);
+      } else {
+        // Try to extract year from month string like "Jan 2024"
+        const match = point.month.match(/\d{4}/);
+        year = match ? match[0] : "Unknown";
+      }
+
+      if (!totals[year]) {
+        totals[year] = { year, pnl: 0, trades: 0 };
+      }
+
+      // Sum all account values for this month
+      filteredSeries.forEach((account) => {
+        const value = point[account.accountName];
+        if (typeof value === "number") {
+          totals[year].pnl += value;
+        }
+      });
+    });
+
+    return Object.values(totals).sort((a, b) => a.year.localeCompare(b.year));
+  }, [chartData, filteredSeries]);
+
+  // Calculate grand total
+  const grandTotal = React.useMemo(() => {
+    return yearlyTotals.reduce(
+      (acc, yearly) => ({
+        pnl: acc.pnl + yearly.pnl,
+        trades: acc.trades + yearly.trades,
+      }),
+      { pnl: 0, trades: 0 },
+    );
+  }, [yearlyTotals]);
 
   // Get all account names for the legend
   const accountNames = React.useMemo(() => {
@@ -567,6 +655,54 @@ export function MultiAccountMonthlyPnLChart({
         </div>
       )}
 
+      {/* Yearly Totals Summary */}
+      {displayCurrency && (
+        <div className="mb-4 px-2">
+          <div className="flex flex-wrap gap-4 text-sm">
+            {yearlyTotals.map((yearly) => {
+              const isProfit = yearly.pnl >= 0;
+              return (
+                <div
+                  key={yearly.year}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50"
+                >
+                  <span className="text-muted-foreground font-medium">
+                    {yearly.year}:
+                  </span>
+                  <span
+                    className={cn(
+                      "font-semibold",
+                      isProfit ? "text-green-500" : "text-red-500",
+                    )}
+                  >
+                    {isProfit ? "+" : ""}
+                    {formatCurrency(yearly.pnl, displayCurrency)}
+                  </span>
+                </div>
+              );
+            })}
+
+            {/* Grand Total (if more than one year) */}
+            {yearlyTotals.length > 1 && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary/10 border border-primary/20">
+                <span className="text-muted-foreground font-medium">
+                  Total:
+                </span>
+                <span
+                  className={cn(
+                    "font-semibold",
+                    grandTotal.pnl >= 0 ? "text-green-500" : "text-red-500",
+                  )}
+                >
+                  {grandTotal.pnl >= 0 ? "+" : ""}
+                  {formatCurrency(grandTotal.pnl, displayCurrency)}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div style={{ height }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
@@ -598,8 +734,9 @@ export function MultiAccountMonthlyPnLChart({
                 if (Math.abs(value) >= 1000) {
                   return `${(value / 1000).toFixed(0)}k`;
                 }
-                return `${value}`;
+                return `${Math.round(value)}`;
               }}
+              ticks={[yDomain[0], 0, yDomain[1]]}
               width={60}
             />
 
@@ -607,7 +744,15 @@ export function MultiAccountMonthlyPnLChart({
               <Tooltip
                 content={
                   <CustomTooltip
-                    currency={displayCurrency}
+                    currency={displayCurrency || ""}
+                    accountCurrencies={
+                      new Map(
+                        series.map((s) => [
+                          s.accountName,
+                          s.currency || displayCurrency || "",
+                        ]),
+                      )
+                    }
                     formatAmount={formatAmount}
                   />
                 }
@@ -615,7 +760,11 @@ export function MultiAccountMonthlyPnLChart({
               />
             )}
 
-            <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />
+            <ReferenceLine
+              y={0}
+              stroke="hsl(var(--muted-foreground))"
+              strokeWidth={1}
+            />
 
             {showLegend && (
               <Legend

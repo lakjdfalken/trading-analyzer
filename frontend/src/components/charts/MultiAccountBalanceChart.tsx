@@ -261,16 +261,6 @@ export function MultiAccountBalanceChart({
   const { formatAmount } = useCurrencyStore();
   const { showConverted, defaultCurrency } = useSettingsStore();
 
-  // Simple conversion function - backend should handle this
-  const convert = React.useCallback(
-    (amount: number, _from: string, _to: string) => {
-      // Note: Proper conversion should be done by the backend
-      // This is a placeholder that returns the original amount
-      return amount;
-    },
-    [],
-  );
-
   // Track selected accounts (empty = all with conversion)
   const [selectedAccountIds, setSelectedAccountIds] = React.useState<number[]>(
     [],
@@ -336,19 +326,13 @@ export function MultiAccountBalanceChart({
     return series.filter((s) => selectedAccountIds.includes(s.accountId));
   }, [series, selectedAccountIds]);
 
-  // Convert balance if needed
+  // Backend already converts balances to target currency
+  // No frontend conversion needed - just pass through the values
   const convertBalance = React.useCallback(
-    (balance: number, fromCurrency: string | undefined): number => {
-      if (displayMode === "native" || !fromCurrency) {
-        return balance;
-      }
-      if (fromCurrency === displayCurrency) {
-        return balance;
-      }
-      const converted = convert(balance, fromCurrency, displayCurrency);
-      return converted ?? balance;
+    (balance: number, _fromCurrency: string | undefined): number => {
+      return balance;
     },
-    [displayMode, displayCurrency, convert],
+    [],
   );
 
   // Merge all series data into a single dataset
@@ -508,13 +492,17 @@ export function MultiAccountBalanceChart({
               onSelectionChange={setSelectedAccountIds}
               allLabel={`All Accounts (${defaultCurrency})`}
             />
-            {displayMode === "converted" && (
+            {displayMode === "converted" && displayCurrency && (
               <span className="text-xs text-muted-foreground">
                 Values converted to {displayCurrency}
               </span>
             )}
           </div>
-          <div className="text-xs text-muted-foreground">{displayCurrency}</div>
+          {displayCurrency && (
+            <div className="text-xs text-muted-foreground">
+              {displayCurrency}
+            </div>
+          )}
         </div>
       )}
 
@@ -570,7 +558,9 @@ export function MultiAccountBalanceChart({
               tickLine={false}
               tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
               tickMargin={8}
-              tickFormatter={(value) => formatAmount(value, displayCurrency)}
+              tickFormatter={(value) =>
+                displayCurrency ? formatAmount(value, displayCurrency) : value
+              }
               width={80}
             />
 
@@ -578,7 +568,7 @@ export function MultiAccountBalanceChart({
               <Tooltip
                 content={
                   <CustomTooltip
-                    currency={displayCurrency}
+                    currency={displayCurrency || ""}
                     formatAmount={formatAmount}
                   />
                 }

@@ -361,7 +361,7 @@ export default function TransactionsPage() {
         trade.quantity,
         trade.pnl.toFixed(2),
         trade.pnlPercent.toFixed(2),
-        trade.currency || defaultCurrency,
+        trade.currency || defaultCurrency || "",
       ].join(",");
     });
 
@@ -493,7 +493,9 @@ export default function TransactionsPage() {
                       : "text-red-500",
                   )}
                 >
-                  {formatAmount(summaryStats.totalPnl, defaultCurrency)}
+                  {defaultCurrency
+                    ? formatAmount(summaryStats.totalPnl, defaultCurrency)
+                    : summaryStats.totalPnl.toFixed(2)}
                 </div>
                 <p className="text-xs text-muted-foreground">Total P&L</p>
               </CardContent>
@@ -820,10 +822,12 @@ export default function TransactionsPage() {
                             trade.pnl >= 0 ? "text-green-500" : "text-red-500",
                           )}
                         >
-                          {formatAmount(
-                            trade.pnl,
-                            trade.currency || defaultCurrency,
-                          )}
+                          {trade.currency || defaultCurrency
+                            ? formatAmount(
+                                trade.pnl,
+                                trade.currency || defaultCurrency!,
+                              )
+                            : trade.pnl.toFixed(2)}
                         </td>
                         <td
                           className={cn(

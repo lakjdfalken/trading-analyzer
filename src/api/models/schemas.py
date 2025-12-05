@@ -367,7 +367,7 @@ class AccountInfo(BaseModel):
 class UserPreferences(BaseModel):
     """User preferences settings."""
 
-    currency: str = "USD"
+    currency: str  # Required - no default per .rules
 
     class Config:
         populate_by_name = True

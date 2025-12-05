@@ -15,20 +15,20 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from db_path import DATABASE_PATH
 
-# Default exchange rates (to SEK as base)
-DEFAULT_EXCHANGE_RATES = {
-    "SEK": 1.0,
-    "DKK": 1.52,
-    "EUR": 11.32,
-    "USD": 10.50,
-    "GBP": 13.20,
-    "NOK": 0.98,
-    "CHF": 11.80,
-    "JPY": 0.070,
-    "AUD": 6.80,
-    "CAD": 7.70,
-    "NZD": 6.20,
-}
+# Supported currencies - no default base, rates must be configured by user
+SUPPORTED_CURRENCIES = [
+    "SEK",
+    "DKK",
+    "EUR",
+    "USD",
+    "GBP",
+    "NOK",
+    "CHF",
+    "JPY",
+    "AUD",
+    "CAD",
+    "NZD",
+]
 
 # Currency symbols
 CURRENCY_SYMBOLS = {
@@ -163,14 +163,20 @@ class CurrencyService:
 
     @staticmethod
     def get_exchange_rate(from_currency: str, to_currency: str) -> Optional[float]:
-        """Get exchange rate between two currencies."""
+        """Get exchange rate between two currencies.
+
+        Returns None if rate not found - no fallbacks per .rules.
+        Rates must be configured in the database.
+        """
         if from_currency == to_currency:
             return 1.0
 
-        # Try database first, but handle missing table gracefully
+        # Only use database rates - no hardcoded fallbacks per .rules
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
+
+                # Try direct rate first
                 cursor.execute(
                     """
                     SELECT rate FROM exchange_rates
@@ -183,45 +189,39 @@ class CurrencyService:
                 if result:
                     return result[0]
 
-                # Try to calculate via SEK as intermediate
+                # Try to find a common intermediate currency
+                # Look for any currency that has rates to both from and to currencies
                 cursor.execute(
                     """
-                    SELECT rate FROM exchange_rates
-                    WHERE from_currency = ? AND to_currency = 'SEK'
+                    SELECT e1.to_currency as intermediate, e1.rate as from_rate, e2.rate as to_rate
+                    FROM exchange_rates e1
+                    JOIN exchange_rates e2 ON e1.to_currency = e2.from_currency
+                    WHERE e1.from_currency = ? AND e2.to_currency = ?
+                    LIMIT 1
                 """,
-                    (from_currency,),
+                    (from_currency, to_currency),
                 )
-                from_to_sek = cursor.fetchone()
+                intermediate = cursor.fetchone()
 
-                cursor.execute(
-                    """
-                    SELECT rate FROM exchange_rates
-                    WHERE from_currency = 'SEK' AND to_currency = ?
-                """,
-                    (to_currency,),
-                )
-                sek_to_target = cursor.fetchone()
+                if intermediate:
+                    return intermediate[1] * intermediate[2]
 
-                if from_to_sek and sek_to_target:
-                    return from_to_sek[0] * sek_to_target[0]
         except Exception:
-            # Table might not exist, fall through to default rates
+            # Table might not exist
             pass
 
-        # Fallback to default rates
-        if (
-            from_currency in DEFAULT_EXCHANGE_RATES
-            and to_currency in DEFAULT_EXCHANGE_RATES
-        ):
-            from_rate = DEFAULT_EXCHANGE_RATES[from_currency]
-            to_rate = DEFAULT_EXCHANGE_RATES[to_currency]
-            return from_rate / to_rate
-
+        # No fallback - return None if rate not found
         return None
 
     @staticmethod
-    def get_all_exchange_rates(base_currency: str = "SEK") -> Dict[str, float]:
-        """Get all exchange rates relative to a base currency."""
+    def get_all_exchange_rates(base_currency: str) -> Dict[str, float]:
+        """Get all exchange rates relative to a base currency.
+
+        base_currency is required - no default per .rules.
+        """
+        if not base_currency:
+            raise ValueError("base_currency is required - no default allowed")
+
         rates = {base_currency: 1.0}
 
         for currency in CURRENCY_SYMBOLS.keys():
@@ -281,9 +281,14 @@ class CurrencyService:
 
     @staticmethod
     def bulk_update_rates(
-        rates: Dict[str, float], base_currency: str = "SEK", source: str = "manual"
+        rates: Dict[str, float], base_currency: str, source: str = "manual"
     ) -> bool:
-        """Bulk update exchange rates relative to a base currency."""
+        """Bulk update exchange rates relative to a base currency.
+
+        base_currency is required - no default per .rules.
+        """
+        if not base_currency:
+            raise ValueError("base_currency is required - no default allowed")
         ensure_currency_tables()
 
         with get_db_connection() as conn:
@@ -361,9 +366,13 @@ class CurrencyService:
                 return False
 
     @staticmethod
-    def get_default_currency() -> str:
-        """Get the user's default display currency."""
-        return CurrencyService.get_user_preference("default_currency", "SEK")
+    def get_default_currency() -> Optional[str]:
+        """Get the user's default display currency.
+
+        Returns None if not set - caller must handle this explicitly.
+        No fallback per .rules - no guessing, no defaults.
+        """
+        return CurrencyService.get_user_preference("default_currency", None)
 
     @staticmethod
     def set_default_currency(currency: str) -> bool:

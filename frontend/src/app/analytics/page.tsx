@@ -465,7 +465,11 @@ export default function AnalyticsPage() {
   ]);
 
   // Get the display currency (from data or effective currency)
-  const displayCurrency = dataCurrency || effectiveCurrency || "USD";
+  // No fallback per .rules - effectiveCurrency must be set from settings
+  const displayCurrency = dataCurrency || effectiveCurrency;
+
+  // Currency is required for all charts - show message if not set
+  const currencyNotSet = !displayCurrency;
 
   // Handle account change
   const handleAccountChange = React.useCallback(
@@ -508,7 +512,11 @@ export default function AnalyticsPage() {
       description: "Daily profit and loss with percentage returns",
       category: "pnl",
       icon: BarChart3,
-      component: (
+      component: currencyNotSet ? (
+        <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+          Please set your default currency in Settings
+        </div>
+      ) : (
         <DailyPnLChart
           data={dailyPnL}
           height={300}
@@ -522,21 +530,24 @@ export default function AnalyticsPage() {
       description: "Running total of profits and losses over time",
       category: "pnl",
       icon: LineChart,
-      component:
-        dailyPnLByAccount && dailyPnLByAccount.series.length > 1 ? (
-          <MultiAccountCumulativePnLChart
-            series={dailyPnLByAccount.series}
-            total={dailyPnLByAccount.total}
-            height={300}
-            showLegend={true}
-          />
-        ) : (
-          <CumulativePnLChart
-            data={dailyPnL}
-            height={300}
-            currency={displayCurrency}
-          />
-        ),
+      component: currencyNotSet ? (
+        <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+          Please set your default currency in Settings
+        </div>
+      ) : dailyPnLByAccount && dailyPnLByAccount.series.length > 1 ? (
+        <MultiAccountCumulativePnLChart
+          series={dailyPnLByAccount.series}
+          total={dailyPnLByAccount.total}
+          height={300}
+          showLegend={true}
+        />
+      ) : (
+        <CumulativePnLChart
+          data={dailyPnL}
+          height={300}
+          currency={displayCurrency}
+        />
+      ),
     },
     {
       id: "monthlyPnL",
@@ -544,7 +555,11 @@ export default function AnalyticsPage() {
       description: "Monthly breakdown of trading performance",
       category: "pnl",
       icon: Calendar,
-      component: (
+      component: currencyNotSet ? (
+        <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+          Please set your default currency in Settings
+        </div>
+      ) : (
         <MonthlyPnLChart
           data={monthlyPnL}
           height={300}
@@ -559,7 +574,11 @@ export default function AnalyticsPage() {
         "Account equity over time (P/L only, excludes deposits/withdrawals)",
       category: "pnl",
       icon: TrendingUp,
-      component: (
+      component: currencyNotSet ? (
+        <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+          Please set your default currency in Settings
+        </div>
+      ) : (
         <BalanceChart
           data={equityCurve.map((p) => ({
             date: new Date(p.date).toLocaleDateString("en-US", {
@@ -579,10 +598,15 @@ export default function AnalyticsPage() {
       description: "Account balance over time (includes funding)",
       category: "pnl",
       icon: Wallet,
-      component: (
+      component: currencyNotSet ? (
+        <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+          Please set your default currency in Settings
+        </div>
+      ) : (
         <BalanceChart
           data={formattedBalanceData}
           height={300}
+          showDrawdown={true}
           currency={displayCurrency}
         />
       ),
@@ -594,7 +618,11 @@ export default function AnalyticsPage() {
         "Track deposits, withdrawals, and their impact on account balance",
       category: "pnl",
       icon: DollarSign,
-      component: (
+      component: currencyNotSet ? (
+        <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+          Please set your default currency in Settings
+        </div>
+      ) : (
         <FundingChart
           data={fundingData}
           height={300}
@@ -616,7 +644,11 @@ export default function AnalyticsPage() {
       description: "Performance breakdown by hour of day",
       category: "time",
       icon: Clock,
-      component: (
+      component: currencyNotSet ? (
+        <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+          Please set your default currency in Settings
+        </div>
+      ) : (
         <HourlyPerformanceChart
           data={hourlyPerformance}
           height={300}
@@ -630,7 +662,11 @@ export default function AnalyticsPage() {
       description: "Performance breakdown by day of week",
       category: "time",
       icon: Calendar,
-      component: (
+      component: currencyNotSet ? (
+        <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+          Please set your default currency in Settings
+        </div>
+      ) : (
         <WeekdayPerformanceChart
           data={weekdayPerformance}
           height={300}
@@ -660,7 +696,11 @@ export default function AnalyticsPage() {
       description: "Performance by position size",
       category: "risk",
       icon: BarChart3,
-      component: (
+      component: currencyNotSet ? (
+        <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+          Please set your default currency in Settings
+        </div>
+      ) : (
         <PositionSizeChart
           data={positionSizeData}
           height={300}

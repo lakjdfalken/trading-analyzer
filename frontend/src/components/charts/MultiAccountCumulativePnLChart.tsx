@@ -105,7 +105,9 @@ function CustomTooltip({
       <div className="space-y-1">
         {payload.map((entry, index) => {
           const isPositive = entry.value >= 0;
-          const currency = seriesCurrencies.get(entry.name) || "USD";
+          const currency = seriesCurrencies.get(entry.name);
+          // Skip entries without currency - per .rules, currency is required
+          if (!currency) return null;
           return (
             <div
               key={index}
@@ -142,21 +144,14 @@ export function MultiAccountCumulativePnLChart({
   const { formatAmount } = useCurrencyStore();
   const { showConverted, defaultCurrency } = useSettingsStore();
 
-  // Simple conversion function - backend should handle this
-  const convert = React.useCallback(
-    (amount: number, _from: string, _to: string) => {
-      // Note: Proper conversion should be done by the backend
-      // This is a placeholder that returns the original amount
-      return amount;
-    },
-    [],
-  );
-
   // Build a map of account name to currency for tooltip
   const seriesCurrencies = React.useMemo(() => {
     const map = new Map<string, string>();
     series.forEach((s) => {
-      map.set(s.accountName, s.currency || "USD");
+      // Only add if currency is defined - per .rules, no fallbacks
+      if (s.currency) {
+        map.set(s.accountName, s.currency);
+      }
     });
     if (showConverted && defaultCurrency) {
       map.set("Total (Converted)", defaultCurrency);
@@ -175,16 +170,13 @@ export function MultiAccountCumulativePnLChart({
 
   const hasMultipleCurrencies = currencies.length > 1;
 
-  // Convert value helper
+  // Backend already converts values to target currency
+  // No frontend conversion needed - just pass through the values
   const convertValue = React.useCallback(
-    (value: number, fromCurrency?: string): number => {
-      if (!fromCurrency || fromCurrency === defaultCurrency) {
-        return value;
-      }
-      const converted = convert(value, fromCurrency, defaultCurrency);
-      return converted ?? value;
+    (value: number, _fromCurrency?: string): number => {
+      return value;
     },
-    [defaultCurrency, convert],
+    [],
   );
 
   // Transform data for recharts - show all accounts

@@ -84,7 +84,9 @@ export function CurrencyDisplayCompact({
 
   // Display in the currency provided (backend should have already converted if needed)
   const displayCurrency = currency || defaultCurrency;
-  const formatted = formatAmount(amount, displayCurrency);
+  const formatted = displayCurrency
+    ? formatAmount(amount, displayCurrency)
+    : amount.toFixed(2);
 
   const colorClass = colorize
     ? amount >= 0

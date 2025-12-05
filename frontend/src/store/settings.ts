@@ -11,7 +11,7 @@ import * as api from "@/lib/api";
 
 export interface SettingsState {
   // Settings values
-  defaultCurrency: string;
+  defaultCurrency: string | undefined;
   showConverted: boolean;
 
   // Loading state
@@ -23,7 +23,9 @@ export interface SettingsState {
   loadSettings: () => Promise<void>;
   setDefaultCurrency: (currency: string) => Promise<void>;
   setShowConverted: (show: boolean) => Promise<void>;
-  updateSettings: (settings: Partial<Pick<SettingsState, "defaultCurrency" | "showConverted">>) => Promise<void>;
+  updateSettings: (
+    settings: Partial<Pick<SettingsState, "defaultCurrency" | "showConverted">>,
+  ) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -53,12 +55,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         error: null,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load settings";
+      const message =
+        error instanceof Error ? error.message : "Failed to load settings";
       set({
         error: message,
         isLoading: false,
-        // Set sensible defaults if backend fails
-        defaultCurrency: "USD",
+        // No defaults per .rules - currency must be set by user
+        defaultCurrency: undefined,
         showConverted: true,
         isLoaded: true,
       });
@@ -92,6 +95,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const { defaultCurrency } = get();
     const previousShow = get().showConverted;
 
+    // Can't update if defaultCurrency is not set
+    if (!defaultCurrency) {
+      console.error("Cannot update showConverted: defaultCurrency is not set");
+      return;
+    }
+
     // Optimistic update
     set({ showConverted: show });
 
@@ -111,9 +120,20 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   // Update multiple settings at once
   updateSettings: async (settings) => {
     const currentState = get();
+    const newDefaultCurrency =
+      settings.defaultCurrency ?? currentState.defaultCurrency;
+    const newShowConverted =
+      settings.showConverted ?? currentState.showConverted;
+
+    // Can't update if defaultCurrency is not set
+    if (!newDefaultCurrency) {
+      console.error("Cannot update settings: defaultCurrency is not set");
+      return;
+    }
+
     const newSettings = {
-      defaultCurrency: settings.defaultCurrency ?? currentState.defaultCurrency,
-      showConverted: settings.showConverted ?? currentState.showConverted,
+      defaultCurrency: newDefaultCurrency,
+      showConverted: newShowConverted,
     };
 
     // Optimistic update
@@ -134,7 +154,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 }));
 
 // Selector hooks for common use cases
-export const useDefaultCurrency = () => useSettingsStore((state) => state.defaultCurrency);
-export const useShowConverted = () => useSettingsStore((state) => state.showConverted);
-export const useSettingsLoaded = () => useSettingsStore((state) => state.isLoaded);
-export const useSettingsLoading = () => useSettingsStore((state) => state.isLoading);
+export const useDefaultCurrency = () =>
+  useSettingsStore((state) => state.defaultCurrency);
+export const useShowConverted = () =>
+  useSettingsStore((state) => state.showConverted);
+export const useSettingsLoaded = () =>
+  useSettingsStore((state) => state.isLoaded);
+export const useSettingsLoading = () =>
+  useSettingsStore((state) => state.isLoading);

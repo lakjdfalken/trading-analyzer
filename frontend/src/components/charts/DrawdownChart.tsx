@@ -32,7 +32,7 @@ interface DrawdownChartProps {
   balanceData: BalanceDataPoint[];
   drawdownPeriods?: DrawdownPeriod[];
   height?: number;
-  currency?: string;
+  currency: string;
 }
 
 interface ChartDataPoint {
@@ -110,7 +110,7 @@ function CustomTooltip({
 export function DrawdownChart({
   balanceData,
   height = 300,
-  currency = "USD",
+  currency,
 }: DrawdownChartProps) {
   const { formatAmount } = useCurrencyStore();
 

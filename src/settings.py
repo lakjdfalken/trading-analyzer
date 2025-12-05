@@ -321,17 +321,8 @@ MARKET_SPREADS = {
 # Currency Settings
 CURRENCY_SYMBOLS = {"DKK": "kr", "SEK": "kr", "EUR": "€", "GBP": "£", "USD": "$"}
 
-# Default exchange rates (base currency: SEK)
-DEFAULT_EXCHANGE_RATES = {
-    "SEK": 1,  # 1 SEK = 1 SEK (base currency)
-    "DKK": 1.52,  # 1 DKK = 1.52 SEK
-    "EUR": 11.32,  # 1 EUR = 11.32 SEK
-    "USD": 10.50,  # 1 USD = 10.50 SEK (example rate)
-    "GBP": 13.20,  # 1 GBP = 13.20 SEK (example rate)
-}
-
-# Base currency for conversions
-DEFAULT_BASE_CURRENCY = "SEK"
+# No default exchange rates - rates must be configured by user per .rules
+# No hardcoded base currency - must be set by user in settings
 
 # Explicit authoritative list of supported currencies (do not infer at runtime)
 SUPPORTED_CURRENCIES = ["SEK", "DKK", "EUR", "USD", "GBP"]
@@ -339,10 +330,6 @@ SUPPORTED_CURRENCIES = ["SEK", "DKK", "EUR", "USD", "GBP"]
 # Keep AVAILABLE_CURRENCIES for backward compatibility but make it authoritative from SUPPORTED_CURRENCIES
 AVAILABLE_CURRENCIES = SUPPORTED_CURRENCIES.copy()
 
-# Canonical exchange-rates format (per-base): mapping base_currency -> { currency: rate_relative_to_base }
-# This makes it explicit that DEFAULT_EXCHANGE_RATES maps each currency to its value in DEFAULT_BASE_CURRENCY.
-EXCHANGE_RATES_BASE = DEFAULT_BASE_CURRENCY
-DEFAULT_EXCHANGE_RATES_PER_BASE = {EXCHANGE_RATES_BASE: DEFAULT_EXCHANGE_RATES.copy()}
 
 # Graph Types
 VALID_GRAPH_TYPES = [

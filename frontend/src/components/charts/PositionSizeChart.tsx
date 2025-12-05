@@ -39,7 +39,7 @@ interface PositionSizeData {
 interface PositionSizeChartProps {
   data: PositionSizeData | null;
   height?: number;
-  currency?: string;
+  currency: string;
 }
 
 interface CustomTooltipProps {
@@ -77,7 +77,9 @@ function CustomTooltip({
         <div className="flex justify-between gap-4">
           <span className="text-muted-foreground">Total P&L:</span>
           <span
-            className={dataPoint.totalPnL >= 0 ? "text-green-500" : "text-red-500"}
+            className={
+              dataPoint.totalPnL >= 0 ? "text-green-500" : "text-red-500"
+            }
           >
             {dataPoint.totalPnL >= 0 ? "+" : ""}
             {formatAmount(dataPoint.totalPnL, currency)}
@@ -86,7 +88,9 @@ function CustomTooltip({
         <div className="flex justify-between gap-4">
           <span className="text-muted-foreground">Avg P&L:</span>
           <span
-            className={dataPoint.avgPnL >= 0 ? "text-green-500" : "text-red-500"}
+            className={
+              dataPoint.avgPnL >= 0 ? "text-green-500" : "text-red-500"
+            }
           >
             {dataPoint.avgPnL >= 0 ? "+" : ""}
             {formatAmount(dataPoint.avgPnL, currency)}
@@ -137,7 +141,7 @@ function StatCard({ label, value, icon, color }: StatCardProps) {
 export function PositionSizeChart({
   data,
   height = 300,
-  currency = "USD",
+  currency,
 }: PositionSizeChartProps) {
   const { formatAmount } = useCurrencyStore();
 
@@ -225,7 +229,8 @@ export function PositionSizeChart({
             <div>
               <span className="text-muted-foreground">Worst: </span>
               <span className="text-red-500 font-medium">
-                {worstRange.range} (avg {formatAmount(worstRange.avgPnL, currency)})
+                {worstRange.range} (avg{" "}
+                {formatAmount(worstRange.avgPnL, currency)})
               </span>
             </div>
           )}

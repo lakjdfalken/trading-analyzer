@@ -33,7 +33,7 @@ import { useSettingsStore } from "@/store/settings";
 import * as api from "@/lib/api";
 
 // Exchange rates that can be edited
-const EDITABLE_CURRENCIES = ["SEK", "DKK", "EUR", "USD", "GBP", "NOK", "CHF"];
+const EDITABLE_CURRENCIES = ["SEK", "DKK", "EUR", "USD", "GBP"];
 
 // Base rates relative to USD (as a neutral base for calculations)
 const BASE_RATES_TO_USD: Record<string, number> = {
@@ -74,6 +74,10 @@ export default function SettingsPage() {
   const [localRates, setLocalRates] = React.useState<Record<string, number>>(
     {},
   );
+  const [rateInputs, setRateInputs] = React.useState<Record<string, string>>(
+    {},
+  );
+  const [ratesInitialized, setRatesInitialized] = React.useState(false);
 
   // Data management state
   const [accounts, setAccounts] = React.useState<
@@ -94,9 +98,9 @@ export default function SettingsPage() {
   const [deleteSuccess, setDeleteSuccess] = React.useState<string | null>(null);
 
   // Track initial currency settings for change detection
-  const [initialCurrency, setInitialCurrency] = React.useState<string | null>(
-    null,
-  );
+  const [initialCurrency, setInitialCurrency] = React.useState<
+    string | undefined
+  >(undefined);
   const [initialShowConverted, setInitialShowConverted] = React.useState<
     boolean | null
   >(null);
@@ -119,6 +123,9 @@ export default function SettingsPage() {
     rates: Record<string, number>;
     updatedAt: string | null;
   } | null>(null);
+  const [savedRates, setSavedRates] = React.useState<Record<string, number>>(
+    {},
+  );
   const [currenciesInUse, setCurrenciesInUse] = React.useState<string[]>([]);
 
   // Set mounted state for theme hydration
@@ -140,50 +147,81 @@ export default function SettingsPage() {
     fetchAccounts();
   }, [deleteSuccess]);
 
-  // Initialize local rates and track initial values
+  // Load exchange rates from backend on mount
   React.useEffect(() => {
-    if (exchangeRates?.rates) {
-      setLocalRates(exchangeRates.rates);
+    const loadRates = async () => {
+      if (!defaultCurrency) return;
+      try {
+        const data = await api.getExchangeRates(defaultCurrency);
+        if (data && data.rates && Object.keys(data.rates).length > 0) {
+          setExchangeRates({
+            baseCurrency: data.baseCurrency,
+            rates: data.rates,
+            updatedAt: new Date().toISOString(),
+          });
+          setLocalRates(data.rates);
+          setSavedRates(data.rates);
+          setRateInputs(
+            Object.fromEntries(
+              Object.entries(data.rates).map(([k, v]) => [k, String(v)]),
+            ),
+          );
+          setRatesInitialized(true);
+        } else {
+          // No rates in backend, use calculated defaults
+          const defaultRates = calculateRatesRelativeTo(defaultCurrency);
+          setLocalRates(defaultRates);
+          setSavedRates(defaultRates);
+          setRateInputs(
+            Object.fromEntries(
+              Object.entries(defaultRates).map(([k, v]) => [k, String(v)]),
+            ),
+          );
+          setRatesInitialized(true);
+          setExchangeRates({
+            baseCurrency: defaultCurrency,
+            rates: defaultRates,
+            updatedAt: null,
+          });
+        }
+      } catch {
+        // Failed to load, use calculated defaults
+        const defaultRates = calculateRatesRelativeTo(defaultCurrency);
+        setLocalRates(defaultRates);
+        setSavedRates(defaultRates);
+        setRateInputs(
+          Object.fromEntries(
+            Object.entries(defaultRates).map(([k, v]) => [k, String(v)]),
+          ),
+        );
+        setRatesInitialized(true);
+      }
+    };
+    if (settingsLoaded && defaultCurrency) {
+      loadRates();
     }
-    // Set initial values for change tracking (only once)
-    if (initialCurrency === null) {
+  }, [settingsLoaded, defaultCurrency]);
+
+  // Set initial values for change tracking (only once)
+  React.useEffect(() => {
+    if (initialCurrency === undefined && defaultCurrency) {
       setInitialCurrency(defaultCurrency);
     }
     if (initialShowConverted === null) {
       setInitialShowConverted(showConverted);
     }
-  }, [
-    exchangeRates,
-    defaultCurrency,
-    showConverted,
-    initialCurrency,
-    initialShowConverted,
-  ]);
+  }, [defaultCurrency, showConverted, initialCurrency, initialShowConverted]);
 
-  // Recalculate rates when default currency changes
-  React.useEffect(() => {
-    if (defaultCurrency && exchangeRates) {
-      const newRates = calculateRatesRelativeTo(defaultCurrency);
-      setLocalRates(newRates);
-      // Update the store with new base currency and rates
-      setExchangeRates({
-        baseCurrency: defaultCurrency,
-        rates: newRates,
-        updatedAt: new Date().toISOString(),
-      });
-    }
-  }, [defaultCurrency]);
-
-  // Track changes - include currency store changes
+  // Track changes - compare against saved values
   React.useEffect(() => {
     const currencyChanged =
       initialCurrency !== null && defaultCurrency !== initialCurrency;
     const showConvertedChanged =
       initialShowConverted !== null && showConverted !== initialShowConverted;
     const ratesChanged =
-      editingRates &&
-      exchangeRates?.rates &&
-      JSON.stringify(localRates) !== JSON.stringify(exchangeRates.rates);
+      ratesInitialized &&
+      Object.keys(localRates).length > 0 &&
+      JSON.stringify(localRates) !== JSON.stringify(savedRates);
 
     setHasChanges(currencyChanged || showConvertedChanged || !!ratesChanged);
   }, [
@@ -192,19 +230,25 @@ export default function SettingsPage() {
     initialCurrency,
     initialShowConverted,
     localRates,
-    editingRates,
-    exchangeRates,
+    savedRates,
+    ratesInitialized,
   ]);
 
   // Handle save - saves to backend via settings store
   const handleSave = async () => {
+    if (!defaultCurrency) {
+      console.error("Cannot save: default currency is not set");
+      return;
+    }
     try {
       // Save currency preferences to backend
       await setDefaultCurrency(defaultCurrency);
       await setShowConverted(showConverted);
 
-      // Save exchange rates
-      if (exchangeRates) {
+      // Save exchange rates to backend
+      if (defaultCurrency && Object.keys(localRates).length > 0) {
+        await api.updateExchangeRates(defaultCurrency, localRates);
+        setSavedRates(localRates);
         setExchangeRates({
           baseCurrency: defaultCurrency,
           rates: localRates,
@@ -213,7 +257,9 @@ export default function SettingsPage() {
       }
 
       // Update initial values to current (so changes are relative to saved state)
-      setInitialCurrency(defaultCurrency);
+      if (defaultCurrency) {
+        setInitialCurrency(defaultCurrency);
+      }
       setInitialShowConverted(showConverted);
 
       setSaved(true);
@@ -230,10 +276,10 @@ export default function SettingsPage() {
     // Reset currency to initial saved value
     if (initialCurrency) {
       setDefaultCurrency(initialCurrency);
+      // Recalculate rates for the initial currency
+      const resetRates = calculateRatesRelativeTo(initialCurrency);
+      setLocalRates(resetRates);
     }
-    // Recalculate rates for the initial currency
-    const resetRates = calculateRatesRelativeTo(initialCurrency || "SEK");
-    setLocalRates(resetRates);
     setEditingRates(false);
   };
 
@@ -359,7 +405,7 @@ export default function SettingsPage() {
 
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                   {EDITABLE_CURRENCIES.filter(
-                    (c) => c !== (exchangeRates?.baseCurrency || "SEK"),
+                    (c) => c !== exchangeRates?.baseCurrency,
                   ).map((currency) => (
                     <div
                       key={currency}
@@ -380,15 +426,22 @@ export default function SettingsPage() {
                       </div>
                       {editingRates ? (
                         <input
-                          type="number"
-                          step="0.01"
-                          value={localRates[currency] || ""}
-                          onChange={(e) =>
-                            updateRate(
-                              currency,
-                              parseFloat(e.target.value) || 0,
-                            )
-                          }
+                          type="text"
+                          inputMode="decimal"
+                          value={rateInputs[currency] ?? ""}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(",", ".");
+                            setRateInputs((prev) => ({
+                              ...prev,
+                              [currency]: value,
+                            }));
+                            const parsed = parseFloat(value);
+                            if (!isNaN(parsed)) {
+                              updateRate(currency, parsed);
+                            } else if (value === "" || value === ".") {
+                              updateRate(currency, 0);
+                            }
+                          }}
                           className="w-full px-2 py-1 bg-background border border-input rounded text-sm"
                         />
                       ) : (
@@ -407,31 +460,33 @@ export default function SettingsPage() {
               </div>
 
               {/* Example Conversion */}
-              <div className="p-4 bg-accent/30 rounded-lg">
-                <label className="text-sm font-medium mb-2 block">
-                  Conversion Example
-                </label>
-                <div className="flex items-center gap-4 text-sm">
-                  <span>100 USD</span>
-                  <span className="text-muted-foreground">=</span>
-                  <span className="font-semibold">
-                    {formatAmount(
-                      100 * (localRates["USD"] || 1.0),
-                      defaultCurrency,
-                    )}
-                  </span>
+              {defaultCurrency && (
+                <div className="p-4 bg-accent/30 rounded-lg">
+                  <label className="text-sm font-medium mb-2 block">
+                    Conversion Example
+                  </label>
+                  <div className="flex items-center gap-4 text-sm">
+                    <span>100 USD</span>
+                    <span className="text-muted-foreground">=</span>
+                    <span className="font-semibold">
+                      {formatAmount(
+                        100 * (localRates["USD"] || 1.0),
+                        defaultCurrency,
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm mt-2">
+                    <span>100 EUR</span>
+                    <span className="text-muted-foreground">=</span>
+                    <span className="font-semibold">
+                      {formatAmount(
+                        100 * (localRates["EUR"] || 1.0),
+                        defaultCurrency,
+                      )}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4 text-sm mt-2">
-                  <span>100 EUR</span>
-                  <span className="text-muted-foreground">=</span>
-                  <span className="font-semibold">
-                    {formatAmount(
-                      100 * (localRates["EUR"] || 1.0),
-                      defaultCurrency,
-                    )}
-                  </span>
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
 

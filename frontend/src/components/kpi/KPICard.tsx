@@ -62,7 +62,9 @@ export function KPICard({
 
     // Backend converts to default currency, we just format
     const displayCurrency = currency || defaultCurrency;
-    const formatted = formatAmount(value, displayCurrency);
+    const formatted = displayCurrency
+      ? formatAmount(value, displayCurrency)
+      : value.toFixed(2);
 
     return (
       <div className="flex flex-col">

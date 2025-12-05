@@ -121,7 +121,7 @@ class TradingDatabase:
                 CASE WHEN "Opening" > 0 THEN (COALESCE("P/L", 0) / "Opening") * 100 ELSE 0 END as pnlPercent,
                 "Status" as status,
                 broker_name,
-                COALESCE("Currency", 'USD') as currency
+                "Currency" as currency
             FROM broker_transactions
             WHERE {where_clause}
             ORDER BY "Transaction Date" DESC
@@ -217,6 +217,10 @@ class TradingDatabase:
         """Get balance history over time with currency conversion."""
         from api.services.currency import CurrencyService
 
+        # Require explicit currency - no auto-detection per .rules
+        if target_currency is None:
+            raise ValueError("target_currency is required - no auto-detection allowed")
+
         conditions = ["1=1"]
         params = []
 
@@ -293,6 +297,10 @@ class TradingDatabase:
     ) -> Dict[str, Any]:
         """Get balance history per account for multi-account charting."""
         from api.services.currency import CurrencyService
+
+        # Require explicit currency - no auto-detection per .rules
+        if target_currency is None:
+            raise ValueError("target_currency is required - no auto-detection allowed")
 
         conditions = ["1=1"]
         params = []
@@ -402,28 +410,36 @@ class TradingDatabase:
     def get_monthly_pnl_by_account(
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
-        target_currency: Optional[str] = None,
+        target_currency: str = None,
         account_id: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Get monthly P&L per account for multi-account charting."""
+        """Get monthly P&L per account for multi-account charting.
+
+        Converts all P&L values to target_currency before aggregating totals.
+        Requires target_currency to be specified - no auto-detection per .rules.
+        """
         from api.services.currency import CurrencyService
 
+        # Require explicit currency - no auto-detection per .rules
+        if target_currency is None:
+            raise ValueError("target_currency is required - no auto-detection allowed")
+
         conditions = [
-            "\"Action\" NOT LIKE '%Fund%' AND \"Action\" NOT LIKE '%Charge%' "
-            "AND \"Action\" NOT LIKE '%Deposit%' AND \"Action\" NOT LIKE '%Withdraw%'"
+            "bt.\"Action\" NOT LIKE '%Fund%' AND bt.\"Action\" NOT LIKE '%Charge%' "
+            "AND bt.\"Action\" NOT LIKE '%Deposit%' AND bt.\"Action\" NOT LIKE '%Withdraw%'"
         ]
         params = []
 
         if start_date:
-            conditions.append('"Transaction Date" >= ?')
+            conditions.append('bt."Transaction Date" >= ?')
             params.append(start_date.isoformat())
 
         if end_date:
-            conditions.append('"Transaction Date" <= ?')
+            conditions.append('bt."Transaction Date" <= ?')
             params.append(end_date.isoformat())
 
         if account_id:
-            conditions.append("account_id = ?")
+            conditions.append("bt.account_id = ?")
             params.append(account_id)
 
         where_clause = " AND ".join(conditions)
@@ -448,22 +464,22 @@ class TradingDatabase:
 
             query = f"""
                 SELECT
-                    strftime('%Y-%m', "Transaction Date") as month_key,
-                    CASE CAST(strftime('%m', "Transaction Date") AS INTEGER)
+                    strftime('%Y-%m', bt."Transaction Date") as month_key,
+                    CASE CAST(strftime('%m', bt."Transaction Date") AS INTEGER)
                         WHEN 1 THEN 'Jan' WHEN 2 THEN 'Feb' WHEN 3 THEN 'Mar'
                         WHEN 4 THEN 'Apr' WHEN 5 THEN 'May' WHEN 6 THEN 'Jun'
                         WHEN 7 THEN 'Jul' WHEN 8 THEN 'Aug' WHEN 9 THEN 'Sep'
                         WHEN 10 THEN 'Oct' WHEN 11 THEN 'Nov' WHEN 12 THEN 'Dec'
-                    END || ' ' || strftime('%Y', "Transaction Date") as month,
-                    SUM("P/L") as pnl,
+                    END || ' ' || strftime('%Y', bt."Transaction Date") as month,
+                    SUM(bt."P/L") as pnl,
                     COUNT(*) as trades,
                     ROUND(
-                        CAST(SUM(CASE WHEN "P/L" >= 0 THEN 1 ELSE 0 END) AS FLOAT) /
+                        CAST(SUM(CASE WHEN bt."P/L" >= 0 THEN 1 ELSE 0 END) AS FLOAT) /
                         CAST(COUNT(*) AS FLOAT) * 100,
                         1
                     ) as winRate
-                FROM broker_transactions
-                WHERE {where_clause} AND account_id = ?
+                FROM broker_transactions bt
+                WHERE {where_clause} AND bt.account_id = ?
                 GROUP BY month_key
                 ORDER BY month_key ASC
             """
@@ -480,34 +496,82 @@ class TradingDatabase:
                     }
                 )
 
-        # Get total monthly P&L across all accounts
+        # Calculate total monthly P&L with proper currency conversion
+        # Group by month and currency, then convert and aggregate
         total_query = f"""
             SELECT
-                strftime('%Y-%m', "Transaction Date") as month_key,
-                CASE CAST(strftime('%m', "Transaction Date") AS INTEGER)
+                strftime('%Y-%m', bt."Transaction Date") as month_key,
+                CASE CAST(strftime('%m', bt."Transaction Date") AS INTEGER)
                     WHEN 1 THEN 'Jan' WHEN 2 THEN 'Feb' WHEN 3 THEN 'Mar'
                     WHEN 4 THEN 'Apr' WHEN 5 THEN 'May' WHEN 6 THEN 'Jun'
                     WHEN 7 THEN 'Jul' WHEN 8 THEN 'Aug' WHEN 9 THEN 'Sep'
                     WHEN 10 THEN 'Oct' WHEN 11 THEN 'Nov' WHEN 12 THEN 'Dec'
-                END || ' ' || strftime('%Y', "Transaction Date") as month,
-                SUM("P/L") as pnl,
+                END || ' ' || strftime('%Y', bt."Transaction Date") as month,
+                a.currency as account_currency,
+                SUM(bt."P/L") as pnl,
                 COUNT(*) as trades,
-                ROUND(
-                    CAST(SUM(CASE WHEN "P/L" >= 0 THEN 1 ELSE 0 END) AS FLOAT) /
-                    CAST(COUNT(*) AS FLOAT) * 100,
-                    1
-                ) as winRate
-            FROM broker_transactions
+                SUM(CASE WHEN bt."P/L" >= 0 THEN 1 ELSE 0 END) as wins
+            FROM broker_transactions bt
+            JOIN accounts a ON bt.account_id = a.account_id
             WHERE {where_clause}
-            GROUP BY month_key
+            GROUP BY month_key, a.currency
             ORDER BY month_key ASC
         """
-        total_data = execute_query(total_query, tuple(params))
+        raw_total_data = execute_query(total_query, tuple(params))
+
+        # Aggregate by month, converting currencies to target_currency
+        month_totals: Dict[str, Dict[str, Any]] = {}
+        for row in raw_total_data:
+            month_key = row["month_key"]
+            month = row["month"]
+            currency = row["account_currency"] or target_currency
+            pnl = row["pnl"] or 0
+            trades = row["trades"] or 0
+            wins = row["wins"] or 0
+
+            # Convert P&L to target currency
+            if currency != target_currency:
+                converted = CurrencyService.convert(pnl, currency, target_currency)
+                if converted is not None:
+                    pnl = converted
+
+            if month_key not in month_totals:
+                month_totals[month_key] = {
+                    "month_key": month_key,
+                    "month": month,
+                    "pnl": 0,
+                    "trades": 0,
+                    "wins": 0,
+                }
+
+            month_totals[month_key]["pnl"] += pnl
+            month_totals[month_key]["trades"] += trades
+            month_totals[month_key]["wins"] += wins
+
+        # Build total data with win rates
+        total_data = []
+        for month_key in sorted(month_totals.keys()):
+            entry = month_totals[month_key]
+            win_rate = (
+                round((entry["wins"] / entry["trades"]) * 100, 1)
+                if entry["trades"] > 0
+                else 0
+            )
+            total_data.append(
+                {
+                    "month_key": entry["month_key"],
+                    "month": entry["month"],
+                    "pnl": entry["pnl"],
+                    "trades": entry["trades"],
+                    "winRate": win_rate,
+                }
+            )
 
         return {
             "series": series,
             "total": {
                 "accountName": "Total",
+                "currency": target_currency,
                 "data": total_data,
             },
         }
@@ -532,47 +596,49 @@ class TradingDatabase:
             raise ValueError("target_currency is required - no auto-detection allowed")
 
         conditions = [
-            "\"Action\" NOT LIKE '%Fund%' AND \"Action\" NOT LIKE '%Charge%' "
-            "AND \"Action\" NOT LIKE '%Deposit%' AND \"Action\" NOT LIKE '%Withdraw%'"
+            "bt.\"Action\" NOT LIKE '%Fund%' AND bt.\"Action\" NOT LIKE '%Charge%' "
+            "AND bt.\"Action\" NOT LIKE '%Deposit%' AND bt.\"Action\" NOT LIKE '%Withdraw%'"
         ]
         params = []
 
         if start_date:
-            conditions.append('"Transaction Date" >= ?')
+            conditions.append('bt."Transaction Date" >= ?')
             params.append(start_date.isoformat())
 
         if end_date:
-            conditions.append('"Transaction Date" <= ?')
+            conditions.append('bt."Transaction Date" <= ?')
             params.append(end_date.isoformat())
 
         if instruments:
             placeholders = ",".join("?" * len(instruments))
-            conditions.append(f'"Description" IN ({placeholders})')
+            conditions.append(f'bt."Description" IN ({placeholders})')
             params.extend(instruments)
 
         if account_id:
-            conditions.append("account_id = ?")
+            conditions.append("bt.account_id = ?")
             params.append(account_id)
 
         where_clause = " AND ".join(conditions)
 
-        # Get monthly P&L grouped by month AND currency
+        # Get monthly P&L grouped by month AND account currency
+        # Use account currency (not transaction currency) for proper multi-account conversion
         query = f"""
             SELECT
-                strftime('%Y-%m', "Transaction Date") as month_key,
-                CASE CAST(strftime('%m', "Transaction Date") AS INTEGER)
+                strftime('%Y-%m', bt."Transaction Date") as month_key,
+                CASE CAST(strftime('%m', bt."Transaction Date") AS INTEGER)
                     WHEN 1 THEN 'Jan' WHEN 2 THEN 'Feb' WHEN 3 THEN 'Mar'
                     WHEN 4 THEN 'Apr' WHEN 5 THEN 'May' WHEN 6 THEN 'Jun'
                     WHEN 7 THEN 'Jul' WHEN 8 THEN 'Aug' WHEN 9 THEN 'Sep'
                     WHEN 10 THEN 'Oct' WHEN 11 THEN 'Nov' WHEN 12 THEN 'Dec'
-                END || ' ' || strftime('%Y', "Transaction Date") as month,
-                "Currency" as currency,
-                SUM("P/L") as pnl,
+                END || ' ' || strftime('%Y', bt."Transaction Date") as month,
+                a.currency as currency,
+                SUM(bt."P/L") as pnl,
                 COUNT(*) as trades,
-                SUM(CASE WHEN "P/L" >= 0 THEN 1 ELSE 0 END) as wins
-            FROM broker_transactions
+                SUM(CASE WHEN bt."P/L" >= 0 THEN 1 ELSE 0 END) as wins
+            FROM broker_transactions bt
+            JOIN accounts a ON bt.account_id = a.account_id
             WHERE {where_clause}
-            GROUP BY month_key, "Currency"
+            GROUP BY month_key, a.currency
             ORDER BY month_key ASC
         """
 
@@ -902,61 +968,49 @@ class TradingDatabase:
         from api.services.currency import CurrencyService
 
         conditions = [
-            "\"Action\" NOT LIKE '%Fund%' AND \"Action\" NOT LIKE '%Charge%' "
-            "AND \"Action\" NOT LIKE '%Deposit%' AND \"Action\" NOT LIKE '%Withdraw%'"
+            "bt.\"Action\" NOT LIKE '%Fund%' AND bt.\"Action\" NOT LIKE '%Charge%' "
+            "AND bt.\"Action\" NOT LIKE '%Deposit%' AND bt.\"Action\" NOT LIKE '%Withdraw%'"
         ]
         params = []
 
         if start_date:
-            conditions.append('"Transaction Date" >= ?')
+            conditions.append('bt."Transaction Date" >= ?')
             params.append(start_date.isoformat())
 
         if end_date:
-            conditions.append('"Transaction Date" <= ?')
+            conditions.append('bt."Transaction Date" <= ?')
             params.append(end_date.isoformat())
 
         if instruments:
             placeholders = ",".join("?" * len(instruments))
-            conditions.append(f'"Description" IN ({placeholders})')
+            conditions.append(f'bt."Description" IN ({placeholders})')
             params.extend(instruments)
 
         if account_id:
-            conditions.append("account_id = ?")
+            conditions.append("bt.account_id = ?")
             params.append(account_id)
 
         where_clause = " AND ".join(conditions)
-
-        # Get the primary currency used (most common)
-        currency_query = f"""
-            SELECT "Currency", COUNT(*) as cnt
-            FROM broker_transactions
-            WHERE {where_clause} AND "Currency" IS NOT NULL
-            GROUP BY "Currency"
-            ORDER BY cnt DESC
-            LIMIT 1
-        """
-        currency_results = execute_query(currency_query, tuple(params))
-        primary_currency = (
-            currency_results[0].get("Currency") if currency_results else "USD"
-        )
 
         # Require explicit currency - no auto-detection per .rules
         if target_currency is None:
             raise ValueError("target_currency is required - no auto-detection allowed")
 
-        # Get P&L grouped by currency for proper conversion
+        # Get P&L grouped by account currency for proper conversion
+        # Use account currency (not transaction currency) for multi-account scenarios
         pnl_by_currency_query = f"""
             SELECT
-                "Currency" as currency,
-                SUM("P/L") as pnl,
+                a.currency as currency,
+                SUM(bt."P/L") as pnl,
                 COUNT(*) as trades,
-                SUM(CASE WHEN "P/L" >= 0 THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN "P/L" < 0 THEN 1 ELSE 0 END) as losses,
-                SUM(CASE WHEN "P/L" >= 0 THEN "P/L" ELSE 0 END) as total_wins,
-                SUM(CASE WHEN "P/L" < 0 THEN "P/L" ELSE 0 END) as total_losses
-            FROM broker_transactions
+                SUM(CASE WHEN bt."P/L" >= 0 THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN bt."P/L" < 0 THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN bt."P/L" >= 0 THEN bt."P/L" ELSE 0 END) as total_wins,
+                SUM(CASE WHEN bt."P/L" < 0 THEN bt."P/L" ELSE 0 END) as total_losses
+            FROM broker_transactions bt
+            JOIN accounts a ON bt.account_id = a.account_id
             WHERE {where_clause}
-            GROUP BY "Currency"
+            GROUP BY a.currency
         """
 
         pnl_results = execute_query(pnl_by_currency_query, tuple(params))
@@ -1005,12 +1059,13 @@ class TradingDatabase:
         avg_win = total_wins_amount / winning_trades if winning_trades > 0 else 0
         avg_loss = total_losses_amount / losing_trades if losing_trades > 0 else 0
 
-        # Get balance stats
+        # Get balance stats (with account join for proper filtering)
         balance_query = f"""
             SELECT
-                COALESCE(MIN("Balance"), 0) as min_balance,
-                COALESCE(MAX("Balance"), 0) as max_balance
-            FROM broker_transactions
+                COALESCE(MIN(bt."Balance"), 0) as min_balance,
+                COALESCE(MAX(bt."Balance"), 0) as max_balance
+            FROM broker_transactions bt
+            JOIN accounts a ON bt.account_id = a.account_id
             WHERE {where_clause}
         """
         balance_results = execute_query(balance_query, tuple(params))
@@ -1034,12 +1089,13 @@ class TradingDatabase:
         # Today's date for today's stats
         today = datetime.now().date().isoformat()
 
-        # Get today's P&L with currency conversion
+        # Get today's P&L with currency conversion (using account currency)
         today_pnl_query = f"""
-            SELECT "Currency" as currency, SUM("P/L") as pnl, COUNT(*) as trades
-            FROM broker_transactions
-            WHERE DATE("Transaction Date") = ? AND {where_clause}
-            GROUP BY "Currency"
+            SELECT a.currency as currency, SUM(bt."P/L") as pnl, COUNT(*) as trades
+            FROM broker_transactions bt
+            JOIN accounts a ON bt.account_id = a.account_id
+            WHERE DATE(bt."Transaction Date") = ? AND {where_clause}
+            GROUP BY a.currency
         """
         today_params = [today] + list(params)
         today_pnl_results = execute_query(today_pnl_query, tuple(today_params))
@@ -1131,34 +1187,35 @@ class TradingDatabase:
             raise ValueError("target_currency is required - no auto-detection allowed")
 
         conditions = [
-            "\"Action\" NOT LIKE '%Fund%' AND \"Action\" NOT LIKE '%Charge%' "
-            "AND \"Action\" NOT LIKE '%Deposit%' AND \"Action\" NOT LIKE '%Withdraw%'"
+            "bt.\"Action\" NOT LIKE '%Fund%' AND bt.\"Action\" NOT LIKE '%Charge%' "
+            "AND bt.\"Action\" NOT LIKE '%Deposit%' AND bt.\"Action\" NOT LIKE '%Withdraw%'"
         ]
         params = []
 
         if start_date:
-            conditions.append('"Transaction Date" >= ?')
+            conditions.append('bt."Transaction Date" >= ?')
             params.append(start_date.isoformat())
 
         if end_date:
-            conditions.append('"Transaction Date" <= ?')
+            conditions.append('bt."Transaction Date" <= ?')
             params.append(end_date.isoformat())
 
         if account_id:
-            conditions.append("account_id = ?")
+            conditions.append("bt.account_id = ?")
             params.append(account_id)
 
         where_clause = " AND ".join(conditions)
 
-        # Get daily P&L grouped by date AND currency for proper conversion
+        # Get daily P&L grouped by date AND account currency for proper conversion
         query = f"""
             SELECT
-                DATE("Transaction Date") as date,
-                "Currency" as currency,
-                SUM("P/L") as daily_pnl
-            FROM broker_transactions
+                DATE(bt."Transaction Date") as date,
+                a.currency as currency,
+                SUM(bt."P/L") as daily_pnl
+            FROM broker_transactions bt
+            JOIN accounts a ON bt.account_id = a.account_id
             WHERE {where_clause}
-            GROUP BY DATE("Transaction Date"), "Currency"
+            GROUP BY DATE(bt."Transaction Date"), a.currency
             ORDER BY date ASC
         """
 
@@ -1221,35 +1278,36 @@ class TradingDatabase:
             raise ValueError("target_currency is required - no auto-detection allowed")
 
         conditions = [
-            "\"Action\" NOT LIKE '%Fund%' AND \"Action\" NOT LIKE '%Charge%' "
-            "AND \"Action\" NOT LIKE '%Deposit%' AND \"Action\" NOT LIKE '%Withdraw%'"
+            "bt.\"Action\" NOT LIKE '%Fund%' AND bt.\"Action\" NOT LIKE '%Charge%' "
+            "AND bt.\"Action\" NOT LIKE '%Deposit%' AND bt.\"Action\" NOT LIKE '%Withdraw%'"
         ]
         params = []
 
         if start_date:
-            conditions.append('"Transaction Date" >= ?')
+            conditions.append('bt."Transaction Date" >= ?')
             params.append(start_date.isoformat())
 
         if end_date:
-            conditions.append('"Transaction Date" <= ?')
+            conditions.append('bt."Transaction Date" <= ?')
             params.append(end_date.isoformat())
 
         if account_id:
-            conditions.append("account_id = ?")
+            conditions.append("bt.account_id = ?")
             params.append(account_id)
 
         where_clause = " AND ".join(conditions)
 
-        # Get daily P&L data grouped by date AND currency
+        # Get daily P&L data grouped by date AND account currency
         query = f"""
             SELECT
-                DATE("Transaction Date") as date,
-                "Currency" as currency,
-                SUM("P/L") as pnl,
+                DATE(bt."Transaction Date") as date,
+                a.currency as currency,
+                SUM(bt."P/L") as pnl,
                 COUNT(*) as trades
-            FROM broker_transactions
+            FROM broker_transactions bt
+            JOIN accounts a ON bt.account_id = a.account_id
             WHERE {where_clause}
-            GROUP BY DATE("Transaction Date"), "Currency"
+            GROUP BY DATE(bt."Transaction Date"), a.currency
             ORDER BY date ASC
         """
 
@@ -1288,19 +1346,20 @@ class TradingDatabase:
         balance_conditions = ["1=1"]
         balance_params = []
         if account_id:
-            balance_conditions.append("account_id = ?")
+            balance_conditions.append("bt.account_id = ?")
             balance_params.append(account_id)
         balance_where = " AND ".join(balance_conditions)
 
         balance_query = f"""
             SELECT
-                DATE("Transaction Date") as date,
-                account_id,
-                "Currency" as currency,
-                MAX("Balance") as balance
-            FROM broker_transactions
+                DATE(bt."Transaction Date") as date,
+                bt.account_id,
+                a.currency as currency,
+                MAX(bt."Balance") as balance
+            FROM broker_transactions bt
+            JOIN accounts a ON bt.account_id = a.account_id
             WHERE {balance_where}
-            GROUP BY DATE("Transaction Date"), account_id
+            GROUP BY DATE(bt."Transaction Date"), bt.account_id
             ORDER BY date ASC
         """
 

@@ -7,8 +7,8 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatCurrency(
   value: number,
-  currency: string = "USD",
-  locale: string = "en-US"
+  currency: string,
+  locale: string = "en-US",
 ): string {
   return new Intl.NumberFormat(locale, {
     style: "currency",
@@ -21,7 +21,7 @@ export function formatCurrency(
 export function formatPercent(
   value: number,
   decimals: number = 2,
-  locale: string = "en-US"
+  locale: string = "en-US",
 ): string {
   return new Intl.NumberFormat(locale, {
     style: "percent",
@@ -33,7 +33,7 @@ export function formatPercent(
 export function formatNumber(
   value: number,
   decimals: number = 2,
-  locale: string = "en-US"
+  locale: string = "en-US",
 ): string {
   return new Intl.NumberFormat(locale, {
     minimumFractionDigits: decimals,
@@ -43,7 +43,7 @@ export function formatNumber(
 
 export function formatCompactNumber(
   value: number,
-  locale: string = "en-US"
+  locale: string = "en-US",
 ): string {
   return new Intl.NumberFormat(locale, {
     notation: "compact",
@@ -62,7 +62,7 @@ export function getProfitLossColor(value: number): string {
 }
 
 export function getProfitLossVariant(
-  value: number
+  value: number,
 ): "success" | "danger" | "default" {
   if (value > 0) return "success";
   if (value < 0) return "danger";

@@ -24,7 +24,7 @@ interface WeekdayPerformance {
 interface WeekdayPerformanceChartProps {
   data: WeekdayPerformance[];
   height?: number;
-  currency?: string;
+  currency: string;
   metric?: "pnl" | "trades" | "winRate";
 }
 
@@ -107,7 +107,7 @@ const WEEKDAY_ABBREV: Record<string, string> = {
 export function WeekdayPerformanceChart({
   data,
   height = 300,
-  currency = "USD",
+  currency,
   metric = "pnl",
 }: WeekdayPerformanceChartProps) {
   const { formatAmount } = useCurrencyStore();

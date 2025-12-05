@@ -24,7 +24,7 @@ interface HourlyPerformance {
 interface HourlyPerformanceChartProps {
   data: HourlyPerformance[];
   height?: number;
-  currency?: string;
+  currency: string;
   metric?: "pnl" | "trades" | "winRate";
 }
 
@@ -93,7 +93,7 @@ function CustomTooltip({
 export function HourlyPerformanceChart({
   data,
   height = 300,
-  currency = "USD",
+  currency,
   metric = "pnl",
 }: HourlyPerformanceChartProps) {
   const { formatAmount } = useCurrencyStore();

@@ -31,7 +31,7 @@ def serialize_trade(trade_dict: Dict[str, Any]) -> Dict[str, Any]:
         "pnlPercent": trade_dict.get("pnlPercent", 0)
         or trade_dict.get("pnl_percent", 0)
         or 0,
-        "currency": trade_dict.get("currency") or "USD",
+        "currency": trade_dict.get("currency"),
         "status": trade_dict.get("status", "closed"),
         "commission": trade_dict.get("commission"),
         "swap": trade_dict.get("swap"),

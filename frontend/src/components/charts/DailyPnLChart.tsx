@@ -29,7 +29,7 @@ interface DailyPnLChartProps {
   data: DailyPnLDataPoint[];
   height?: number;
   showCumulative?: boolean;
-  currency?: string;
+  currency: string;
 }
 
 interface CustomTooltipProps {
@@ -153,7 +153,7 @@ export function DailyPnLChart({
   data,
   height = 300,
   showCumulative = false,
-  currency = "USD",
+  currency,
 }: DailyPnLChartProps) {
   const { formatAmount } = useCurrencyStore();
 

@@ -16,6 +16,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 
 export interface MonthlyPnLData {
   month: string;
+  month_key?: string;
   pnl: number;
   trades?: number;
   winRate?: number;
@@ -30,7 +31,7 @@ export interface MonthlyPnLChartProps {
   className?: string;
   profitColor?: string;
   lossColor?: string;
-  currency?: string;
+  currency: string;
 }
 
 interface CustomTooltipProps {
@@ -40,14 +41,20 @@ interface CustomTooltipProps {
     value: number;
   }>;
   label?: string;
-  currency?: string;
+  currency: string;
+}
+
+interface YearlyTotal {
+  year: string;
+  pnl: number;
+  trades: number;
 }
 
 function CustomTooltip({
   active,
   payload,
   label,
-  currency = "USD",
+  currency,
 }: CustomTooltipProps) {
   if (!active || !payload || !payload.length) {
     return null;
@@ -100,8 +107,44 @@ export function MonthlyPnLChart({
   className,
   profitColor = "#10B981",
   lossColor = "#EF4444",
-  currency = "USD",
+  currency,
 }: MonthlyPnLChartProps) {
+  // Calculate yearly totals
+  const yearlyTotals = React.useMemo(() => {
+    const totals: Record<string, YearlyTotal> = {};
+
+    data.forEach((item) => {
+      // Extract year from month_key (YYYY-MM) or month (e.g., "Jan 2024")
+      let year: string;
+      if (item.month_key) {
+        year = item.month_key.substring(0, 4);
+      } else {
+        // Try to extract year from month string like "Jan 2024"
+        const match = item.month.match(/\d{4}/);
+        year = match ? match[0] : "Unknown";
+      }
+
+      if (!totals[year]) {
+        totals[year] = { year, pnl: 0, trades: 0 };
+      }
+      totals[year].pnl += item.pnl;
+      totals[year].trades += item.trades || 0;
+    });
+
+    return Object.values(totals).sort((a, b) => a.year.localeCompare(b.year));
+  }, [data]);
+
+  // Calculate grand total
+  const grandTotal = React.useMemo(() => {
+    return data.reduce(
+      (acc, item) => ({
+        pnl: acc.pnl + item.pnl,
+        trades: acc.trades + (item.trades || 0),
+      }),
+      { pnl: 0, trades: 0 },
+    );
+  }, [data]);
+
   if (!data || data.length === 0) {
     return (
       <div
@@ -121,63 +164,126 @@ export function MonthlyPnLChart({
   const yDomain = [-maxAbsValue * 1.1, maxAbsValue * 1.1];
 
   return (
-    <div className={cn("w-full", className)} style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          data={data}
-          margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
-        >
-          {showGrid && (
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="hsl(var(--border))"
-              vertical={false}
-            />
+    <div className={cn("w-full", className)}>
+      {/* Totals Summary */}
+      <div className="mb-4 px-2">
+        <div className="flex flex-wrap gap-4 text-sm">
+          {/* Yearly Totals */}
+          {yearlyTotals.map((yearly) => {
+            const isProfit = yearly.pnl >= 0;
+            return (
+              <div
+                key={yearly.year}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50"
+              >
+                <span className="text-muted-foreground font-medium">
+                  {yearly.year}:
+                </span>
+                <span
+                  className={cn(
+                    "font-semibold",
+                    isProfit ? "text-green-500" : "text-red-500",
+                  )}
+                >
+                  {isProfit ? "+" : ""}
+                  {formatCurrency(yearly.pnl, currency)}
+                </span>
+                {yearly.trades > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    ({yearly.trades} trades)
+                  </span>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Grand Total (if more than one year) */}
+          {yearlyTotals.length > 1 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary/10 border border-primary/20">
+              <span className="text-muted-foreground font-medium">Total:</span>
+              <span
+                className={cn(
+                  "font-semibold",
+                  grandTotal.pnl >= 0 ? "text-green-500" : "text-red-500",
+                )}
+              >
+                {grandTotal.pnl >= 0 ? "+" : ""}
+                {formatCurrency(grandTotal.pnl, currency)}
+              </span>
+              {grandTotal.trades > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  ({grandTotal.trades} trades)
+                </span>
+              )}
+            </div>
           )}
-          <XAxis
-            dataKey="month"
-            axisLine={false}
-            tickLine={false}
-            tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
-            dy={10}
-          />
-          <YAxis
-            domain={yDomain}
-            axisLine={false}
-            tickLine={false}
-            tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
-            tickFormatter={(value) => {
-              if (Math.abs(value) >= 1000) {
-                return `${(value / 1000).toFixed(0)}k`;
-              }
-              return `${value}`;
-            }}
-            width={60}
-          />
-          {showTooltip && (
-            <Tooltip
-              content={<CustomTooltip currency={currency} />}
-              cursor={{ fill: "hsl(var(--accent))", opacity: 0.3 }}
-            />
-          )}
-          <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />
-          <Bar
-            dataKey="pnl"
-            radius={[4, 4, 0, 0]}
-            isAnimationActive={animate}
-            animationDuration={500}
-            animationEasing="ease-out"
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div style={{ height }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={data}
+            margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
           >
-            {data.map((entry, index) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={entry.pnl >= 0 ? profitColor : lossColor}
-                fillOpacity={0.9}
+            {showGrid && (
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="hsl(var(--border))"
+                vertical={false}
               />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+            )}
+            <XAxis
+              dataKey="month"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+              dy={10}
+            />
+            <YAxis
+              domain={yDomain}
+              axisLine={false}
+              tickLine={false}
+              tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+              tickFormatter={(value) => {
+                if (Math.abs(value) >= 1000) {
+                  return `${(value / 1000).toFixed(0)}k`;
+                }
+                return `${Math.round(value)}`;
+              }}
+              ticks={[yDomain[0], 0, yDomain[1]]}
+              width={60}
+            />
+            {showTooltip && (
+              <Tooltip
+                content={<CustomTooltip currency={currency} />}
+                cursor={{ fill: "hsl(var(--accent))", opacity: 0.3 }}
+              />
+            )}
+            <ReferenceLine
+              y={0}
+              stroke="hsl(var(--muted-foreground))"
+              strokeWidth={1}
+            />
+            <Bar
+              dataKey="pnl"
+              radius={[4, 4, 0, 0]}
+              isAnimationActive={animate}
+              animationDuration={500}
+              animationEasing="ease-out"
+            >
+              {data.map((entry, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={entry.pnl >= 0 ? profitColor : lossColor}
+                  fillOpacity={0.9}
+                />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }

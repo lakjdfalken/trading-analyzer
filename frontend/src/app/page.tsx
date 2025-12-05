@@ -340,7 +340,11 @@ export default function Home() {
   );
 
   // Get the display currency (from data or effective currency)
-  const displayCurrency = dataCurrency || effectiveCurrency || "USD";
+  // No fallback per .rules - effectiveCurrency must be set from settings
+  const displayCurrency = dataCurrency || effectiveCurrency;
+
+  // Currency is required for all charts - show message if not set
+  const currencyNotSet = !displayCurrency;
 
   // Handle account change
   const handleAccountChange = React.useCallback(
@@ -599,6 +603,10 @@ export default function Home() {
                   showTotal={true}
                   showLegend={true}
                 />
+              ) : currencyNotSet ? (
+                <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                  Please set your default currency in Settings
+                </div>
               ) : (
                 <BalanceChart
                   data={formattedBalanceData}
@@ -640,8 +648,12 @@ export default function Home() {
                     total={monthlyPnLByAccount.total}
                     height={280}
                     showTotal={false}
-                    stacked={true}
+                    stacked={false}
                   />
+                ) : currencyNotSet ? (
+                  <div className="flex items-center justify-center h-[280px] text-muted-foreground">
+                    Please set your default currency in Settings
+                  </div>
                 ) : (
                   <MonthlyPnLChart
                     data={monthlyPnL}
@@ -681,6 +693,10 @@ export default function Home() {
             showTotal={true}
             showLegend={true}
           />
+        ) : currencyNotSet ? (
+          <div className="flex items-center justify-center h-[600px] text-muted-foreground">
+            Please set your default currency in Settings
+          </div>
         ) : (
           <BalanceChart
             data={formattedBalanceData}
@@ -705,8 +721,12 @@ export default function Home() {
             total={monthlyPnLByAccount.total}
             height={600}
             showTotal={false}
-            stacked={true}
+            stacked={false}
           />
+        ) : currencyNotSet ? (
+          <div className="flex items-center justify-center h-[600px] text-muted-foreground">
+            Please set your default currency in Settings
+          </div>
         ) : (
           <MonthlyPnLChart
             data={monthlyPnL}

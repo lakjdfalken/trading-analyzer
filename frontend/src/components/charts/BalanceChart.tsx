@@ -30,7 +30,7 @@ export interface BalanceChartProps {
   showTooltip?: boolean;
   animate?: boolean;
   className?: string;
-  currency?: string;
+  currency: string;
   startingBalance?: number;
 }
 
@@ -43,10 +43,15 @@ interface CustomTooltipProps {
     dataKey: string;
   }>;
   label?: string;
-  currency?: string;
+  currency: string;
 }
 
-function CustomTooltip({ active, payload, label, currency = "USD" }: CustomTooltipProps) {
+function CustomTooltip({
+  active,
+  payload,
+  label,
+  currency,
+}: CustomTooltipProps) {
   if (!active || !payload || payload.length === 0) {
     return null;
   }
@@ -68,7 +73,12 @@ function CustomTooltip({ active, payload, label, currency = "USD" }: CustomToolt
       {drawdownData && drawdownData.value !== undefined && (
         <div className="flex items-center justify-between gap-4 mt-1">
           <span className="text-muted-foreground">Drawdown:</span>
-          <span className={cn("font-semibold", drawdownData.value < 0 ? "text-red-500" : "text-muted-foreground")}>
+          <span
+            className={cn(
+              "font-semibold",
+              drawdownData.value < 0 ? "text-red-500" : "text-muted-foreground",
+            )}
+          >
             {drawdownData.value.toFixed(2)}%
           </span>
         </div>
@@ -85,7 +95,7 @@ export function BalanceChart({
   showTooltip = true,
   animate = true,
   className,
-  currency = "USD",
+  currency,
   startingBalance,
 }: BalanceChartProps) {
   // Format data for the chart
@@ -129,7 +139,7 @@ export function BalanceChart({
       <div
         className={cn(
           "flex items-center justify-center text-muted-foreground",
-          className
+          className,
         )}
         style={{ height }}
       >
@@ -159,7 +169,13 @@ export function BalanceChart({
               />
             </linearGradient>
             {showDrawdown && (
-              <linearGradient id={drawdownGradientId} x1="0" y1="0" x2="0" y2="1">
+              <linearGradient
+                id={drawdownGradientId}
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="1"
+              >
                 <stop
                   offset="5%"
                   stopColor="hsl(0, 84%, 60%)"

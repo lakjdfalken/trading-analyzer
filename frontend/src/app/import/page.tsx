@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSettingsStore } from "@/store/settings";
 import {
   Upload,
   Plus,
@@ -88,9 +89,12 @@ export default function ImportPage() {
 
   // New account form - show by default when no accounts exist
   const [showNewAccount, setShowNewAccount] = React.useState(true);
+  const { defaultCurrency } = useSettingsStore();
   const [newAccountName, setNewAccountName] = React.useState("");
   const [newAccountBroker, setNewAccountBroker] = React.useState("");
-  const [newAccountCurrency, setNewAccountCurrency] = React.useState("SEK");
+  const [newAccountCurrency, setNewAccountCurrency] = React.useState(
+    defaultCurrency || "",
+  );
 
   const [newAccountNotes, setNewAccountNotes] = React.useState("");
 
@@ -221,7 +225,7 @@ export default function ImportPage() {
       setShowNewAccount(false);
       setNewAccountName("");
       setNewAccountBroker("");
-      setNewAccountCurrency("SEK");
+      setNewAccountCurrency(defaultCurrency || "");
 
       setNewAccountNotes("");
       await fetchData();
