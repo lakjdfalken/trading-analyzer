@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { ThemeProvider } from "next-themes";
+import { AppProvider } from "@/components/providers/AppProvider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -29,10 +30,12 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <div className="min-h-screen bg-background text-foreground">
-            <Header />
-            <main>{children}</main>
-          </div>
+          <AppProvider>
+            <div className="min-h-screen bg-background text-foreground">
+              <Header />
+              <main>{children}</main>
+            </div>
+          </AppProvider>
         </ThemeProvider>
       </body>
     </html>

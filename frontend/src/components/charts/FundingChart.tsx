@@ -80,14 +80,20 @@ function CustomTooltip({
         </div>
         <div className="flex justify-between gap-4 border-t pt-1 mt-1">
           <span className="text-muted-foreground">Net:</span>
-          <span className={dataPoint.net >= 0 ? "text-green-500" : "text-red-500"}>
+          <span
+            className={dataPoint.net >= 0 ? "text-green-500" : "text-red-500"}
+          >
             {dataPoint.net >= 0 ? "+" : ""}
             {formatAmount(dataPoint.net, currency)}
           </span>
         </div>
         <div className="flex justify-between gap-4">
           <span className="text-muted-foreground">Cumulative:</span>
-          <span className={dataPoint.cumulative >= 0 ? "text-green-500" : "text-red-500"}>
+          <span
+            className={
+              dataPoint.cumulative >= 0 ? "text-green-500" : "text-red-500"
+            }
+          >
             {dataPoint.cumulative >= 0 ? "+" : ""}
             {formatAmount(dataPoint.cumulative, currency)}
           </span>
@@ -103,6 +109,20 @@ export function FundingChart({
   currency = "USD",
 }: FundingChartProps) {
   const { formatAmount } = useCurrencyStore();
+
+  // Calculate totals
+  const totals = React.useMemo(() => {
+    if (!data || data.length === 0) {
+      return { deposits: 0, withdrawals: 0, net: 0 };
+    }
+    const deposits = data.reduce((sum, d) => sum + d.deposits, 0);
+    const withdrawals = data.reduce((sum, d) => sum + d.withdrawals, 0);
+    return {
+      deposits,
+      withdrawals,
+      net: deposits - withdrawals,
+    };
+  }, [data]);
 
   const chartData = React.useMemo(() => {
     if (!data || data.length === 0) return [];
@@ -160,62 +180,87 @@ export function FundingChart({
   }
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
-      <BarChart
-        data={chartData}
-        margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
-        stackOffset="sign"
-      >
-        <CartesianGrid
-          strokeDasharray="3 3"
-          vertical={false}
-          stroke="hsl(var(--border))"
-        />
-        <XAxis
-          dataKey="date"
-          tickFormatter={formatXAxis}
-          tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-          tickLine={false}
-          axisLine={{ stroke: "hsl(var(--border))" }}
-          interval="preserveStartEnd"
-          minTickGap={30}
-        />
-        <YAxis
-          tickFormatter={formatYAxis}
-          tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-          tickLine={false}
-          axisLine={false}
-          domain={yDomain}
-        />
-        <Tooltip
-          content={
-            <CustomTooltip currency={currency} formatAmount={formatAmount} />
-          }
-          cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }}
-        />
-        <Legend
-          wrapperStyle={{ paddingTop: "10px" }}
-          formatter={(value) => (
-            <span style={{ color: "hsl(var(--foreground))" }}>{value}</span>
-          )}
-        />
-        <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />
-        <Bar
-          dataKey="deposits"
-          name="Deposits"
-          fill="#22c55e"
-          radius={[4, 4, 0, 0]}
-          maxBarSize={50}
-        />
-        <Bar
-          dataKey="withdrawalsDisplay"
-          name="Withdrawals"
-          fill="#ef4444"
-          radius={[0, 0, 4, 4]}
-          maxBarSize={50}
-        />
-      </BarChart>
-    </ResponsiveContainer>
+    <div className="space-y-2">
+      <div className="flex gap-6 text-sm px-4">
+        <div>
+          <span className="text-muted-foreground">Total Deposits: </span>
+          <span className="text-green-500 font-medium">
+            +{formatAmount(totals.deposits, currency)}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Total Withdrawals: </span>
+          <span className="text-red-500 font-medium">
+            -{formatAmount(totals.withdrawals, currency)}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Net: </span>
+          <span
+            className={`font-medium ${totals.net >= 0 ? "text-green-500" : "text-red-500"}`}
+          >
+            {totals.net >= 0 ? "+" : ""}
+            {formatAmount(totals.net, currency)}
+          </span>
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={height - 30}>
+        <BarChart
+          data={chartData}
+          margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+          stackOffset="sign"
+        >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            vertical={false}
+            stroke="hsl(var(--border))"
+          />
+          <XAxis
+            dataKey="date"
+            tickFormatter={formatXAxis}
+            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+            tickLine={false}
+            axisLine={{ stroke: "hsl(var(--border))" }}
+            interval="preserveStartEnd"
+            minTickGap={30}
+          />
+          <YAxis
+            tickFormatter={formatYAxis}
+            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+            tickLine={false}
+            axisLine={false}
+            domain={yDomain}
+          />
+          <Tooltip
+            content={
+              <CustomTooltip currency={currency} formatAmount={formatAmount} />
+            }
+            cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }}
+          />
+          <Legend
+            wrapperStyle={{ paddingTop: "10px" }}
+            formatter={(value) => (
+              <span style={{ color: "hsl(var(--foreground))" }}>{value}</span>
+            )}
+          />
+          <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />
+          <Bar
+            dataKey="deposits"
+            name="Deposits"
+            fill="#22c55e"
+            radius={[4, 4, 0, 0]}
+            maxBarSize={50}
+          />
+          <Bar
+            dataKey="withdrawalsDisplay"
+            name="Withdrawals"
+            fill="#ef4444"
+            radius={[0, 0, 4, 4]}
+            maxBarSize={50}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 

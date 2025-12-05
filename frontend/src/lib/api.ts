@@ -1,0 +1,544 @@
+/**
+ * Centralized API client for Trading Analyzer
+ *
+ * All data fetching goes through this module.
+ * No direct fetch() calls in components.
+ */
+
+const API_BASE = "";
+
+// Types
+export interface DateRange {
+  from?: Date;
+  to?: Date;
+}
+
+export interface Settings {
+  defaultCurrency: string;
+  showConverted: boolean;
+}
+
+export interface KPIMetrics {
+  totalPnl: number;
+  winRate: number;
+  avgWin: number;
+  avgLoss: number;
+  profitFactor: number;
+  maxDrawdown: number;
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  todayPnl: number;
+  todayTrades: number;
+  openPositions: number;
+  totalExposure: number;
+  avgTradeDuration: number;
+  dailyLossUsed: number;
+  dailyLossLimit: number;
+  currency: string;
+}
+
+export interface Trade {
+  id: string;
+  instrument: string;
+  direction: "long" | "short";
+  entryPrice: number;
+  exitPrice: number;
+  entryTime: string;
+  exitTime: string;
+  quantity: number;
+  pnl: number;
+  pnlPercent: number;
+  currency: string;
+}
+
+export interface BalanceDataPoint {
+  date: string;
+  balance: number;
+  equity?: number;
+  drawdown?: number;
+}
+
+export interface MonthlyPnLDataPoint {
+  month: string;
+  pnl: number;
+  trades: number;
+  winRate: number;
+}
+
+export interface DailyPnLDataPoint {
+  date: string;
+  pnl: number;
+  cumulativePnl: number;
+  trades: number;
+  previousBalance?: number | null;
+  pnlPercent?: number | null;
+  currency?: string;
+}
+
+export interface WinRateByInstrument {
+  name: string;
+  winRate: number;
+  wins: number;
+  losses: number;
+  trades: number;
+  totalPnl?: number;
+}
+
+export interface Account {
+  account_id: number;
+  account_name: string;
+  broker_name: string;
+  currency: string;
+  initial_balance?: number;
+  notes?: string;
+  transaction_count?: number;
+}
+
+export interface Instrument {
+  value: string;
+  label: string;
+}
+
+// Alias types for backward compatibility with dashboard store
+export type KPIResponse = KPIMetrics;
+export type InstrumentOption = Instrument;
+
+export interface FilterParams {
+  dateRange?: {
+    from: string;
+    to: string;
+  };
+  instruments?: string[];
+}
+
+// Helper to build query string
+function buildQueryString(params: Record<string, string | undefined>): string {
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") {
+      searchParams.append(key, value);
+    }
+  }
+  const str = searchParams.toString();
+  return str ? `?${str}` : "";
+}
+
+// Format date for API
+function formatDate(date: Date | undefined): string | undefined {
+  if (!date) return undefined;
+  return date.toISOString().split(".")[0] + "Z";
+}
+
+// API Error class
+export class APIError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "APIError";
+  }
+}
+
+// Generic fetch wrapper
+async function apiFetch<T>(url: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${url}`);
+  if (!response.ok) {
+    throw new APIError(response.status, `API error: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+async function apiPost<T>(url: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}${url}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new APIError(response.status, `API error: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+async function apiPut<T>(url: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}${url}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new APIError(response.status, `API error: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+// ============================================================================
+// Settings API - Must be loaded before any other data
+// ============================================================================
+
+export async function getSettings(): Promise<Settings> {
+  const response = await apiFetch<{
+    defaultCurrency: string;
+    showConverted: boolean;
+  }>("/api/currency/preferences");
+  return {
+    defaultCurrency: response.defaultCurrency,
+    showConverted: response.showConverted,
+  };
+}
+
+export async function updateSettings(settings: Settings): Promise<void> {
+  await apiPut("/api/currency/preferences", {
+    defaultCurrency: settings.defaultCurrency,
+    showConverted: settings.showConverted,
+  });
+}
+
+// ============================================================================
+// Dashboard API
+// ============================================================================
+
+export async function getKPIs(
+  currency: string,
+  dateRange?: DateRange,
+  instruments?: string[],
+  accountId?: number | null,
+): Promise<KPIMetrics> {
+  const params = buildQueryString({
+    currency,
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    instruments: instruments?.join(","),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch<KPIMetrics>(`/api/dashboard/kpis${params}`);
+}
+
+export async function getBalanceHistory(
+  currency: string,
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<{ data: BalanceDataPoint[]; currency?: string }> {
+  const params = buildQueryString({
+    currency,
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/dashboard/balance${params}`);
+}
+
+export async function getMonthlyPnL(
+  currency: string,
+  dateRange?: DateRange,
+  instruments?: string[],
+  accountId?: number | null,
+): Promise<{ data: MonthlyPnLDataPoint[]; currency?: string }> {
+  const params = buildQueryString({
+    currency,
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    instruments: instruments?.join(","),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/dashboard/monthly-pnl${params}`);
+}
+
+export async function getWinRateByInstrument(
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<WinRateByInstrument[]> {
+  const params = buildQueryString({
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/dashboard/win-rate-by-instrument${params}`);
+}
+
+export async function getEquityCurve(
+  currency: string,
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<{ data: BalanceDataPoint[]; currency?: string }> {
+  const params = buildQueryString({
+    currency,
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/dashboard/equity-curve${params}`);
+}
+
+export async function getBalanceByAccount(
+  currency: string,
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<unknown> {
+  const params = buildQueryString({
+    currency,
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/dashboard/balance-by-account${params}`);
+}
+
+export async function getMonthlyPnLByAccount(
+  currency: string,
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<unknown> {
+  const params = buildQueryString({
+    currency,
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/dashboard/monthly-pnl-by-account${params}`);
+}
+
+export async function getPointsByInstrument(
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<unknown> {
+  const params = buildQueryString({
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/dashboard/points-by-instrument${params}`);
+}
+
+// ============================================================================
+// Analytics API
+// ============================================================================
+
+export async function getDailyPnL(
+  currency: string,
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<DailyPnLDataPoint[]> {
+  const params = buildQueryString({
+    currency,
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/analytics/daily-pnl${params}`);
+}
+
+export async function getDailyPnLByAccount(
+  currency: string,
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<unknown> {
+  const params = buildQueryString({
+    currency,
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/analytics/daily-pnl-by-account${params}`);
+}
+
+export async function getHourlyPerformance(
+  currency: string,
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<unknown> {
+  const params = buildQueryString({
+    currency,
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/analytics/performance/hourly${params}`);
+}
+
+export async function getWeekdayPerformance(
+  currency: string,
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<unknown> {
+  const params = buildQueryString({
+    currency,
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/analytics/performance/weekday${params}`);
+}
+
+export async function getStreaks(
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<unknown> {
+  const params = buildQueryString({
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/analytics/streaks${params}`);
+}
+
+export async function getTradeDuration(
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<unknown> {
+  const params = buildQueryString({
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/analytics/trade-duration${params}`);
+}
+
+export async function getPositionSize(
+  currency: string,
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<unknown> {
+  const params = buildQueryString({
+    currency,
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/analytics/position-size${params}`);
+}
+
+export async function getFunding(
+  currency: string,
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<unknown> {
+  const params = buildQueryString({
+    currency,
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/analytics/funding${params}`);
+}
+
+// ============================================================================
+// Trades API
+// ============================================================================
+
+export async function getRecentTrades(
+  limit: number = 10,
+  dateRange?: DateRange,
+  instruments?: string[],
+  accountId?: number | null,
+): Promise<Trade[]> {
+  const params = buildQueryString({
+    limit: limit.toString(),
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    instruments: instruments?.join(","),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/trades/recent${params}`);
+}
+
+export async function getAllTrades(
+  page: number = 1,
+  pageSize: number = 50,
+  dateRange?: DateRange,
+  instruments?: string[],
+  direction?: string,
+  sortBy?: string,
+  sortOrder?: string,
+): Promise<{
+  trades: Trade[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pages: number;
+}> {
+  const params = buildQueryString({
+    page: page.toString(),
+    pageSize: pageSize.toString(),
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    instruments: instruments?.join(","),
+    direction,
+    sortBy,
+    sortOrder,
+  });
+  return apiFetch(`/api/trades${params}`);
+}
+
+export async function getTradeStats(
+  dateRange?: DateRange,
+  instruments?: string[],
+): Promise<unknown> {
+  const params = buildQueryString({
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    instruments: instruments?.join(","),
+  });
+  return apiFetch(`/api/trades/stats/summary${params}`);
+}
+
+// ============================================================================
+// Instruments API
+// ============================================================================
+
+export async function getInstruments(): Promise<Instrument[]> {
+  return apiFetch("/api/instruments");
+}
+
+// ============================================================================
+// Accounts API
+// ============================================================================
+
+export async function getAccounts(): Promise<Account[]> {
+  return apiFetch("/api/import/accounts");
+}
+
+// ============================================================================
+// Currency API
+// ============================================================================
+
+export async function getSupportedCurrencies(): Promise<
+  { code: string; symbol: string; name: string }[]
+> {
+  return apiFetch("/api/currency/supported");
+}
+
+export async function getCurrenciesInUse(): Promise<string[]> {
+  return apiFetch("/api/currency/in-use");
+}
+
+export async function getExchangeRates(
+  baseCurrency: string,
+): Promise<{ baseCurrency: string; rates: Record<string, number> }> {
+  const params = buildQueryString({ base: baseCurrency });
+  return apiFetch(`/api/currency/rates${params}`);
+}
+
+export async function updateExchangeRates(
+  baseCurrency: string,
+  rates: Record<string, number>,
+): Promise<void> {
+  await apiPut("/api/currency/rates/bulk", {
+    baseCurrency,
+    rates,
+  });
+}
+
+// ============================================================================
+// Health API
+// ============================================================================
+
+export async function healthCheck(): Promise<{
+  status: string;
+  timestamp: string;
+  version: string;
+}> {
+  return apiFetch("/api/health");
+}

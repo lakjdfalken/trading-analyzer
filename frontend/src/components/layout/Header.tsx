@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { apiClient } from "@/api/client";
+import * as api from "@/lib/api";
 
 interface NavItem {
   label: string;
@@ -57,9 +57,9 @@ export function Header() {
   const [version, setVersion] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    apiClient
-      .getVersion()
-      .then(setVersion)
+    api
+      .healthCheck()
+      .then((data) => setVersion(data.version))
       .catch(() => setVersion(null));
   }, []);
 

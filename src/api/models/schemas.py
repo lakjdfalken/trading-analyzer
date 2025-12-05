@@ -47,13 +47,17 @@ class TradeBase(BaseModel):
 
     instrument: str
     direction: TradeDirection
-    entry_price: float
-    exit_price: Optional[float] = None
-    entry_time: datetime
-    exit_time: Optional[datetime] = None
+    entry_price: float = Field(alias="entryPrice")
+    exit_price: Optional[float] = Field(None, alias="exitPrice")
+    entry_time: datetime = Field(alias="entryTime")
+    exit_time: Optional[datetime] = Field(None, alias="exitTime")
     quantity: float = 1.0
     pnl: float = 0.0
-    pnl_percent: float = 0.0
+    pnl_percent: float = Field(0.0, alias="pnlPercent")
+    currency: Optional[str] = None
+
+    class Config:
+        populate_by_name = True
 
 
 class Trade(TradeBase):
@@ -68,6 +72,7 @@ class Trade(TradeBase):
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 
 class TradeCreate(TradeBase):
@@ -155,6 +160,9 @@ class DailyPnLDataPoint(BaseModel):
     pnl: float
     trades: int
     cumulative_pnl: float = Field(alias="cumulativePnl")
+    previous_balance: Optional[float] = Field(None, alias="previousBalance")
+    pnl_percent: Optional[float] = Field(None, alias="pnlPercent")
+    currency: Optional[str] = None
 
     class Config:
         populate_by_name = True

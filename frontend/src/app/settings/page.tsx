@@ -29,6 +29,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CurrencySelector, ShowConvertedToggle } from "@/components/currency";
 import { useCurrencyStore } from "@/store/currency";
+import { useSettingsStore } from "@/store/settings";
+import * as api from "@/lib/api";
 
 // Exchange rates that can be edited
 const EDITABLE_CURRENCIES = ["SEK", "DKK", "EUR", "USD", "GBP", "NOK", "CHF"];
@@ -99,31 +101,37 @@ export default function SettingsPage() {
     boolean | null
   >(null);
 
-  // Currency store
+  // Settings store (source of truth from backend)
   const {
     defaultCurrency,
     showConverted,
-    exchangeRates,
-    currenciesInUse,
-    setExchangeRates,
     setDefaultCurrency,
-    formatAmount,
-  } = useCurrencyStore();
+    setShowConverted,
+    isLoaded: settingsLoaded,
+  } = useSettingsStore();
+
+  // Currency store (formatting only)
+  const { formatAmount } = useCurrencyStore();
+
+  // Local state for exchange rates (these are stored in backend)
+  const [exchangeRates, setExchangeRates] = React.useState<{
+    baseCurrency: string;
+    rates: Record<string, number>;
+    updatedAt: string | null;
+  } | null>(null);
+  const [currenciesInUse, setCurrenciesInUse] = React.useState<string[]>([]);
 
   // Set mounted state for theme hydration
   React.useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Fetch accounts for data management
+  // Fetch accounts for data management using centralized API
   React.useEffect(() => {
     const fetchAccounts = async () => {
       try {
-        const res = await fetch("/api/import/accounts");
-        if (res.ok) {
-          const data = await res.json();
-          setAccounts(Array.isArray(data) ? data : []);
-        }
+        const data = await api.getAccounts();
+        setAccounts(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error("Failed to fetch accounts:", err);
         setAccounts([]);
@@ -188,26 +196,33 @@ export default function SettingsPage() {
     exchangeRates,
   ]);
 
-  // Handle save
-  const handleSave = () => {
-    // Save exchange rates
-    if (exchangeRates) {
-      setExchangeRates({
-        baseCurrency: defaultCurrency,
-        rates: localRates,
-        updatedAt: new Date().toISOString(),
-      });
+  // Handle save - saves to backend via settings store
+  const handleSave = async () => {
+    try {
+      // Save currency preferences to backend
+      await setDefaultCurrency(defaultCurrency);
+      await setShowConverted(showConverted);
+
+      // Save exchange rates
+      if (exchangeRates) {
+        setExchangeRates({
+          baseCurrency: defaultCurrency,
+          rates: localRates,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      // Update initial values to current (so changes are relative to saved state)
+      setInitialCurrency(defaultCurrency);
+      setInitialShowConverted(showConverted);
+
+      setSaved(true);
+      setHasChanges(false);
+      setEditingRates(false);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      console.error("Failed to save settings:", error);
     }
-
-    // Update initial values to current (so changes are relative to saved state)
-    setInitialCurrency(defaultCurrency);
-    setInitialShowConverted(showConverted);
-
-    // In a real app, this would save to backend/localStorage
-    setSaved(true);
-    setHasChanges(false);
-    setEditingRates(false);
-    setTimeout(() => setSaved(false), 2000);
   };
 
   // Handle reset
@@ -598,20 +613,21 @@ export default function SettingsPage() {
                             result.message || "All data deleted successfully",
                           );
                         } else {
-                          // Delete specific account with transactions
+                          // Delete transactions for specific account (not the account itself)
                           const res = await fetch(
-                            `/api/import/accounts/${selectedAccountToDelete}?deleteTransactions=true`,
+                            `/api/import/transactions?accountId=${selectedAccountToDelete}&confirm=true`,
                             { method: "DELETE" },
                           );
                           if (!res.ok) {
                             const err = await res.json();
                             throw new Error(
-                              err.detail || "Failed to delete account",
+                              err.detail || "Failed to delete transactions",
                             );
                           }
                           const result = await res.json();
                           setDeleteSuccess(
-                            result.message || "Account deleted successfully",
+                            result.message ||
+                              "Transactions deleted successfully",
                           );
                         }
                         setSelectedAccountToDelete(null);

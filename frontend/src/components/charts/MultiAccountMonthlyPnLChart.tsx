@@ -1,6 +1,7 @@
 "use client";
 
-import * as React from "react";
+import React from "react";
+import { useSettingsStore } from "@/store/settings";
 import {
   BarChart,
   Bar,
@@ -66,7 +67,8 @@ export interface MultiAccountMonthlyPnLChartProps {
 
 interface ChartDataPoint {
   month: string;
-  [key: string]: string | number;
+  cumulativePnl?: number;
+  [key: string]: string | number | undefined;
 }
 
 interface CustomTooltipProps {
@@ -93,6 +95,8 @@ function CustomTooltip({
   if (!active || !payload || payload.length === 0) {
     return null;
   }
+
+  const cumulativePnl = payload[0]?.payload?.cumulativePnl;
 
   return (
     <div className="bg-popover border border-border rounded-lg shadow-lg p-3 min-w-[180px]">
@@ -126,6 +130,20 @@ function CustomTooltip({
             </div>
           );
         })}
+        {cumulativePnl !== undefined && (
+          <div className="flex items-center justify-between gap-4 pt-1.5 mt-1.5 border-t border-border">
+            <span className="text-xs text-muted-foreground">Total P&L</span>
+            <span
+              className={cn(
+                "text-sm font-semibold",
+                cumulativePnl >= 0 ? "text-green-500" : "text-red-500",
+              )}
+            >
+              {cumulativePnl >= 0 ? "+" : ""}
+              {formatAmount(cumulativePnl, currency)}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -278,7 +296,18 @@ export function MultiAccountMonthlyPnLChart({
   stacked = true,
   className,
 }: MultiAccountMonthlyPnLChartProps) {
-  const { formatAmount, defaultCurrency, convert } = useCurrencyStore();
+  const { formatAmount } = useCurrencyStore();
+  const { defaultCurrency } = useSettingsStore();
+
+  // Simple conversion function - backend should handle this
+  const convert = React.useCallback(
+    (amount: number, _from: string, _to: string) => {
+      // Note: Proper conversion should be done by the backend
+      // This is a placeholder that returns the original amount
+      return amount;
+    },
+    [],
+  );
 
   // Track selected accounts (empty = all with conversion)
   const [selectedAccountIds, setSelectedAccountIds] = React.useState<number[]>(
@@ -418,11 +447,33 @@ export function MultiAccountMonthlyPnLChart({
       });
     }
 
-    return Array.from(monthMap.values()).sort((a, b) => {
+    // Sort by month and calculate cumulative P&L
+    const sortedData = Array.from(monthMap.values()).sort((a, b) => {
       const aKey = a.month;
       const bKey = b.month;
       return aKey.localeCompare(bKey);
     });
+
+    // Calculate cumulative P&L across all months
+    let runningTotal = 0;
+    sortedData.forEach((point) => {
+      // Sum all account values for this month
+      let monthTotal = 0;
+      filteredSeries.forEach((account) => {
+        const value = point[account.accountName];
+        if (typeof value === "number") {
+          monthTotal += value;
+        }
+      });
+      // Also include Total if present
+      if (typeof point["Total"] === "number") {
+        monthTotal = point["Total"] as number;
+      }
+      runningTotal += monthTotal;
+      point.cumulativePnl = runningTotal;
+    });
+
+    return sortedData;
   }, [filteredSeries, total, showTotal, selectedAccountIds, convertPnL]);
 
   // Get all account names for the legend

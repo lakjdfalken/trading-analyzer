@@ -1,4 +1,3 @@
-export { useDashboard } from "./useDashboard";
 export {
   useDebounce,
   useDebouncedCallback,

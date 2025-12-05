@@ -5,12 +5,40 @@ Provides endpoints for accessing and managing trade data.
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import JSONResponse
 
 from api.models import PaginatedResponse, Trade
 from api.services.database import db
+
+
+def serialize_trade(trade_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a trade dict to camelCase format for API response."""
+    return {
+        "id": trade_dict.get("id", ""),
+        "instrument": trade_dict.get("instrument", ""),
+        "direction": trade_dict.get("direction", "long"),
+        "entryPrice": trade_dict.get("entryPrice", 0)
+        or trade_dict.get("entry_price", 0)
+        or 0,
+        "exitPrice": trade_dict.get("exitPrice") or trade_dict.get("exit_price") or 0,
+        "entryTime": trade_dict.get("entryTime") or trade_dict.get("entry_time") or "",
+        "exitTime": trade_dict.get("exitTime") or trade_dict.get("exit_time") or "",
+        "quantity": trade_dict.get("quantity", 1) or 1,
+        "pnl": trade_dict.get("pnl", 0) or 0,
+        "pnlPercent": trade_dict.get("pnlPercent", 0)
+        or trade_dict.get("pnl_percent", 0)
+        or 0,
+        "currency": trade_dict.get("currency") or "USD",
+        "status": trade_dict.get("status", "closed"),
+        "commission": trade_dict.get("commission"),
+        "swap": trade_dict.get("swap"),
+        "notes": trade_dict.get("notes"),
+        "tags": trade_dict.get("tags"),
+    }
+
 
 router = APIRouter()
 
@@ -21,6 +49,7 @@ async def get_recent_trades(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
     instruments: Optional[List[str]] = Query(None),
+    account_id: Optional[int] = Query(None, alias="accountId"),
 ):
     """
     Get the most recent trades.
@@ -30,6 +59,7 @@ async def get_recent_trades(
         start_date: Filter trades from this date
         end_date: Filter trades until this date
         instruments: Filter by specific instruments
+        account_id: Filter by specific account (default: all accounts)
 
     Returns:
         List of recent trades
@@ -40,8 +70,10 @@ async def get_recent_trades(
             start_date=start_date,
             end_date=end_date,
             instruments=instruments,
+            account_id=account_id,
         )
-        return trades
+        # Serialize to camelCase for frontend
+        return [serialize_trade(t) for t in trades]
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error fetching recent trades: {str(e)}"
@@ -93,7 +125,7 @@ async def get_all_trades(
         total_pages = (total + page_size - 1) // page_size
 
         return {
-            "trades": trades,
+            "trades": [serialize_trade(t) for t in trades],
             "total": total,
             "page": page,
             "pageSize": page_size,
@@ -118,7 +150,7 @@ async def get_trade_by_id(trade_id: str):
         trade = db.get_trade_by_id(trade_id)
         if not trade:
             raise HTTPException(status_code=404, detail="Trade not found")
-        return trade
+        return serialize_trade(trade)
     except HTTPException:
         raise
     except Exception as e:

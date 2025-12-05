@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useCurrencyStore } from "@/store/currency";
+import { useSettingsStore } from "@/store/settings";
 import { cn } from "@/lib/utils";
 import { ChevronDown, Check } from "lucide-react";
 
@@ -27,6 +27,7 @@ const CURRENCIES = [
 /**
  * Currency selector dropdown component.
  * Allows user to select their default display currency.
+ * Saves to backend via settings store.
  */
 export function CurrencySelector({
   className,
@@ -36,10 +37,10 @@ export function CurrencySelector({
   variant = "default",
 }: CurrencySelectorProps) {
   const [isOpen, setIsOpen] = React.useState(false);
+  const [isSaving, setIsSaving] = React.useState(false);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
 
-  const { defaultCurrency, setDefaultCurrency, currenciesInUse } =
-    useCurrencyStore();
+  const { defaultCurrency, setDefaultCurrency } = useSettingsStore();
 
   // Close dropdown when clicking outside
   React.useEffect(() => {
@@ -56,19 +57,6 @@ export function CurrencySelector({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Get currencies to display - prioritize currencies in use
-  const displayCurrencies = React.useMemo(() => {
-    if (currenciesInUse.length > 0) {
-      // Put currencies in use first, then others
-      const inUse = CURRENCIES.filter((c) => currenciesInUse.includes(c.code));
-      const notInUse = CURRENCIES.filter(
-        (c) => !currenciesInUse.includes(c.code),
-      );
-      return [...inUse, ...notInUse];
-    }
-    return CURRENCIES;
-  }, [currenciesInUse]);
-
   const selectedCurrency =
     CURRENCIES.find((c) => c.code === defaultCurrency) || CURRENCIES[0];
 
@@ -84,6 +72,18 @@ export function CurrencySelector({
     ghost: "hover:bg-accent",
   };
 
+  const handleSelectCurrency = async (currencyCode: string) => {
+    setIsSaving(true);
+    try {
+      await setDefaultCurrency(currencyCode);
+      setIsOpen(false);
+    } catch (error) {
+      console.error("Failed to save currency:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className={cn("relative", className)} ref={dropdownRef}>
       {showLabel && (
@@ -96,9 +96,11 @@ export function CurrencySelector({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
+        disabled={isSaving}
         className={cn(
           "flex items-center justify-between gap-2 rounded-md font-medium transition-colors",
           "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+          "disabled:opacity-50 disabled:cursor-not-allowed",
           sizeClasses[size],
           variantClasses[variant],
           "min-w-[120px]",
@@ -126,47 +128,14 @@ export function CurrencySelector({
           )}
         >
           <div className="p-1 max-h-[300px] overflow-auto">
-            {currenciesInUse.length > 0 && (
-              <>
-                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                  In Use
-                </div>
-                {displayCurrencies
-                  .filter((c) => currenciesInUse.includes(c.code))
-                  .map((currency) => (
-                    <CurrencyOption
-                      key={currency.code}
-                      currency={currency}
-                      isSelected={currency.code === defaultCurrency}
-                      onClick={() => {
-                        setDefaultCurrency(currency.code);
-                        setIsOpen(false);
-                      }}
-                    />
-                  ))}
-                <div className="my-1 h-px bg-border" />
-                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                  Other Currencies
-                </div>
-              </>
-            )}
-            {displayCurrencies
-              .filter(
-                (c) =>
-                  !currenciesInUse.includes(c.code) ||
-                  currenciesInUse.length === 0,
-              )
-              .map((currency) => (
-                <CurrencyOption
-                  key={currency.code}
-                  currency={currency}
-                  isSelected={currency.code === defaultCurrency}
-                  onClick={() => {
-                    setDefaultCurrency(currency.code);
-                    setIsOpen(false);
-                  }}
-                />
-              ))}
+            {CURRENCIES.map((currency) => (
+              <CurrencyOption
+                key={currency.code}
+                currency={currency}
+                isSelected={currency.code === defaultCurrency}
+                onClick={() => handleSelectCurrency(currency.code)}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -208,20 +177,31 @@ function CurrencyOption({
 
 /**
  * Toggle for showing/hiding converted currency values.
+ * Saves to backend via settings store.
  */
 export function ShowConvertedToggle({ className }: { className?: string }) {
-  const { showConverted, setShowConverted } = useCurrencyStore();
+  const { showConverted, setShowConverted } = useSettingsStore();
+  const [isSaving, setIsSaving] = React.useState(false);
 
-  const handleToggle = React.useCallback(() => {
-    setShowConverted(!showConverted);
-  }, [showConverted, setShowConverted]);
+  const handleToggle = async () => {
+    setIsSaving(true);
+    try {
+      await setShowConverted(!showConverted);
+    } catch (error) {
+      console.error("Failed to save setting:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <button
       type="button"
       onClick={handleToggle}
+      disabled={isSaving}
       className={cn(
         "flex items-center gap-2 cursor-pointer select-none",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
         className,
       )}
     >

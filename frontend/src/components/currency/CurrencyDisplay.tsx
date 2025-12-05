@@ -1,8 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { useCurrencyStore } from '@/store/currency';
-import { cn } from '@/lib/utils';
+import React from "react";
+import { useCurrencyStore } from "@/store/currency";
+import { useSettingsStore } from "@/store/settings";
+import { cn } from "@/lib/utils";
 
 interface CurrencyDisplayProps {
   amount: number;
@@ -11,133 +12,87 @@ interface CurrencyDisplayProps {
   convertedClassName?: string;
   showOriginal?: boolean;
   colorize?: boolean; // Color positive/negative amounts
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
 }
 
 /**
- * Displays a currency amount with optional conversion to default currency.
- *
- * Shows:
- * - Original amount in original currency
- * - Converted amount in user's default currency (if showConverted is enabled)
+ * Displays a currency amount.
+ * Formatting only - no conversion (backend handles conversion).
  */
 export function CurrencyDisplay({
   amount,
   currency,
   className,
-  convertedClassName,
-  showOriginal = true,
   colorize = false,
-  size = 'md',
+  size = "md",
 }: CurrencyDisplayProps) {
-  const { formatWithConversion } = useCurrencyStore();
-  const { original, converted, showBoth } = formatWithConversion(amount, currency);
+  const { formatAmount } = useCurrencyStore();
+  const formatted = formatAmount(amount, currency);
 
   const sizeClasses = {
-    sm: 'text-sm',
-    md: 'text-base',
-    lg: 'text-lg font-semibold',
+    sm: "text-sm",
+    md: "text-base",
+    lg: "text-lg font-semibold",
   };
 
   const colorClass = colorize
     ? amount >= 0
-      ? 'text-emerald-500'
-      : 'text-red-500'
-    : '';
-
-  if (!showBoth || !converted) {
-    return (
-      <span className={cn(sizeClasses[size], colorClass, className)}>
-        {showOriginal ? original : converted || original}
-      </span>
-    );
-  }
+      ? "text-emerald-500"
+      : "text-red-500"
+    : "";
 
   return (
-    <span className={cn('inline-flex flex-col', className)}>
-      <span className={cn(sizeClasses[size], colorClass)}>
-        {original}
-      </span>
-      <span
-        className={cn(
-          'text-xs text-muted-foreground',
-          convertedClassName
-        )}
-      >
-        ({converted})
-      </span>
+    <span className={cn(sizeClasses[size], colorClass, className)}>
+      {formatted}
     </span>
   );
 }
 
 /**
- * Inline version that shows converted amount in parentheses on same line.
+ * Inline version - same as CurrencyDisplay but explicitly inline.
  */
 export function CurrencyDisplayInline({
   amount,
   currency,
   className,
   colorize = false,
-}: Omit<CurrencyDisplayProps, 'size' | 'convertedClassName' | 'showOriginal'>) {
-  const { formatWithConversion } = useCurrencyStore();
-  const { original, converted, showBoth } = formatWithConversion(amount, currency);
+}: Omit<CurrencyDisplayProps, "size" | "convertedClassName" | "showOriginal">) {
+  const { formatAmount } = useCurrencyStore();
+  const formatted = formatAmount(amount, currency);
 
   const colorClass = colorize
     ? amount >= 0
-      ? 'text-emerald-500'
-      : 'text-red-500'
-    : '';
+      ? "text-emerald-500"
+      : "text-red-500"
+    : "";
 
-  return (
-    <span className={cn(colorClass, className)}>
-      {original}
-      {showBoth && converted && (
-        <span className="text-muted-foreground ml-1">
-          ({converted})
-        </span>
-      )}
-    </span>
-  );
+  return <span className={cn(colorClass, className)}>{formatted}</span>;
 }
 
 /**
  * Compact version for tables - shows only primary value.
+ * Uses the default currency from settings.
  */
 export function CurrencyDisplayCompact({
   amount,
   currency,
   className,
   colorize = false,
-  useDefault = false, // If true, show in default currency; otherwise show original
-}: Omit<CurrencyDisplayProps, 'size' | 'convertedClassName' | 'showOriginal'> & {
-  useDefault?: boolean;
-}) {
-  const { formatAmount, convert, defaultCurrency } = useCurrencyStore();
+}: Omit<CurrencyDisplayProps, "size" | "convertedClassName" | "showOriginal">) {
+  const { formatAmount } = useCurrencyStore();
+  const { defaultCurrency } = useSettingsStore();
 
-  let displayAmount = amount;
-  let displayCurrency = currency;
-
-  if (useDefault && currency !== defaultCurrency) {
-    const converted = convert(amount, currency, defaultCurrency);
-    if (converted !== null) {
-      displayAmount = converted;
-      displayCurrency = defaultCurrency;
-    }
-  }
-
-  const formatted = formatAmount(displayAmount, displayCurrency);
+  // Display in the currency provided (backend should have already converted if needed)
+  const displayCurrency = currency || defaultCurrency;
+  const formatted = formatAmount(amount, displayCurrency);
 
   const colorClass = colorize
     ? amount >= 0
-      ? 'text-emerald-500'
-      : 'text-red-500'
-    : '';
+      ? "text-emerald-500"
+      : "text-red-500"
+    : "";
 
-  return (
-    <span className={cn(colorClass, className)}>
-      {formatted}
-    </span>
-  );
+  return <span className={cn(colorClass, className)}>{formatted}</span>;
 }
 
 export default CurrencyDisplay;

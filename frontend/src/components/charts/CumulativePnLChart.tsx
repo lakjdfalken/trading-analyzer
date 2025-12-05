@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { format } from "date-fns";
 import { useCurrencyStore } from "@/store/currency";
+import { useSettingsStore } from "@/store/settings";
 
 interface DailyPnLDataPoint {
   date: string;
@@ -93,8 +94,10 @@ function CustomTooltip({
 export function CumulativePnLChart({
   data,
   height = 300,
-  currency = "USD",
+  currency,
 }: CumulativePnLChartProps) {
+  const { defaultCurrency } = useSettingsStore();
+  const effectiveCurrency = currency || defaultCurrency || "USD";
   const { formatAmount } = useCurrencyStore();
 
   const chartData = React.useMemo(() => {
@@ -170,20 +173,20 @@ export function CumulativePnLChart({
             className={`font-medium ${isPositive ? "text-green-500" : "text-red-500"}`}
           >
             {isPositive ? "+" : ""}
-            {formatAmount(finalCumulative, currency)}
+            {formatAmount(finalCumulative, effectiveCurrency)}
           </span>
         </div>
         <div>
           <span className="text-muted-foreground">Peak: </span>
           <span className="text-green-500 font-medium">
-            +{formatAmount(maxCumulative, currency)}
+            +{formatAmount(maxCumulative, effectiveCurrency)}
           </span>
         </div>
         {minCumulative < 0 && (
           <div>
             <span className="text-muted-foreground">Trough: </span>
             <span className="text-red-500 font-medium">
-              {formatAmount(minCumulative, currency)}
+              {formatAmount(minCumulative, effectiveCurrency)}
             </span>
           </div>
         )}
@@ -238,7 +241,10 @@ export function CumulativePnLChart({
           />
           <Tooltip
             content={
-              <CustomTooltip currency={currency} formatAmount={formatAmount} />
+              <CustomTooltip
+                currency={effectiveCurrency}
+                formatAmount={formatAmount}
+              />
             }
           />
           <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />

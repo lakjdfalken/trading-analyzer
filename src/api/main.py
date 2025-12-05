@@ -11,10 +11,11 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from api import __version__
 
@@ -28,6 +29,26 @@ API_DIR = Path(__file__).parent
 SRC_DIR = API_DIR.parent
 ROOT_DIR = SRC_DIR.parent
 FRONTEND_OUT_DIR = ROOT_DIR / "frontend" / "out"
+
+
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    """Middleware to add cache-control headers to static files."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+
+        # Add no-cache headers for HTML files and static assets
+        if path.endswith(".html") or path == "/" or not "." in path.split("/")[-1]:
+            # HTML pages - never cache
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        elif "/_next/" in path:
+            # Next.js assets - short cache with revalidation
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+
+        return response
 
 
 @asynccontextmanager
@@ -64,6 +85,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add no-cache middleware to prevent browser caching issues
+app.add_middleware(NoCacheMiddleware)
 
 # Include routers
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])

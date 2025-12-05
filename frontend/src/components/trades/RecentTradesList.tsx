@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 import {
   ArrowUpRight,
   ArrowDownRight,
@@ -90,7 +90,9 @@ function TradeRow({
             </Badge>
           </div>
           <span className="text-xs text-muted-foreground">
-            {format(trade.exitTime, "MMM d, HH:mm")}
+            {trade.exitTime && isValid(trade.exitTime)
+              ? format(trade.exitTime, "MMM d, HH:mm")
+              : "—"}
           </span>
         </div>
       </div>
@@ -98,17 +100,20 @@ function TradeRow({
       {/* P&L */}
       <div className="flex flex-col items-end">
         <span
-          className={cn("font-semibold text-sm", getProfitLossColor(trade.pnl))}
+          className={cn(
+            "font-semibold text-sm",
+            getProfitLossColor(trade.pnl ?? 0),
+          )}
         >
-          {trade.pnl >= 0 ? "+" : ""}
+          {(trade.pnl ?? 0) >= 0 ? "+" : ""}
           {trade.currency
-            ? formatAmount(trade.pnl, trade.currency)
-            : trade.pnl.toFixed(2)}
+            ? formatAmount(trade.pnl ?? 0, trade.currency)
+            : (trade.pnl ?? 0).toFixed(2)}
         </span>
         <span
           className={cn(
             "text-xs flex items-center gap-0.5",
-            getProfitLossColor(trade.pnlPercent),
+            getProfitLossColor(trade.pnlPercent ?? 0),
           )}
         >
           {isProfit ? (
@@ -116,8 +121,8 @@ function TradeRow({
           ) : (
             <TrendingDown className="h-3 w-3" />
           )}
-          {trade.pnlPercent >= 0 ? "+" : ""}
-          {trade.pnlPercent.toFixed(2)}%
+          {(trade.pnlPercent ?? 0) >= 0 ? "+" : ""}
+          {(trade.pnlPercent ?? 0).toFixed(2)}%
         </span>
       </div>
     </div>

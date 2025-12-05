@@ -19,6 +19,7 @@ from api.models import (
     Trade,
     WinRateByInstrument,
 )
+from api.routers.trades import serialize_trade
 from api.services.database import db
 
 router = APIRouter()
@@ -29,10 +30,13 @@ async def get_dashboard_data(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
     instruments: Optional[List[str]] = Query(None),
-    account_id: Optional[int] = Query(None),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for P&L conversion (required)"
+    ),
 ):
     """
-    Get all dashboard data in a single request.
+    Get all dashboard data in a single request. Currency parameter is required.
 
     Returns KPIs, balance history, monthly P&L, win rate by instrument,
     and recent trades.
@@ -43,6 +47,8 @@ async def get_dashboard_data(
             start_date=start_date,
             end_date=end_date,
             instruments=instruments,
+            target_currency=currency,
+            account_id=account_id,
         )
 
         # Get balance history
@@ -50,6 +56,7 @@ async def get_dashboard_data(
             start_date=start_date,
             end_date=end_date,
             account_id=account_id,
+            target_currency=currency,
         )
 
         # Get monthly P&L
@@ -57,12 +64,15 @@ async def get_dashboard_data(
             start_date=start_date,
             end_date=end_date,
             instruments=instruments,
+            target_currency=currency,
+            account_id=account_id,
         )
 
         # Get win rate by instrument
         win_rate_by_instrument = db.get_win_rate_by_instrument(
             start_date=start_date,
             end_date=end_date,
+            account_id=account_id,
         )
 
         # Get recent trades
@@ -71,6 +81,7 @@ async def get_dashboard_data(
             start_date=start_date,
             end_date=end_date,
             instruments=instruments,
+            account_id=account_id,
         )
 
         return {
@@ -82,7 +93,7 @@ async def get_dashboard_data(
             if isinstance(monthly_pnl, dict)
             else monthly_pnl,
             "winRateByInstrument": win_rate_by_instrument,
-            "recentTrades": recent_trades,
+            "recentTrades": [serialize_trade(t) for t in recent_trades],
         }
 
     except Exception as e:
@@ -96,13 +107,19 @@ async def get_kpis(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
     instruments: Optional[List[str]] = Query(None),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for P&L conversion (required)"
+    ),
 ):
-    """Get KPI metrics for the dashboard."""
+    """Get KPI metrics for the dashboard. Currency parameter is required."""
     try:
         kpis = db.get_kpi_metrics(
             start_date=start_date,
             end_date=end_date,
             instruments=instruments,
+            target_currency=currency,
+            account_id=account_id,
         )
         return kpis
     except Exception as e:
@@ -113,7 +130,10 @@ async def get_kpis(
 async def get_balance_history(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
-    account_id: Optional[int] = Query(None),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for balance conversion (required)"
+    ),
 ):
     """Get balance history for the equity curve chart."""
     try:
@@ -121,6 +141,7 @@ async def get_balance_history(
             start_date=start_date,
             end_date=end_date,
             account_id=account_id,
+            target_currency=currency,
         )
         return result
     except Exception as e:
@@ -133,12 +154,18 @@ async def get_balance_history(
 async def get_equity_curve(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for equity curve conversion (required)"
+    ),
 ):
     """Get equity curve based on cumulative P/L excluding funding transactions."""
     try:
         result = db.get_equity_curve(
             start_date=start_date,
             end_date=end_date,
+            account_id=account_id,
+            target_currency=currency,
         )
         return result
     except Exception as e:
@@ -152,13 +179,19 @@ async def get_monthly_pnl(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
     instruments: Optional[List[str]] = Query(None),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for P&L conversion (required)"
+    ),
 ):
-    """Get monthly P&L data for the bar chart."""
+    """Get monthly P&L data for the bar chart. Currency parameter is required."""
     try:
         result = db.get_monthly_pnl(
             start_date=start_date,
             end_date=end_date,
             instruments=instruments,
+            target_currency=currency,
+            account_id=account_id,
         )
         return result
     except Exception as e:
@@ -171,12 +204,14 @@ async def get_monthly_pnl(
 async def get_win_rate_by_instrument(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
+    account_id: Optional[int] = Query(None, alias="accountId"),
 ):
     """Get win rate statistics grouped by instrument."""
     try:
         win_rate_data = db.get_win_rate_by_instrument(
             start_date=start_date,
             end_date=end_date,
+            account_id=account_id,
         )
         return win_rate_data
     except Exception as e:
@@ -189,12 +224,14 @@ async def get_win_rate_by_instrument(
 async def get_points_by_instrument(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
+    account_id: Optional[int] = Query(None, alias="accountId"),
 ):
     """Get points/pips statistics grouped by instrument."""
     try:
         points_data = db.get_points_by_instrument(
             start_date=start_date,
             end_date=end_date,
+            account_id=account_id,
         )
         return points_data
     except Exception as e:
@@ -207,12 +244,18 @@ async def get_points_by_instrument(
 async def get_balance_history_by_account(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for balance conversion (required)"
+    ),
 ) -> Dict[str, Any]:
     """Get balance history grouped by account for multi-account charting."""
     try:
         result = db.get_balance_history_by_account(
             start_date=start_date,
             end_date=end_date,
+            target_currency=currency,
+            account_id=account_id,
         )
         return result
     except Exception as e:
@@ -225,12 +268,18 @@ async def get_balance_history_by_account(
 async def get_monthly_pnl_by_account(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for P&L conversion (required)"
+    ),
 ) -> Dict[str, Any]:
     """Get monthly P&L grouped by account for multi-account charting."""
     try:
         result = db.get_monthly_pnl_by_account(
             start_date=start_date,
             end_date=end_date,
+            target_currency=currency,
+            account_id=account_id,
         )
         return result
     except Exception as e:

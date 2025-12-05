@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { isValid } from "date-fns";
 import {
   TrendingUp,
   TrendingDown,
@@ -23,19 +24,18 @@ import { MultiAccountMonthlyPnLChart } from "@/components/charts/MultiAccountMon
 import type { AccountSeries } from "@/components/charts/MultiAccountBalanceChart";
 import type { AccountPnLSeries } from "@/components/charts/MultiAccountMonthlyPnLChart";
 import { RecentTradesList } from "@/components/trades/RecentTradesList";
+import type { Trade } from "@/components/trades/RecentTradesList";
 import { DateRangePicker } from "@/components/filters/DateRangePicker";
 import { useDashboardStore, getDateRangeFromPreset } from "@/store/dashboard";
 import type { DateRangePreset } from "@/components/filters/types";
 import { cn } from "@/lib/utils";
 import { useCurrencyStore } from "@/store/currency";
-
-// API base URL for direct fetch calls
-// Always use relative URL for same-origin requests (works with any port)
-// This ensures the frontend works when served by the backend on any port
-const API_BASE = "";
+import { useSettingsStore } from "@/store/settings";
+import * as api from "@/lib/api";
 
 export default function Home() {
-  const { formatAmount, defaultCurrency } = useCurrencyStore();
+  const { formatAmount } = useCurrencyStore();
+  const { defaultCurrency, isLoaded: settingsLoaded } = useSettingsStore();
   const [dataCurrency, setDataCurrency] = React.useState<string | null>(null);
   const [hasHydrated, setHasHydrated] = React.useState(false);
   const [version, setVersion] = React.useState<string | null>(null);
@@ -67,6 +67,8 @@ export default function Home() {
     dateRange,
     selectedInstruments,
     availableInstruments,
+    selectedAccountId,
+    availableAccounts,
     kpis,
     balanceHistory,
     monthlyPnL,
@@ -78,6 +80,8 @@ export default function Home() {
     isInitialized,
     setDateRange,
     setSelectedInstruments,
+    setSelectedAccountId,
+    setAvailableAccounts,
     setKPIs,
     setBalanceHistory,
     setMonthlyPnL,
@@ -90,6 +94,15 @@ export default function Home() {
     setInitialized,
   } = useDashboardStore();
 
+  // Determine the display currency based on account selection
+  const selectedAccount = availableAccounts.find(
+    (a) => a.account_id === selectedAccountId,
+  );
+  // When viewing a single account, use its native currency; otherwise use default
+  const effectiveCurrency = selectedAccountId
+    ? selectedAccount?.currency || defaultCurrency
+    : defaultCurrency;
+
   // Track if initial fetch has been done this session
   const [hasFetchedOnce, setHasFetchedOnce] = React.useState(false);
 
@@ -100,149 +113,167 @@ export default function Home() {
 
   // Fetch version on mount
   React.useEffect(() => {
-    fetch(`${API_BASE}/api/health`)
-      .then((res) => res.json())
+    api
+      .healthCheck()
       .then((data) => setVersion(data.version))
       .catch(() => setVersion(null));
   }, []);
 
-  // Build query string with date range - extracted to avoid stale closures
-  const buildQueryString = React.useCallback(() => {
-    const params = new URLSearchParams();
-    if (dateRange.from) {
-      const fromDate =
-        dateRange.from instanceof Date
-          ? dateRange.from
-          : new Date(dateRange.from);
-      params.append("from", fromDate.toISOString().split(".")[0] + "Z");
-    }
-    if (dateRange.to) {
-      const toDate =
-        dateRange.to instanceof Date ? dateRange.to : new Date(dateRange.to);
-      params.append("to", toDate.toISOString().split(".")[0] + "Z");
-    }
-    return params.toString() ? `?${params.toString()}` : "";
+  // Build date range object for API calls
+  const getDateRangeForApi = React.useCallback(() => {
+    return {
+      from: dateRange.from,
+      to: dateRange.to,
+    };
   }, [dateRange.from, dateRange.to]);
 
-  // Fetch dashboard data
+  // Fetch dashboard data using centralized API client
   const fetchDashboardData = React.useCallback(async () => {
+    if (!effectiveCurrency) return;
+
     setLoading("dashboard", true);
     setError("dashboard", null);
 
     try {
-      // Build query string with date range
-      const queryString = buildQueryString();
-      const params = new URLSearchParams(queryString.replace("?", ""));
+      const dateRangeParam = getDateRangeForApi();
 
-      // Fetch from real API
+      // Fetch all data in parallel using centralized API client
       const [
-        kpisRes,
-        balanceRes,
-        monthlyRes,
-        tradesRes,
-        instrumentsRes,
-        balanceByAccRes,
-        monthlyByAccRes,
-        winRateRes,
+        kpisResult,
+        balanceResult,
+        monthlyResult,
+        tradesResult,
+        instrumentsResult,
+        accountsResult,
+        balanceByAccResult,
+        monthlyByAccResult,
+        winRateResult,
       ] = await Promise.allSettled([
-        fetch(`${API_BASE}/api/dashboard/kpis${queryString}`),
-        fetch(`${API_BASE}/api/dashboard/balance${queryString}`),
-        fetch(`${API_BASE}/api/dashboard/monthly-pnl${queryString}`),
-        fetch(
-          `${API_BASE}/api/trades/recent?limit=10${queryString ? "&" + params.toString() : ""}`,
+        api.getKPIs(
+          effectiveCurrency,
+          dateRangeParam,
+          selectedInstruments.length > 0 ? selectedInstruments : undefined,
+          selectedAccountId,
         ),
-        fetch(`${API_BASE}/api/instruments`),
-        fetch(`${API_BASE}/api/dashboard/balance-by-account${queryString}`),
-        fetch(`${API_BASE}/api/dashboard/monthly-pnl-by-account${queryString}`),
-        fetch(`${API_BASE}/api/dashboard/win-rate-by-instrument${queryString}`),
+        api.getBalanceHistory(
+          effectiveCurrency,
+          dateRangeParam,
+          selectedAccountId,
+        ),
+        api.getMonthlyPnL(
+          effectiveCurrency,
+          dateRangeParam,
+          selectedInstruments.length > 0 ? selectedInstruments : undefined,
+          selectedAccountId,
+        ),
+        api.getRecentTrades(
+          10,
+          dateRangeParam,
+          selectedInstruments.length > 0 ? selectedInstruments : undefined,
+          selectedAccountId,
+        ),
+        api.getInstruments(),
+        api.getAccounts(),
+        api.getBalanceByAccount(
+          effectiveCurrency,
+          dateRangeParam,
+          selectedAccountId,
+        ),
+        api.getMonthlyPnLByAccount(
+          effectiveCurrency,
+          dateRangeParam,
+          selectedAccountId,
+        ),
+        api.getWinRateByInstrument(dateRangeParam, selectedAccountId),
       ]);
 
       // Process KPIs
-      if (kpisRes.status === "fulfilled" && kpisRes.value.ok) {
-        const kpisData = await kpisRes.value.json();
-        setKPIs(kpisData);
-        // Set the data currency from KPIs if available
-        if (kpisData.currency) {
-          setDataCurrency(kpisData.currency);
+      if (kpisResult.status === "fulfilled") {
+        setKPIs(kpisResult.value);
+        if (kpisResult.value.currency) {
+          setDataCurrency(kpisResult.value.currency);
         }
       }
 
-      // Process balance history (new format with currency)
-      if (balanceRes.status === "fulfilled" && balanceRes.value.ok) {
-        const balanceResponse = await balanceRes.value.json();
-        // Handle both old format (array) and new format (object with data and currency)
-        const balanceData = Array.isArray(balanceResponse)
-          ? balanceResponse
-          : balanceResponse.data || [];
+      // Process balance history
+      if (balanceResult.status === "fulfilled") {
+        const balanceData = Array.isArray(balanceResult.value)
+          ? balanceResult.value
+          : (
+              balanceResult.value as {
+                data?: api.BalanceDataPoint[];
+                currency?: string;
+              }
+            ).data || [];
         setBalanceHistory(balanceData);
-        if (balanceResponse.currency) {
-          setDataCurrency(balanceResponse.currency);
+        const response = balanceResult.value as { currency?: string };
+        if (response.currency) {
+          setDataCurrency(response.currency);
         }
       }
 
-      // Process monthly P&L (new format with currency)
-      if (monthlyRes.status === "fulfilled" && monthlyRes.value.ok) {
-        const monthlyResponse = await monthlyRes.value.json();
-        // Handle both old format (array) and new format (object with data and currency)
-        const monthlyData = Array.isArray(monthlyResponse)
-          ? monthlyResponse
-          : monthlyResponse.data || [];
+      // Process monthly P&L
+      if (monthlyResult.status === "fulfilled") {
+        const monthlyData = Array.isArray(monthlyResult.value)
+          ? monthlyResult.value
+          : (monthlyResult.value as { data?: api.MonthlyPnLDataPoint[] })
+              .data || [];
         setMonthlyPnL(monthlyData);
-        if (monthlyResponse.currency) {
-          setDataCurrency(monthlyResponse.currency);
+        const response = monthlyResult.value as { currency?: string };
+        if (response.currency) {
+          setDataCurrency(response.currency);
         }
       }
 
-      // Process recent trades (includes currency)
-      if (tradesRes.status === "fulfilled" && tradesRes.value.ok) {
-        const tradesData = await tradesRes.value.json();
-        // Map API response to frontend Trade type
-        const mappedTrades = tradesData.map((t: Record<string, unknown>) => ({
-          id: t.id || t.transaction_id,
-          instrument: t.instrument || t.description,
-          direction: t.direction || "long",
-          entryPrice: t.entry_price || t.entryPrice || 0,
-          exitPrice: t.exit_price || t.exitPrice || 0,
-          entryTime: new Date(
-            (t.entry_time || t.entryTime || t.open_period || Date.now()) as
-              | string
-              | number,
-          ),
-          exitTime: new Date(
-            (t.exit_time || t.exitTime || t.transaction_date || Date.now()) as
-              | string
-              | number,
-          ),
-          quantity: t.quantity || t.amount || 1,
-          pnl: t.pnl || t.pl || 0,
-          pnlPercent: t.pnl_percent || t.pnlPercent || 0,
-          currency: t.currency, // Use actual currency from trade data
-        }));
+      // Process recent trades
+      if (tradesResult.status === "fulfilled") {
+        const mappedTrades: Trade[] = tradesResult.value.map((t) => {
+          const entryTime = t.entryTime ? new Date(t.entryTime) : new Date();
+          const exitTime = t.exitTime ? new Date(t.exitTime) : new Date();
+          return {
+            id: t.id,
+            instrument: t.instrument,
+            direction: t.direction,
+            entryPrice: t.entryPrice,
+            exitPrice: t.exitPrice,
+            entryTime: isValid(entryTime) ? entryTime : new Date(),
+            exitTime: isValid(exitTime) ? exitTime : new Date(),
+            quantity: t.quantity,
+            pnl: t.pnl,
+            pnlPercent: t.pnlPercent,
+            currency: t.currency,
+          };
+        });
         setRecentTrades(mappedTrades);
       }
 
       // Process instruments
-      if (instrumentsRes.status === "fulfilled" && instrumentsRes.value.ok) {
-        const instrumentsData = await instrumentsRes.value.json();
-        setAvailableInstruments(instrumentsData);
+      if (instrumentsResult.status === "fulfilled") {
+        setAvailableInstruments(instrumentsResult.value);
+      }
+
+      // Process accounts
+      if (accountsResult.status === "fulfilled") {
+        setAvailableAccounts(accountsResult.value);
       }
 
       // Process balance by account
-      if (balanceByAccRes.status === "fulfilled" && balanceByAccRes.value.ok) {
-        const balanceByAccData = await balanceByAccRes.value.json();
-        setBalanceByAccount(balanceByAccData);
+      if (balanceByAccResult.status === "fulfilled") {
+        setBalanceByAccount(
+          balanceByAccResult.value as typeof balanceByAccount,
+        );
       }
 
       // Process monthly P&L by account
-      if (monthlyByAccRes.status === "fulfilled" && monthlyByAccRes.value.ok) {
-        const monthlyByAccData = await monthlyByAccRes.value.json();
-        setMonthlyPnLByAccount(monthlyByAccData);
+      if (monthlyByAccResult.status === "fulfilled") {
+        setMonthlyPnLByAccount(
+          monthlyByAccResult.value as typeof monthlyPnLByAccount,
+        );
       }
 
       // Process win rate by instrument
-      if (winRateRes.status === "fulfilled" && winRateRes.value.ok) {
-        const winRateData = await winRateRes.value.json();
-        setWinRateByInstrument(winRateData);
+      if (winRateResult.status === "fulfilled") {
+        setWinRateByInstrument(winRateResult.value);
       }
 
       setLastUpdated(new Date());
@@ -257,7 +288,10 @@ export default function Home() {
       setLoading("dashboard", false);
     }
   }, [
-    buildQueryString,
+    effectiveCurrency,
+    getDateRangeForApi,
+    selectedInstruments,
+    selectedAccountId,
     setLoading,
     setError,
     setKPIs,
@@ -266,17 +300,26 @@ export default function Home() {
     setWinRateByInstrument,
     setRecentTrades,
     setAvailableInstruments,
+    setAvailableAccounts,
     setLastUpdated,
     setInitialized,
   ]);
 
-  // Initial data fetch - always fetch once when component mounts and hydrates
+  // Initial data fetch - wait for settings to load before fetching data
   React.useEffect(() => {
-    if (hasHydrated && !hasFetchedOnce) {
+    if (hasHydrated && settingsLoaded && !hasFetchedOnce) {
       setHasFetchedOnce(true);
       fetchDashboardData();
     }
-  }, [hasHydrated, hasFetchedOnce, fetchDashboardData]);
+  }, [hasHydrated, settingsLoaded, hasFetchedOnce, fetchDashboardData]);
+
+  // Refetch when account selection changes (after initial load)
+  React.useEffect(() => {
+    if (hasFetchedOnce && hasHydrated) {
+      fetchDashboardData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAccountId]);
 
   // Handle date range change
   const handleDateRangeChange = React.useCallback(
@@ -296,8 +339,17 @@ export default function Home() {
     [setDateRange, fetchDashboardData],
   );
 
-  // Get the display currency (from data or default)
-  const displayCurrency = dataCurrency || defaultCurrency || "USD";
+  // Get the display currency (from data or effective currency)
+  const displayCurrency = dataCurrency || effectiveCurrency || "USD";
+
+  // Handle account change
+  const handleAccountChange = React.useCallback(
+    (accountId: number | null) => {
+      setSelectedAccountId(accountId);
+      // Refetch is triggered by the useEffect watching selectedAccountId
+    },
+    [setSelectedAccountId],
+  );
 
   // Build KPI items from store data
   const kpiItems = React.useMemo(() => {
@@ -318,11 +370,13 @@ export default function Home() {
       },
       {
         title: "Win Rate",
-        value: `${kpis.winRate.toFixed(1)}%`,
-        subtitle: `${kpis.totalTrades} trades`,
+        value: `${(kpis.winRate ?? 0).toFixed(1)}%`,
+        subtitle: `${kpis.totalTrades ?? 0} trades`,
         icon: Target,
         variant:
-          kpis.winRate >= 50 ? ("success" as const) : ("warning" as const),
+          (kpis.winRate ?? 0) >= 50
+            ? ("success" as const)
+            : ("warning" as const),
       },
       {
         title: "Avg Win",
@@ -344,11 +398,11 @@ export default function Home() {
       },
       {
         title: "Profit Factor",
-        value: kpis.profitFactor.toFixed(2),
+        value: (kpis.profitFactor ?? 0).toFixed(2),
         subtitle: "Risk/Reward ratio",
         icon: BarChart3,
         variant:
-          kpis.profitFactor >= 1.5
+          (kpis.profitFactor ?? 0) >= 1.5
             ? ("success" as const)
             : ("default" as const),
         tooltip:
@@ -356,11 +410,13 @@ export default function Home() {
       },
       {
         title: "Max Drawdown",
-        value: `${kpis.maxDrawdown.toFixed(1)}%`,
+        value: `${(kpis.maxDrawdown ?? 0).toFixed(1)}%`,
         subtitle: "Peak to trough",
         icon: Percent,
         variant:
-          kpis.maxDrawdown > 10 ? ("danger" as const) : ("warning" as const),
+          (kpis.maxDrawdown ?? 0) > 10
+            ? ("danger" as const)
+            : ("warning" as const),
         tooltip:
           "Largest percentage drop from a peak balance to a subsequent low point. Lower is better.",
       },
@@ -462,6 +518,27 @@ export default function Home() {
                 dateRange={dateRange}
                 onDateRangeChange={handleDateRangeChange}
               />
+
+              {/* Account Filter */}
+              {availableAccounts.length > 0 && (
+                <select
+                  value={selectedAccountId ?? ""}
+                  onChange={(e) =>
+                    handleAccountChange(
+                      e.target.value ? parseInt(e.target.value, 10) : null,
+                    )
+                  }
+                  className="px-3 py-2 rounded-md text-sm font-medium bg-secondary text-secondary-foreground border border-border"
+                >
+                  <option value="">All Accounts (converted)</option>
+                  {availableAccounts.map((account) => (
+                    <option key={account.account_id} value={account.account_id}>
+                      {account.account_name || `Account ${account.account_id}`}
+                      {account.currency ? ` (${account.currency})` : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
 
               {/* Refresh Button */}
               <button

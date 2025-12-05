@@ -28,6 +28,16 @@ logger = logging.getLogger("TradingAnalyzer")
 
 # Add src directory to path
 ROOT_DIR = Path(__file__).parent
+
+
+def get_version() -> str:
+    """Read version from VERSION file."""
+    version_file = ROOT_DIR / "VERSION"
+    if version_file.exists():
+        return version_file.read_text().strip()
+    return "0.0.0"
+
+
 SRC_DIR = ROOT_DIR / "src"
 sys.path.insert(0, str(SRC_DIR))
 
@@ -217,7 +227,7 @@ def run_app():
     webbrowser.open(frontend_url)
 
     print(f"\n{'=' * 50}")
-    print(f"Trading Analyzer is running!")
+    print(f"Trading Analyzer v{get_version()} is running!")
     print(f"Open in browser: {frontend_url}")
     print(f"Press Ctrl+C to stop")
     print(f"{'=' * 50}\n")

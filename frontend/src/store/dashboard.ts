@@ -8,7 +8,8 @@ import type {
   WinRateByInstrument,
   FilterParams,
   InstrumentOption,
-} from "@/api/client";
+  Account,
+} from "@/lib/api";
 
 // Date range preset type - matches filter types
 export type DateRangePreset =
@@ -60,6 +61,8 @@ export interface DashboardState {
   dateRange: DateRangeState;
   selectedInstruments: string[];
   availableInstruments: InstrumentOption[];
+  selectedAccountId: number | null; // null means "All Accounts"
+  availableAccounts: Account[];
 
   // Data
   kpis: KPIResponse | null;
@@ -79,6 +82,8 @@ export interface DashboardState {
   setDateRangePreset: (preset: DateRangePreset) => void;
   setSelectedInstruments: (instruments: string[]) => void;
   toggleInstrument: (instrument: string) => void;
+  setSelectedAccountId: (accountId: number | null) => void;
+  setAvailableAccounts: (accounts: Account[]) => void;
   clearFilters: () => void;
 
   // Actions - Data
@@ -203,6 +208,8 @@ const initialState: Omit<
   | "setDateRangePreset"
   | "setSelectedInstruments"
   | "toggleInstrument"
+  | "setSelectedAccountId"
+  | "setAvailableAccounts"
   | "clearFilters"
   | "setKPIs"
   | "setBalanceHistory"
@@ -227,6 +234,8 @@ const initialState: Omit<
   },
   selectedInstruments: [],
   availableInstruments: [],
+  selectedAccountId: null,
+  availableAccounts: [],
 
   // Data
   kpis: null,
@@ -300,12 +309,19 @@ export const useDashboardStore = create<DashboardState>()(
             "toggleInstrument",
           ),
 
+        setSelectedAccountId: (accountId) =>
+          set({ selectedAccountId: accountId }, false, "setSelectedAccountId"),
+
+        setAvailableAccounts: (accounts) =>
+          set({ availableAccounts: accounts }, false, "setAvailableAccounts"),
+
         clearFilters: () => {
           const { from, to } = getDateRangeFromPreset("last30days");
           set(
             {
               dateRange: { from, to, preset: "last30days" },
               selectedInstruments: [],
+              selectedAccountId: null,
             },
             false,
             "clearFilters",
@@ -412,6 +428,7 @@ export const useDashboardStore = create<DashboardState>()(
         partialize: (state) => ({
           dateRange: state.dateRange,
           selectedInstruments: state.selectedInstruments,
+          selectedAccountId: state.selectedAccountId,
           // Note: isInitialized is intentionally NOT persisted
           // so data is always fetched fresh on page load
         }),
@@ -420,19 +437,48 @@ export const useDashboardStore = create<DashboardState>()(
           if (state) {
             state.isInitialized = false;
             // Convert persisted date strings back to Date objects
+            // Handle invalid dates by falling back to defaults
+            const defaultRange = getDateRangeFromPreset("last30days");
             if (state.dateRange) {
               if (
                 state.dateRange.from &&
                 typeof state.dateRange.from === "string"
               ) {
-                state.dateRange.from = new Date(state.dateRange.from);
+                const parsed = new Date(state.dateRange.from);
+                state.dateRange.from = isNaN(parsed.getTime())
+                  ? defaultRange.from
+                  : parsed;
               }
               if (
                 state.dateRange.to &&
                 typeof state.dateRange.to === "string"
               ) {
-                state.dateRange.to = new Date(state.dateRange.to);
+                const parsed = new Date(state.dateRange.to);
+                state.dateRange.to = isNaN(parsed.getTime())
+                  ? defaultRange.to
+                  : parsed;
               }
+              // If dates are still invalid after parsing, reset to defaults
+              if (
+                !state.dateRange.from ||
+                (state.dateRange.from instanceof Date &&
+                  isNaN(state.dateRange.from.getTime()))
+              ) {
+                state.dateRange.from = defaultRange.from;
+              }
+              if (
+                !state.dateRange.to ||
+                (state.dateRange.to instanceof Date &&
+                  isNaN(state.dateRange.to.getTime()))
+              ) {
+                state.dateRange.to = defaultRange.to;
+              }
+            } else {
+              state.dateRange = {
+                from: defaultRange.from,
+                to: defaultRange.to,
+                preset: "last30days",
+              };
             }
           }
         },

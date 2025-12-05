@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { LucideIcon, Info } from "lucide-react";
 import { useCurrencyStore } from "@/store/currency";
+import { useSettingsStore } from "@/store/settings";
 
 export interface KPICardProps {
   title: string;
@@ -50,7 +51,8 @@ export function KPICard({
   isCurrency = false,
   tooltip,
 }: KPICardProps) {
-  const { formatWithConversion, formatAmount } = useCurrencyStore();
+  const { formatAmount } = useCurrencyStore();
+  const { defaultCurrency } = useSettingsStore();
 
   // Format the display value
   const renderValue = () => {
@@ -58,17 +60,13 @@ export function KPICard({
       return <div className="text-2xl font-bold">{value}</div>;
     }
 
-    const { original, converted, showBoth } = formatWithConversion(
-      value,
-      currency,
-    );
+    // Backend converts to default currency, we just format
+    const displayCurrency = currency || defaultCurrency;
+    const formatted = formatAmount(value, displayCurrency);
 
     return (
       <div className="flex flex-col">
-        <div className="text-2xl font-bold">{original}</div>
-        {showBoth && converted && (
-          <div className="text-sm text-muted-foreground">({converted})</div>
-        )}
+        <div className="text-2xl font-bold">{formatted}</div>
       </div>
     );
   };

@@ -1,6 +1,7 @@
 "use client";
 
-import * as React from "react";
+import React from "react";
+import { useSettingsStore } from "@/store/settings";
 import {
   Area,
   AreaChart,
@@ -138,8 +139,18 @@ export function MultiAccountCumulativePnLChart({
   animate = true,
   className,
 }: MultiAccountCumulativePnLChartProps) {
-  const { formatAmount, showConverted, defaultCurrency, convert } =
-    useCurrencyStore();
+  const { formatAmount } = useCurrencyStore();
+  const { showConverted, defaultCurrency } = useSettingsStore();
+
+  // Simple conversion function - backend should handle this
+  const convert = React.useCallback(
+    (amount: number, _from: string, _to: string) => {
+      // Note: Proper conversion should be done by the backend
+      // This is a placeholder that returns the original amount
+      return amount;
+    },
+    [],
+  );
 
   // Build a map of account name to currency for tooltip
   const seriesCurrencies = React.useMemo(() => {

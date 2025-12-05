@@ -28,13 +28,18 @@ router = APIRouter()
 async def get_daily_pnl(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for P&L conversion (required)"
+    ),
 ):
     """
-    Get daily P&L data for the date range.
+    Get daily P&L data for the date range. Currency parameter is required.
 
     Args:
         start_date: Start of date range
         end_date: End of date range
+        currency: Target currency to convert all P&L values to (required)
 
     Returns:
         List of daily P&L data points with cumulative totals
@@ -43,6 +48,8 @@ async def get_daily_pnl(
         daily_pnl = db.get_daily_pnl(
             start_date=start_date,
             end_date=end_date,
+            target_currency=currency,
+            account_id=account_id,
         )
         return daily_pnl
     except Exception as e:
@@ -55,6 +62,10 @@ async def get_daily_pnl(
 async def get_daily_pnl_by_account(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for P&L conversion (required)"
+    ),
 ):
     """
     Get daily P&L data per account for multi-account charting.
@@ -62,6 +73,8 @@ async def get_daily_pnl_by_account(
     Args:
         start_date: Start of date range
         end_date: End of date range
+        account_id: Filter to specific account
+        currency: Target currency for P&L conversion
 
     Returns:
         Object with series (per account) and total (all accounts)
@@ -70,6 +83,8 @@ async def get_daily_pnl_by_account(
         result = db.get_daily_pnl_by_account(
             start_date=start_date,
             end_date=end_date,
+            target_currency=currency,
+            account_id=account_id,
         )
         return result
     except Exception as e:
@@ -83,6 +98,10 @@ async def get_hourly_performance(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
     instruments: Optional[List[str]] = Query(None),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for P&L conversion (required)"
+    ),
 ):
     """
     Get trading performance broken down by hour of day.
@@ -91,15 +110,19 @@ async def get_hourly_performance(
         start_date: Start of date range
         end_date: End of date range
         instruments: Filter by specific instruments
+        currency: Target currency for P&L conversion (required)
 
     Returns:
         List of performance metrics for each hour
     """
+    from api.services.currency import CurrencyService
+
     try:
         trades, _ = db.get_all_trades(
             start_date=start_date,
             end_date=end_date,
             instruments=instruments,
+            account_id=account_id,
         )
 
         # Aggregate by hour
@@ -108,7 +131,7 @@ async def get_hourly_performance(
             hourly_data[i] = {"hour": i, "pnl": 0, "trades": 0, "wins": 0}
 
         for trade in trades:
-            entry_time = trade.get("entry_time")
+            entry_time = trade.get("entryTime")
             if entry_time:
                 try:
                     if isinstance(entry_time, str):
@@ -116,9 +139,20 @@ async def get_hourly_performance(
                     else:
                         dt = entry_time
                     hour = dt.hour
-                    hourly_data[hour]["pnl"] += trade.get("pnl", 0) or 0
+                    pnl = trade.get("pnl", 0) or 0
+                    trade_currency = trade.get("currency")
+
+                    # Convert P&L to target currency
+                    if trade_currency and trade_currency != currency:
+                        converted = CurrencyService.convert(
+                            pnl, trade_currency, currency
+                        )
+                        if converted is not None:
+                            pnl = converted
+
+                    hourly_data[hour]["pnl"] += pnl
                     hourly_data[hour]["trades"] += 1
-                    if (trade.get("pnl", 0) or 0) >= 0:
+                    if pnl >= 0:
                         hourly_data[hour]["wins"] += 1
                 except (ValueError, AttributeError):
                     pass
@@ -151,6 +185,10 @@ async def get_weekday_performance(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
     instruments: Optional[List[str]] = Query(None),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for P&L conversion (required)"
+    ),
 ):
     """
     Get trading performance broken down by day of week.
@@ -159,15 +197,19 @@ async def get_weekday_performance(
         start_date: Start of date range
         end_date: End of date range
         instruments: Filter by specific instruments
+        currency: Target currency for P&L conversion (required)
 
     Returns:
         List of performance metrics for each weekday
     """
+    from api.services.currency import CurrencyService
+
     try:
         trades, _ = db.get_all_trades(
             start_date=start_date,
             end_date=end_date,
             instruments=instruments,
+            account_id=account_id,
         )
 
         weekdays = [
@@ -184,7 +226,7 @@ async def get_weekday_performance(
         }
 
         for trade in trades:
-            entry_time = trade.get("entry_time")
+            entry_time = trade.get("entryTime")
             if entry_time:
                 try:
                     if isinstance(entry_time, str):
@@ -192,9 +234,20 @@ async def get_weekday_performance(
                     else:
                         dt = entry_time
                     weekday = weekdays[dt.weekday()]
-                    weekday_data[weekday]["pnl"] += trade.get("pnl", 0) or 0
+                    pnl = trade.get("pnl", 0) or 0
+                    trade_currency = trade.get("currency")
+
+                    # Convert P&L to target currency
+                    if trade_currency and trade_currency != currency:
+                        converted = CurrencyService.convert(
+                            pnl, trade_currency, currency
+                        )
+                        if converted is not None:
+                            pnl = converted
+
+                    weekday_data[weekday]["pnl"] += pnl
                     weekday_data[weekday]["trades"] += 1
-                    if (trade.get("pnl", 0) or 0) >= 0:
+                    if pnl >= 0:
                         weekday_data[weekday]["wins"] += 1
                 except (ValueError, AttributeError):
                     pass
@@ -226,6 +279,7 @@ async def get_weekday_performance(
 async def get_drawdown_periods(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
+    account_id: Optional[int] = Query(None, alias="accountId"),
 ):
     """
     Get drawdown periods and analysis.
@@ -241,6 +295,7 @@ async def get_drawdown_periods(
         balance_history = db.get_balance_history(
             start_date=start_date,
             end_date=end_date,
+            account_id=account_id,
         )
 
         if not balance_history:
@@ -318,6 +373,7 @@ async def get_streak_data(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
     instruments: Optional[List[str]] = Query(None),
+    account_id: Optional[int] = Query(None, alias="accountId"),
 ):
     """
     Get win/loss streak analysis.
@@ -335,6 +391,7 @@ async def get_streak_data(
             start_date=start_date,
             end_date=end_date,
             instruments=instruments,
+            account_id=account_id,
         )
 
         if not trades:
@@ -414,6 +471,7 @@ async def get_trade_duration_stats(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
     instruments: Optional[List[str]] = Query(None),
+    account_id: Optional[int] = Query(None, alias="accountId"),
 ):
     """
     Get trade duration statistics.
@@ -431,6 +489,7 @@ async def get_trade_duration_stats(
             start_date=start_date,
             end_date=end_date,
             instruments=instruments,
+            account_id=account_id,
         )
 
         durations = []
@@ -503,6 +562,10 @@ async def get_analytics_summary(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
     instruments: Optional[List[str]] = Query(None),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for P&L conversion (required)"
+    ),
 ):
     """
     Get a comprehensive analytics summary.
@@ -521,12 +584,16 @@ async def get_analytics_summary(
             start_date=start_date,
             end_date=end_date,
             instruments=instruments,
+            target_currency=currency,
+            account_id=account_id,
         )
 
         # Get daily P&L
         daily_pnl = db.get_daily_pnl(
             start_date=start_date,
             end_date=end_date,
+            target_currency=currency,
+            account_id=account_id,
         )
 
         # Get monthly P&L
@@ -534,12 +601,15 @@ async def get_analytics_summary(
             start_date=start_date,
             end_date=end_date,
             instruments=instruments,
+            target_currency=currency,
+            account_id=account_id,
         )
 
         # Get instrument breakdown
         instrument_stats = db.get_win_rate_by_instrument(
             start_date=start_date,
             end_date=end_date,
+            account_id=account_id,
         )
 
         return {
@@ -559,6 +629,10 @@ async def get_position_size_analysis(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
     instruments: Optional[List[str]] = Query(None),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for P&L conversion (required)"
+    ),
 ):
     """
     Get position size analysis data.
@@ -567,15 +641,19 @@ async def get_position_size_analysis(
         start_date: Start of date range
         end_date: End of date range
         instruments: Filter by specific instruments
+        currency: Target currency for P&L conversion (required)
 
     Returns:
         Position size statistics and distribution
     """
+    from api.services.currency import CurrencyService
+
     try:
         trades, _ = db.get_all_trades(
             start_date=start_date,
             end_date=end_date,
             instruments=instruments,
+            account_id=account_id,
         )
 
         if not trades:
@@ -598,6 +676,13 @@ async def get_position_size_analysis(
         for trade in trades:
             size = abs(trade.get("quantity", 0) or 0)
             pnl = trade.get("pnl", 0) or 0
+            trade_currency = trade.get("currency")
+
+            # Convert P&L to target currency
+            if trade_currency and trade_currency != currency:
+                converted = CurrencyService.convert(pnl, trade_currency, currency)
+                if converted is not None:
+                    pnl = converted
 
             if size > 0:
                 position_sizes.append(size)
@@ -689,6 +774,10 @@ class FundingDataPoint(BaseModel):
 async def get_funding_data(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for funding conversion (required)"
+    ),
 ):
     """
     Get deposits and withdrawals data for the date range.
@@ -704,6 +793,8 @@ async def get_funding_data(
         List of funding data points with deposits, withdrawals, and cumulative totals
     """
     try:
+        from api.services.currency import CurrencyService
+
         conditions = ["(\"Action\" = 'Fund receivable' OR \"Action\" = 'Fund payable')"]
         params: List[Any] = []
 
@@ -713,17 +804,23 @@ async def get_funding_data(
         if end_date:
             conditions.append('"Transaction Date" <= ?')
             params.append(end_date.strftime("%Y-%m-%d"))
+        if account_id:
+            conditions.append("bt.account_id = ?")
+            params.append(account_id)
 
         where_clause = " AND ".join(conditions)
 
+        # Get account currencies for conversion
         query = f"""
             SELECT
-                DATE("Transaction Date") as date,
-                SUM(CASE WHEN "Action" = 'Fund receivable' THEN COALESCE("P/L", 0) ELSE 0 END) as deposits,
-                SUM(CASE WHEN "Action" = 'Fund payable' THEN ABS(COALESCE("P/L", 0)) ELSE 0 END) as withdrawals
-            FROM broker_transactions
+                DATE(bt."Transaction Date") as date,
+                SUM(CASE WHEN bt."Action" = 'Fund receivable' THEN COALESCE(bt."P/L", 0) ELSE 0 END) as deposits,
+                SUM(CASE WHEN bt."Action" = 'Fund payable' THEN ABS(COALESCE(bt."P/L", 0)) ELSE 0 END) as withdrawals,
+                a.currency as account_currency
+            FROM broker_transactions bt
+            LEFT JOIN accounts a ON bt.account_id = a.account_id
             WHERE {where_clause}
-            GROUP BY DATE("Transaction Date")
+            GROUP BY DATE(bt."Transaction Date"), a.currency
             ORDER BY date ASC
         """
 
@@ -732,13 +829,34 @@ async def get_funding_data(
             cursor.execute(query, params)
             rows = cursor.fetchall()
 
-        result = []
-        cumulative = 0.0
+        # Aggregate by date with currency conversion
+        date_data: Dict[str, Dict[str, float]] = {}
 
         for row in rows:
             date_str = row[0]
             deposits = float(row[1] or 0)
             withdrawals = float(row[2] or 0)
+            account_currency = row[3] or currency
+
+            # Convert to target currency if needed
+            if account_currency != currency:
+                rate = CurrencyService.get_exchange_rate(account_currency, currency)
+                if rate:
+                    deposits *= rate
+                    withdrawals *= rate
+
+            if date_str not in date_data:
+                date_data[date_str] = {"deposits": 0, "withdrawals": 0}
+            date_data[date_str]["deposits"] += deposits
+            date_data[date_str]["withdrawals"] += withdrawals
+
+        result = []
+        cumulative = 0.0
+
+        for date_str in sorted(date_data.keys()):
+            data = date_data[date_str]
+            deposits = data["deposits"]
+            withdrawals = data["withdrawals"]
             net = deposits - withdrawals
             cumulative += net
 

@@ -1,6 +1,6 @@
 {
   "name": "trading-analyzer-frontend",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -28,7 +28,7 @@
     "date-fns": "^3.3.1",
     "immer": "^11.0.0",
     "lucide-react": "^0.321.0",
-    "next": "^15.1.0",
+    "next": "^16.0.7",
     "next-themes": "^0.4.6",
     "react": "^18.2.0",
     "react-day-picker": "^8.10.0",

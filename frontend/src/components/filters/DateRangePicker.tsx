@@ -2,7 +2,17 @@
 
 import * as React from "react";
 import { CalendarIcon } from "lucide-react";
-import { format, subDays, startOfMonth, endOfMonth, startOfYear, subMonths, startOfQuarter, subQuarters } from "date-fns";
+import {
+  format,
+  subDays,
+  startOfMonth,
+  endOfMonth,
+  startOfYear,
+  subMonths,
+  startOfQuarter,
+  subQuarters,
+  isValid,
+} from "date-fns";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,13 +69,24 @@ function getPresetDateRange(preset: DateRangePreset): { from: Date; to: Date } {
       return { from: startOfQuarter(today), to: today };
     case "lastQuarter": {
       const lastQuarter = subQuarters(today, 1);
-      return { from: startOfQuarter(lastQuarter), to: endOfMonth(subMonths(startOfQuarter(today), 1)) };
+      return {
+        from: startOfQuarter(lastQuarter),
+        to: endOfMonth(subMonths(startOfQuarter(today), 1)),
+      };
     }
     case "thisYear":
       return { from: startOfYear(today), to: today };
     case "lastYear": {
       const lastYear = new Date(today.getFullYear() - 1, 0, 1);
-      const endOfLastYear = new Date(today.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
+      const endOfLastYear = new Date(
+        today.getFullYear() - 1,
+        11,
+        31,
+        23,
+        59,
+        59,
+        999,
+      );
       return { from: lastYear, to: endOfLastYear };
     }
     case "allTime":
@@ -84,9 +105,9 @@ export function DateRangePicker({
   placeholder = "Select date range",
 }: DateRangePickerProps) {
   const [open, setOpen] = React.useState(false);
-  const [selectedPreset, setSelectedPreset] = React.useState<DateRangePreset | undefined>(
-    dateRange.preset
-  );
+  const [selectedPreset, setSelectedPreset] = React.useState<
+    DateRangePreset | undefined
+  >(dateRange.preset);
 
   const handlePresetClick = (preset: DateRangePreset) => {
     if (preset === "custom") {
@@ -113,33 +134,72 @@ export function DateRangePicker({
     });
   };
 
+  // Helper to safely format a date
+  const safeFormat = (
+    date: Date | undefined,
+    formatStr: string,
+  ): string | null => {
+    if (!date) return null;
+    const d = date instanceof Date ? date : new Date(date);
+    if (!isValid(d)) return null;
+    try {
+      return format(d, formatStr);
+    } catch {
+      return null;
+    }
+  };
+
   const formatDateRange = () => {
-    if (!dateRange.from && !dateRange.to) {
+    const fromDate =
+      dateRange.from instanceof Date
+        ? dateRange.from
+        : dateRange.from
+          ? new Date(dateRange.from)
+          : undefined;
+    const toDate =
+      dateRange.to instanceof Date
+        ? dateRange.to
+        : dateRange.to
+          ? new Date(dateRange.to)
+          : undefined;
+    const validFrom = fromDate && isValid(fromDate);
+    const validTo = toDate && isValid(toDate);
+
+    if (!validFrom && !validTo) {
       return placeholder;
     }
 
     // If using a preset (not custom), show the preset label
     if (selectedPreset && selectedPreset !== "custom") {
-      const presetLabel = DATE_RANGE_PRESETS.find((p) => p.value === selectedPreset)?.label;
+      const presetLabel = DATE_RANGE_PRESETS.find(
+        (p) => p.value === selectedPreset,
+      )?.label;
       if (presetLabel) {
         return presetLabel;
       }
     }
 
     // Otherwise show the actual date range
-    if (dateRange.from && dateRange.to) {
-      if (dateRange.from.toDateString() === dateRange.to.toDateString()) {
-        return format(dateRange.from, "MMM d, yyyy");
+    if (validFrom && validTo) {
+      if (fromDate!.toDateString() === toDate!.toDateString()) {
+        return safeFormat(fromDate, "MMM d, yyyy") || placeholder;
       }
-      return `${format(dateRange.from, "MMM d")} - ${format(dateRange.to, "MMM d, yyyy")}`;
+      const fromStr = safeFormat(fromDate, "MMM d");
+      const toStr = safeFormat(toDate, "MMM d, yyyy");
+      if (fromStr && toStr) {
+        return `${fromStr} - ${toStr}`;
+      }
+      return placeholder;
     }
 
-    if (dateRange.from) {
-      return `From ${format(dateRange.from, "MMM d, yyyy")}`;
+    if (validFrom) {
+      const fromStr = safeFormat(fromDate, "MMM d, yyyy");
+      return fromStr ? `From ${fromStr}` : placeholder;
     }
 
-    if (dateRange.to) {
-      return `Until ${format(dateRange.to, "MMM d, yyyy")}`;
+    if (validTo) {
+      const toStr = safeFormat(toDate, "MMM d, yyyy");
+      return toStr ? `Until ${toStr}` : placeholder;
     }
 
     return placeholder;
@@ -154,7 +214,7 @@ export function DateRangePicker({
           className={cn(
             "justify-start text-left font-normal min-w-[200px]",
             !dateRange.from && !dateRange.to && "text-muted-foreground",
-            className
+            className,
           )}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
@@ -171,11 +231,13 @@ export function DateRangePicker({
             {DATE_RANGE_PRESETS.map((preset) => (
               <Button
                 key={preset.value}
-                variant={selectedPreset === preset.value ? "secondary" : "ghost"}
+                variant={
+                  selectedPreset === preset.value ? "secondary" : "ghost"
+                }
                 size="sm"
                 className={cn(
                   "w-full justify-start text-sm h-8",
-                  selectedPreset === preset.value && "bg-accent"
+                  selectedPreset === preset.value && "bg-accent",
                 )}
                 onClick={() => handlePresetClick(preset.value)}
               >
@@ -202,10 +264,13 @@ export function DateRangePicker({
             <div className="border-t border-border mt-2 pt-2 px-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">
-                  {dateRange.from && dateRange.to ? (
+                  {dateRange.from &&
+                  dateRange.to &&
+                  isValid(dateRange.from) &&
+                  isValid(dateRange.to) ? (
                     <>
-                      {format(dateRange.from, "MMM d, yyyy")} -{" "}
-                      {format(dateRange.to, "MMM d, yyyy")}
+                      {safeFormat(dateRange.from, "MMM d, yyyy")} -{" "}
+                      {safeFormat(dateRange.to, "MMM d, yyyy")}
                     </>
                   ) : (
                     "Select a range"

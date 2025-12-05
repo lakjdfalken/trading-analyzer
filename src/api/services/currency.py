@@ -167,52 +167,57 @@ class CurrencyService:
         if from_currency == to_currency:
             return 1.0
 
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT rate FROM exchange_rates
-                WHERE from_currency = ? AND to_currency = ?
-            """,
-                (from_currency, to_currency),
-            )
-            result = cursor.fetchone()
+        # Try database first, but handle missing table gracefully
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT rate FROM exchange_rates
+                    WHERE from_currency = ? AND to_currency = ?
+                """,
+                    (from_currency, to_currency),
+                )
+                result = cursor.fetchone()
 
-            if result:
-                return result[0]
+                if result:
+                    return result[0]
 
-            # Try to calculate via SEK as intermediate
-            cursor.execute(
-                """
-                SELECT rate FROM exchange_rates
-                WHERE from_currency = ? AND to_currency = 'SEK'
-            """,
-                (from_currency,),
-            )
-            from_to_sek = cursor.fetchone()
+                # Try to calculate via SEK as intermediate
+                cursor.execute(
+                    """
+                    SELECT rate FROM exchange_rates
+                    WHERE from_currency = ? AND to_currency = 'SEK'
+                """,
+                    (from_currency,),
+                )
+                from_to_sek = cursor.fetchone()
 
-            cursor.execute(
-                """
-                SELECT rate FROM exchange_rates
-                WHERE from_currency = 'SEK' AND to_currency = ?
-            """,
-                (to_currency,),
-            )
-            sek_to_target = cursor.fetchone()
+                cursor.execute(
+                    """
+                    SELECT rate FROM exchange_rates
+                    WHERE from_currency = 'SEK' AND to_currency = ?
+                """,
+                    (to_currency,),
+                )
+                sek_to_target = cursor.fetchone()
 
-            if from_to_sek and sek_to_target:
-                return from_to_sek[0] * sek_to_target[0]
+                if from_to_sek and sek_to_target:
+                    return from_to_sek[0] * sek_to_target[0]
+        except Exception:
+            # Table might not exist, fall through to default rates
+            pass
 
-            # Fallback to default rates
-            if (
-                from_currency in DEFAULT_EXCHANGE_RATES
-                and to_currency in DEFAULT_EXCHANGE_RATES
-            ):
-                from_rate = DEFAULT_EXCHANGE_RATES[from_currency]
-                to_rate = DEFAULT_EXCHANGE_RATES[to_currency]
-                return from_rate / to_rate
+        # Fallback to default rates
+        if (
+            from_currency in DEFAULT_EXCHANGE_RATES
+            and to_currency in DEFAULT_EXCHANGE_RATES
+        ):
+            from_rate = DEFAULT_EXCHANGE_RATES[from_currency]
+            to_rate = DEFAULT_EXCHANGE_RATES[to_currency]
+            return from_rate / to_rate
 
-            return None
+        return None
 
     @staticmethod
     def get_all_exchange_rates(base_currency: str = "SEK") -> Dict[str, float]:
