@@ -19,10 +19,11 @@ Or visit the [Releases page](https://github.com/lakjdfalken/trading-analyzer/rel
 
 ### Dashboard
 - Real-time KPIs: Total P/L, Win Rate, Profit Factor, Max Drawdown
-- Balance history chart with multi-account support
+- Account Balance chart with multi-account support
 - Monthly P/L breakdown
 - Win rate by instrument
 - Recent trades overview
+- Account selector (view all accounts combined or individual accounts)
 
 ### Transactions
 - Browse, search, and filter all trades
@@ -32,24 +33,50 @@ Or visit the [Releases page](https://github.com/lakjdfalken/trading-analyzer/rel
 - Pagination with customizable page size
 
 ### Analytics
-- Daily P/L heatmap
-- Drawdown analysis with peak-to-trough calculation
-- Hourly performance patterns
-- Weekday performance breakdown
-- Win/loss streaks
-- Trade duration statistics
+- **P&L Analysis**
+  - Daily P/L chart with percentage returns
+  - Cumulative P/L over time
+  - Monthly P/L breakdown
+  - Equity Curve (P/L only, excludes deposits/withdrawals)
+  - Balance History (includes funding)
+  - Funding Activity (deposits, withdrawals, net with totals)
+- **Time-based Analysis**
+  - Hourly performance patterns
+  - Weekday performance breakdown
+  - Trade duration statistics
+- **Instrument Analysis**
+  - Win rate by instrument
+  - Points/pips by instrument
+- **Performance Metrics**
+  - Win/loss streaks
+  - Position size analysis
+- All charts support account filtering and proper currency conversion
 
-### Data Management
+### Data Import
 - CSV import with automatic column mapping
 - Support for multiple brokers
 - Multi-account tracking
-- Multi-currency support with conversion
+
+### Settings
+- Default currency selection
+- Exchange rate management
+- Currency conversion for multi-currency accounts
 
 ### User Interface
 - Modern dark mode UI
 - Responsive charts with tooltips
 - Expandable chart views
 - Persistent filter preferences
+- Account selector across all pages
+
+## Multi-Currency Support
+
+The application properly handles accounts in different currencies:
+
+- **Backend converts, frontend displays**: All P&L aggregation and conversion happens on the backend
+- **Account-aware**: When viewing a single account, data displays in that account's native currency
+- **Combined view**: When viewing all accounts, values are converted to your default currency before aggregation
+- **Exchange rates**: Configurable in Settings page
 
 ## Supported Brokers
 
@@ -161,22 +188,36 @@ dist\Trading Analyzer\Trading Analyzer.exe
 
 ```
 trading-analyzer/
-├── frontend/                 # Next.js 14 frontend
+├── frontend/                 # Next.js frontend
 │   ├── src/
-│   │   ├── app/             # Pages (dashboard, transactions, analytics)
-│   │   ├── components/      # React components (charts, KPIs, trades)
+│   │   ├── app/             # Pages
+│   │   │   ├── page.tsx     # Dashboard
+│   │   │   ├── analytics/   # Analytics page
+│   │   │   ├── transactions/# Transactions page
+│   │   │   ├── import/      # Data import page
+│   │   │   └── settings/    # Settings page
+│   │   ├── components/      # React components
+│   │   │   └── charts/      # Chart components (18 charts)
 │   │   ├── store/           # Zustand state management
-│   │   └── api/             # API client
+│   │   │   ├── dashboard.ts # Dashboard state & filters
+│   │   │   ├── settings.ts  # User settings
+│   │   │   └── currency.ts  # Currency formatting
+│   │   └── lib/
+│   │       └── api.ts       # Centralized API client
 │   └── package.json
 ├── src/
-│   ├── api/                 # FastAPI backend
-│   │   ├── routers/         # API endpoints
-│   │   ├── models/          # Pydantic schemas
-│   │   └── services/        # Database & currency services
-│   ├── create_database.py   # Database schema
-│   ├── import_data.py       # CSV import logic
-│   ├── db_path.py           # Cross-platform database path
-│   └── settings.py          # Configuration
+│   └── api/                 # FastAPI backend
+│       ├── routers/         # API endpoints
+│       │   ├── dashboard.py # Dashboard data
+│       │   ├── analytics.py # Analytics data
+│       │   ├── trades.py    # Trade operations
+│       │   ├── currency.py  # Currency & settings
+│       │   ├── imports.py   # CSV import
+│       │   └── instruments.py
+│       ├── services/
+│       │   ├── database.py  # SQLite operations
+│       │   └── currency.py  # Currency conversion
+│       └── models/          # Pydantic schemas
 ├── app.py                   # Desktop app entry point
 ├── run_api.py               # API server runner
 ├── trading_analyzer.spec    # PyInstaller configuration
@@ -203,16 +244,6 @@ git tag v2.1.0
 git push origin main --tags
 ```
 
-**Version locations (auto-synced):**
-
-| File | How it's updated |
-|------|------------------|
-| `VERSION` | Single source of truth (edit manually) |
-| `src/api/__init__.py` | Reads `VERSION` at runtime |
-| `src/api/main.py` | Uses `__version__` from api package |
-| `trading_analyzer.spec` | Reads `VERSION` at build time |
-| `frontend/package.json` | Updated by `scripts/sync_version.py` |
-
 ## API Documentation
 
 When running in development mode, API documentation is available at:
@@ -230,6 +261,23 @@ The application stores data in a platform-specific location:
 | Linux | `~/.local/share/TradingAnalyzer/trading.db` |
 
 ## Changelog
+
+### v2.0.6
+
+- **Account Selection**: Filter all data by account across Dashboard and Analytics pages
+- **Fixed Currency Conversion**: Proper conversion when viewing combined accounts
+- **Analytics Improvements**:
+  - Daily P&L respects account filter
+  - Cumulative P&L with correct currency display
+  - Equity Curve respects account filter
+  - Funding Activity with totals summary
+  - Hourly/Weekday performance now working correctly
+  - Position size analysis with currency conversion
+
+### v2.0.5
+
+- **Multi-Account Charts**: Balance and P&L charts show individual account lines
+- **Currency Handling**: Backend-only conversion per architecture rules
 
 ### v2.0.0
 
