@@ -127,11 +127,6 @@ SUPPORTED_BROKERS = [
         "name": "TD365",
         "supported_formats": ["csv"],
     },
-    {
-        "key": "default",
-        "name": "Generic CSV",
-        "supported_formats": ["csv"],
-    },
 ]
 
 
@@ -392,14 +387,14 @@ async def get_supported_brokers():
 async def upload_csv(
     file: UploadFile = File(...),
     account_id: int = Form(..., alias="accountId"),
-    broker: str = Form(default="default"),
+    broker: str = Form(default="trade_nation"),
 ):
     """
     Upload and import a CSV transaction file.
 
     - **file**: CSV file containing transaction data
     - **account_id**: ID of the account to import into
-    - **broker**: Broker format (trade_nation, td365, default)
+    - **broker**: Broker format (trade_nation or td365)
     """
     # Validate broker
     valid_brokers = [b["key"] for b in SUPPORTED_BROKERS]

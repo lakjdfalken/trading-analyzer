@@ -10,6 +10,8 @@ from pathlib import Path
 
 def _get_version() -> str:
     """Read version from VERSION file."""
+    import sys
+
     # Try multiple possible locations for VERSION file
     possible_paths = [
         Path(__file__).parent.parent.parent / "VERSION",  # src/api -> src -> root
@@ -17,6 +19,12 @@ def _get_version() -> str:
         / "VERSION",  # In case of different structure
         Path.cwd() / "VERSION",  # Current working directory
     ]
+
+    # Add PyInstaller bundle path (for packaged app)
+    if getattr(sys, "frozen", False):
+        # Running as compiled executable
+        bundle_dir = Path(sys._MEIPASS)
+        possible_paths.insert(0, bundle_dir / "VERSION")
 
     for version_path in possible_paths:
         if version_path.exists():

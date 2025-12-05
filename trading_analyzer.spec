@@ -39,6 +39,8 @@ ROOT_DIR = Path(SPECPATH)
 datas = [
     # Include frontend build output
     (str(ROOT_DIR / "frontend" / "out"), "frontend/out"),
+    # Include VERSION file for runtime version detection
+    (str(ROOT_DIR / "VERSION"), "."),
 ]
 
 # Filter out non-existent paths

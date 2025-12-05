@@ -79,7 +79,8 @@ export default function ImportPage() {
   const [selectedAccountId, setSelectedAccountId] = React.useState<
     number | null
   >(null);
-  const [selectedBroker, setSelectedBroker] = React.useState<string>("default");
+  const [selectedBroker, setSelectedBroker] =
+    React.useState<string>("trade_nation");
   const [isUploading, setIsUploading] = React.useState(false);
   const [uploadResult, setUploadResult] = React.useState<ImportResult | null>(
     null,

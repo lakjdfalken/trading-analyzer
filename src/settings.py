@@ -409,24 +409,6 @@ DATA_COLUMNS = [
 
 # Column Mappings for CSV Imports
 COLUMN_MAPPINGS = {
-    "default": {
-        "transaction_date": ["Transaction Date"],
-        "open_period": ["Open Period", "Open date"],  # Support both old and new names
-        "reference": [
-            "Ref. No.",
-            "Serial",
-            "Reference",
-        ],  # Support various reference field names
-        "action": ["Action"],
-        "description": ["Description"],
-        "amount": ["Amount"],
-        "pl": ["P/L"],
-        "balance": ["Balance"],
-        "opening": ["Opening"],
-        "closing": ["Closing"],
-        "status": ["Status"],
-        "currency": ["Currency"],
-    },
     "trade_nation": {
         "transaction_date": ["Transaction Date"],
         "open_period": ["Open Period", "Open date"],

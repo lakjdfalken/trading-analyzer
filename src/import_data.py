@@ -301,13 +301,13 @@ def sanitize_dates_for_sqlite(df, columns):
     return df
 
 
-def import_transaction_data(file_path, broker_name="default", account_id=None):
+def import_transaction_data(file_path, broker_name="trade_nation", account_id=None):
     """
     Import transaction data from a CSV file into the database.
 
     Args:
         file_path: Path to the CSV file
-        broker_name: Name of the broker (default='default')
+        broker_name: Name of the broker (trade_nation or td365)
         account_id: Account ID for the transactions
 
     Returns:
@@ -360,7 +360,11 @@ def import_transaction_data(file_path, broker_name="default", account_id=None):
     logger.debug(f"Sample data:\n{new_df.head(2)}")
 
     # Get the appropriate column mapping for this broker
-    mapping = COLUMN_MAPPINGS.get(broker_name, COLUMN_MAPPINGS["default"])
+    if broker_name not in COLUMN_MAPPINGS:
+        raise ValueError(
+            f"Unsupported broker: {broker_name}. Must be one of: {list(COLUMN_MAPPINGS.keys())}"
+        )
+    mapping = COLUMN_MAPPINGS[broker_name]
 
     # Standardize column names
     standardized_df = standardize_columns(new_df, mapping)

@@ -82,7 +82,6 @@ The application properly handles accounts in different currencies:
 
 - **Trade Nation** (Serial column format)
 - **TD365** (Ref. No. column format)
-- **Generic CSV** (auto-detects common column names)
 
 ## Installation
 
