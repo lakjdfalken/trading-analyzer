@@ -1121,8 +1121,14 @@ class TradingDatabase:
 
         This provides a true trading performance curve without deposits/withdrawals
         affecting the drawdown calculations.
+
+        Converts all P&L values to target_currency before aggregating.
         """
         from api.services.currency import CurrencyService
+
+        # Require explicit currency - no auto-detection per .rules
+        if target_currency is None:
+            raise ValueError("target_currency is required - no auto-detection allowed")
 
         conditions = [
             "\"Action\" NOT LIKE '%Fund%' AND \"Action\" NOT LIKE '%Charge%' "
@@ -1144,45 +1150,56 @@ class TradingDatabase:
 
         where_clause = " AND ".join(conditions)
 
-        # Get the primary currency used (most common)
-        currency_query = f"""
-            SELECT "Currency", COUNT(*) as cnt
-            FROM broker_transactions
-            WHERE {where_clause} AND "Currency" IS NOT NULL
-            GROUP BY "Currency"
-            ORDER BY cnt DESC
-            LIMIT 1
-        """
-        currency_results = execute_query(currency_query, tuple(params))
-        currency = currency_results[0].get("Currency") if currency_results else None
-
+        # Get daily P&L grouped by date AND currency for proper conversion
         query = f"""
             SELECT
                 DATE("Transaction Date") as date,
-                SUM("P/L") as daily_pnl,
-                SUM(SUM("P/L")) OVER (ORDER BY DATE("Transaction Date")) as cumulative_pnl
+                "Currency" as currency,
+                SUM("P/L") as daily_pnl
             FROM broker_transactions
             WHERE {where_clause}
-            GROUP BY DATE("Transaction Date")
+            GROUP BY DATE("Transaction Date"), "Currency"
             ORDER BY date ASC
         """
 
-        data = execute_query(query, tuple(params))
+        raw_data = execute_query(query, tuple(params))
 
-        # Transform to equity curve format (starting from 0)
+        # Aggregate by date, converting currencies to target_currency
+        date_map: Dict[str, float] = {}
+        for row in raw_data:
+            date = row["date"]
+            currency = row["currency"] or target_currency
+            pnl = row["daily_pnl"] or 0
+
+            # Convert P&L to target currency
+            if currency != target_currency:
+                converted = CurrencyService.convert(pnl, currency, target_currency)
+                if converted is not None:
+                    pnl = converted
+                # If conversion fails, we still add the unconverted value (not ideal but prevents data loss)
+
+            if date not in date_map:
+                date_map[date] = 0
+            date_map[date] += pnl
+
+        # Sort by date and calculate cumulative P&L
+        sorted_dates = sorted(date_map.keys())
         equity_data = []
-        for point in data:
+        cumulative_pnl = 0
+        for date in sorted_dates:
+            daily_pnl = date_map[date]
+            cumulative_pnl += daily_pnl
             equity_data.append(
                 {
-                    "date": point["date"],
-                    "balance": point["cumulative_pnl"] or 0,
-                    "dailyPnl": point["daily_pnl"] or 0,
+                    "date": date,
+                    "balance": cumulative_pnl,
+                    "dailyPnl": daily_pnl,
                 }
             )
 
         return {
             "data": equity_data,
-            "currency": currency,
+            "currency": target_currency,
         }
 
     @staticmethod
