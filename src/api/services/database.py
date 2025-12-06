@@ -254,29 +254,58 @@ class TradingDatabase:
 
         raw_data = execute_query(query, tuple(params))
 
-        # Aggregate by date with currency conversion
-        date_balances: Dict[str, float] = {}
+        # Build per-account balance history with carry-forward
+        # First, collect all dates and per-account balances
+        all_dates: set = set()
+        account_date_balances: Dict[int, Dict[str, float]] = {}
+        account_currencies: Dict[int, str] = {}
+
         for row in raw_data:
             date_str = row["date"]
+            acct_id = row["account_id"]
             balance = row["balance"] or 0
-            account_currency = row["account_currency"]
+            acct_currency = row["account_currency"]
 
-            # Convert to target currency if needed
-            if (
-                target_currency
-                and account_currency
-                and account_currency != target_currency
-            ):
-                rate = CurrencyService.get_exchange_rate(
-                    account_currency, target_currency
-                )
-                if rate:
-                    balance *= rate
+            all_dates.add(date_str)
+            account_currencies[acct_id] = acct_currency
 
-            if date_str in date_balances:
-                date_balances[date_str] += balance
-            else:
-                date_balances[date_str] = balance
+            if acct_id not in account_date_balances:
+                account_date_balances[acct_id] = {}
+            account_date_balances[acct_id][date_str] = balance
+
+        # For each account, carry forward the last known balance for missing dates
+        sorted_dates = sorted(all_dates)
+        for acct_id in account_date_balances:
+            last_balance = 0.0
+            for date_str in sorted_dates:
+                if date_str in account_date_balances[acct_id]:
+                    last_balance = account_date_balances[acct_id][date_str]
+                else:
+                    # Carry forward the last known balance
+                    account_date_balances[acct_id][date_str] = last_balance
+
+        # Aggregate by date with currency conversion
+        date_balances: Dict[str, float] = {}
+        for date_str in sorted_dates:
+            total = 0.0
+            for acct_id in account_date_balances:
+                balance = account_date_balances[acct_id].get(date_str, 0)
+                acct_currency = account_currencies.get(acct_id)
+
+                # Convert to target currency if needed
+                if (
+                    target_currency
+                    and acct_currency
+                    and acct_currency != target_currency
+                ):
+                    rate = CurrencyService.get_exchange_rate(
+                        acct_currency, target_currency
+                    )
+                    if rate:
+                        balance *= rate
+
+                total += balance
+            date_balances[date_str] = total
 
         data = [
             {"date": date, "balance": balance}
