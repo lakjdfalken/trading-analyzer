@@ -167,6 +167,7 @@ export default function Home() {
           selectedAccountId,
         ),
         api.getRecentTrades(
+          effectiveCurrency,
           10,
           dateRangeParam,
           selectedInstruments.length > 0 ? selectedInstruments : undefined,

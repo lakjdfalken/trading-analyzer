@@ -374,12 +374,14 @@ export function MultiAccountMonthlyPnLChart({
     }
     if (selectedAccountIds.length === 1) {
       const account = series.find((s) => s.accountId === selectedAccountIds[0]);
-      return account?.currency || defaultCurrency;
+      // No fallback - if currency is missing from series data, that's a bug
+      return account?.currency;
     }
     const firstSelected = series.find((s) =>
       selectedAccountIds.includes(s.accountId),
     );
-    return firstSelected?.currency || defaultCurrency;
+    // No fallback - trust the series data from backend
+    return firstSelected?.currency;
   }, [displayMode, selectedAccountIds, series, defaultCurrency]);
 
   // Filter series based on selection

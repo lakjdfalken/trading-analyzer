@@ -27,46 +27,13 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import * as api from "@/lib/api";
 
-// API base URL
-// Always use relative URL for same-origin requests (works with any port)
-const API_BASE = "";
-
-// Types
-interface Account {
-  account_id: number;
-  account_name: string;
-  broker_name: string;
-  currency: string;
-  initial_balance: number;
-  notes: string | null;
-  transaction_count: number;
-}
-
-interface Broker {
-  key: string;
-  name: string;
-  supportedFormats: string[];
-}
-
-interface DatabaseStats {
-  totalTransactions: number;
-  totalAccounts: number;
-  brokers: string[];
-  currencies: string[];
-  dateRange: { from: string; to: string } | null;
-  databaseSizeBytes: number;
-}
-
-interface ImportResult {
-  success: boolean;
-  message: string;
-  recordsImported: number;
-  recordsSkipped: number;
-  totalRecords: number;
-  accountId: number;
-  broker: string;
-}
+// Use types from centralized API
+type Account = api.Account & { transaction_count: number };
+type Broker = api.Broker;
+type DatabaseStats = api.DatabaseStats;
+type ImportResult = api.ImportResult;
 
 export default function ImportPage() {
   // State
@@ -98,32 +65,29 @@ export default function ImportPage() {
 
   const [newAccountNotes, setNewAccountNotes] = React.useState("");
 
-  // Fetch data
+  // Fetch data using centralized API client
   const fetchData = React.useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     // Fetch brokers first - this should always work
     try {
-      const brokersRes = await fetch(`${API_BASE}/api/import/brokers`);
-      if (brokersRes.ok) {
-        const brokersData = await brokersRes.json();
-        setBrokers(brokersData);
-      }
+      const brokersData = await api.getBrokers();
+      setBrokers(brokersData);
     } catch (err) {
       console.error("Failed to fetch brokers:", err);
     }
 
     // Fetch accounts and stats - may fail on first run
     try {
-      const [accountsRes, statsRes] = await Promise.allSettled([
-        fetch(`${API_BASE}/api/import/accounts`),
-        fetch(`${API_BASE}/api/import/stats`),
+      const [accountsResult, statsResult] = await Promise.allSettled([
+        api.getAccounts(),
+        api.getDatabaseStats(),
       ]);
 
       // Process accounts
-      if (accountsRes.status === "fulfilled" && accountsRes.value.ok) {
-        const accountsData = await accountsRes.value.json();
+      if (accountsResult.status === "fulfilled") {
+        const accountsData = accountsResult.value as Account[];
         setAccounts(accountsData);
 
         // Select first account by default, hide new account form if accounts exist
@@ -142,9 +106,8 @@ export default function ImportPage() {
       }
 
       // Process stats
-      if (statsRes.status === "fulfilled" && statsRes.value.ok) {
-        const statsData = await statsRes.value.json();
-        setStats(statsData);
+      if (statsResult.status === "fulfilled") {
+        setStats(statsResult.value);
       }
     } catch (err) {
       console.error("Failed to fetch data:", err);
@@ -158,7 +121,17 @@ export default function ImportPage() {
     fetchData();
   }, [fetchData]);
 
-  // Handle file upload
+  // Auto-select broker/file format when account is selected
+  React.useEffect(() => {
+    if (selectedAccountId && accounts.length > 0) {
+      const account = accounts.find((a) => a.account_id === selectedAccountId);
+      if (account?.broker_name) {
+        setSelectedBroker(account.broker_name);
+      }
+    }
+  }, [selectedAccountId, accounts]);
+
+  // Handle file upload using centralized API client
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedAccountId) return;
@@ -168,22 +141,11 @@ export default function ImportPage() {
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("accountId", selectedAccountId.toString());
-      formData.append("broker", selectedBroker);
-
-      const response = await fetch(`${API_BASE}/api/import/upload`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.detail || "Upload failed");
-      }
-
+      const result = await api.uploadTransactionFile(
+        file,
+        selectedAccountId,
+        selectedBroker,
+      );
       setUploadResult(result);
       // Refresh data after successful import
       await fetchData();
@@ -196,7 +158,7 @@ export default function ImportPage() {
     }
   };
 
-  // Create new account
+  // Create new account using centralized API client
   const handleCreateAccount = async () => {
     if (!newAccountName || !newAccountBroker) {
       setError("Account name and broker are required");
@@ -204,29 +166,19 @@ export default function ImportPage() {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/import/accounts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountName: newAccountName,
-          brokerName: newAccountBroker,
-          currency: newAccountCurrency,
-          initialBalance: 0,
-          notes: newAccountNotes || null,
-        }),
+      await api.createAccount({
+        accountName: newAccountName,
+        brokerName: newAccountBroker,
+        currency: newAccountCurrency,
+        initialBalance: 0,
+        notes: newAccountNotes || null,
       });
-
-      if (!response.ok) {
-        const result = await response.json();
-        throw new Error(result.detail || "Failed to create account");
-      }
 
       // Reset form and refresh
       setShowNewAccount(false);
       setNewAccountName("");
       setNewAccountBroker("");
       setNewAccountCurrency(defaultCurrency || "");
-
       setNewAccountNotes("");
       await fetchData();
     } catch (err) {
@@ -234,7 +186,7 @@ export default function ImportPage() {
     }
   };
 
-  // Delete account
+  // Delete account using centralized API client
   const handleDeleteAccount = async (
     accountId: number,
     accountName: string,
@@ -247,17 +199,7 @@ export default function ImportPage() {
     if (!confirm(confirmMsg)) return;
 
     try {
-      const url = `${API_BASE}/api/import/accounts/${accountId}${
-        hasTransactions ? "?deleteTransactions=true" : ""
-      }`;
-
-      const response = await fetch(url, { method: "DELETE" });
-
-      if (!response.ok) {
-        const result = await response.json();
-        throw new Error(result.detail || "Failed to delete account");
-      }
-
+      await api.deleteAccount(accountId, hasTransactions);
       await fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete account");
@@ -268,8 +210,8 @@ export default function ImportPage() {
   const handleExport = async () => {
     try {
       const url = selectedAccountId
-        ? `${API_BASE}/api/import/export?accountId=${selectedAccountId}`
-        : `${API_BASE}/api/import/export`;
+        ? `/api/import/export?accountId=${selectedAccountId}`
+        : `/api/import/export`;
 
       window.open(url, "_blank");
     } catch (err) {
@@ -608,29 +550,18 @@ export default function ImportPage() {
                     <label className="text-sm font-medium mb-2 block">
                       File Format
                     </label>
-                    <select
-                      value={selectedBroker}
-                      onChange={(e) => setSelectedBroker(e.target.value)}
-                      className="w-full px-3 py-2 bg-background border rounded-md"
-                    >
-                      {brokers.map((broker) => (
-                        <option key={broker.key} value={broker.key}>
-                          {broker.name}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="w-full px-3 py-2 bg-muted border rounded-md text-muted-foreground">
+                      {brokers.find((b) => b.key === selectedBroker)?.name ||
+                        selectedBroker}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Format is determined by the account&apos;s broker
+                    </p>
                   </div>
                 </div>
 
                 {/* Upload Area */}
-                <div
-                  className={cn(
-                    "border-2 border-dashed rounded-lg p-8 text-center transition-colors",
-                    !selectedAccountId
-                      ? "opacity-50 cursor-not-allowed"
-                      : "hover:border-primary cursor-pointer",
-                  )}
-                >
+                <div className="flex items-center gap-4">
                   <input
                     type="file"
                     accept=".csv"
@@ -642,38 +573,29 @@ export default function ImportPage() {
                   <label
                     htmlFor="csv-upload"
                     className={cn(
-                      "flex flex-col items-center gap-4",
+                      "inline-flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-colors",
                       selectedAccountId && !isUploading
-                        ? "cursor-pointer"
-                        : "cursor-not-allowed",
+                        ? "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                        : "bg-muted text-muted-foreground cursor-not-allowed",
                     )}
                   >
                     {isUploading ? (
                       <>
-                        <Loader2 className="h-12 w-12 text-muted-foreground animate-spin" />
-                        <div>
-                          <p className="font-medium">Uploading...</p>
-                          <p className="text-sm text-muted-foreground">
-                            Processing your transaction data
-                          </p>
-                        </div>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Uploading...
                       </>
                     ) : (
                       <>
-                        <FileSpreadsheet className="h-12 w-12 text-muted-foreground" />
-                        <div>
-                          <p className="font-medium">
-                            Drop your CSV file here or click to browse
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {selectedAccountId
-                              ? "Supports TransactionHistory.csv from Trade Nation and TD365"
-                              : "Select an account first"}
-                          </p>
-                        </div>
+                        <FileSpreadsheet className="h-4 w-4" />
+                        Choose CSV File
                       </>
                     )}
                   </label>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedAccountId
+                      ? "Supports TransactionHistory.csv from Trade Nation and TD365"
+                      : "Select an account first"}
+                  </p>
                 </div>
 
                 {/* Import Instructions */}

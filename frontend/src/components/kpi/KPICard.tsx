@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { LucideIcon, Info } from "lucide-react";
 import { useCurrencyStore } from "@/store/currency";
-import { useSettingsStore } from "@/store/settings";
 
 export interface KPICardProps {
   title: string;
@@ -52,7 +51,6 @@ export function KPICard({
   tooltip,
 }: KPICardProps) {
   const { formatAmount } = useCurrencyStore();
-  const { defaultCurrency } = useSettingsStore();
 
   // Format the display value
   const renderValue = () => {
@@ -61,10 +59,8 @@ export function KPICard({
     }
 
     // Backend converts to default currency, we just format
-    const displayCurrency = currency || defaultCurrency;
-    const formatted = displayCurrency
-      ? formatAmount(value, displayCurrency)
-      : value.toFixed(2);
+    // No fallback - currency is already guarded above
+    const formatted = formatAmount(value, currency);
 
     return (
       <div className="flex flex-col">

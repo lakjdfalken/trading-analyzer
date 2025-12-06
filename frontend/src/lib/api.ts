@@ -174,6 +174,20 @@ async function apiPut<T>(url: string, body: unknown): Promise<T> {
   return response.json();
 }
 
+async function apiDelete<T>(url: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${url}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new APIError(
+      response.status,
+      error.detail || `API error: ${response.statusText}`,
+    );
+  }
+  return response.json();
+}
+
 // ============================================================================
 // Settings API - Must be loaded before any other data
 // ============================================================================
@@ -429,6 +443,7 @@ export async function getFunding(
 // ============================================================================
 
 export async function getRecentTrades(
+  currency: string,
   limit: number = 10,
   dateRange?: DateRange,
   instruments?: string[],
@@ -440,11 +455,13 @@ export async function getRecentTrades(
     to: formatDate(dateRange?.to),
     instruments: instruments?.join(","),
     accountId: accountId?.toString(),
+    currency,
   });
   return apiFetch(`/api/trades/recent${params}`);
 }
 
 export async function getAllTrades(
+  currency: string,
   page: number = 1,
   pageSize: number = 50,
   dateRange?: DateRange,
@@ -468,6 +485,7 @@ export async function getAllTrades(
     direction,
     sortBy,
     sortOrder,
+    currency,
   });
   return apiFetch(`/api/trades${params}`);
 }
@@ -498,6 +516,98 @@ export async function getInstruments(): Promise<Instrument[]> {
 
 export async function getAccounts(): Promise<Account[]> {
   return apiFetch("/api/import/accounts");
+}
+
+// ============================================================================
+// Import API
+// ============================================================================
+
+export interface Broker {
+  key: string;
+  name: string;
+  supportedFormats: string[];
+}
+
+export interface DatabaseStats {
+  totalTransactions: number;
+  totalAccounts: number;
+  brokers: string[];
+  currencies: string[];
+  dateRange: { from: string; to: string } | null;
+  databaseSizeBytes: number;
+}
+
+export interface ImportResult {
+  success: boolean;
+  message: string;
+  recordsImported: number;
+  recordsSkipped: number;
+  totalRecords: number;
+  accountId: number;
+  broker: string;
+}
+
+export interface CreateAccountParams {
+  accountName: string;
+  brokerName: string;
+  currency: string;
+  initialBalance?: number;
+  notes?: string | null;
+}
+
+export async function getBrokers(): Promise<Broker[]> {
+  return apiFetch("/api/import/brokers");
+}
+
+export async function getDatabaseStats(): Promise<DatabaseStats> {
+  return apiFetch("/api/import/stats");
+}
+
+export async function createAccount(
+  params: CreateAccountParams,
+): Promise<Account> {
+  return apiPost("/api/import/accounts", params);
+}
+
+export async function deleteAccount(
+  accountId: number,
+  deleteTransactions: boolean = false,
+): Promise<{ success: boolean; message: string }> {
+  return apiDelete(
+    `/api/import/accounts/${accountId}${deleteTransactions ? "?deleteTransactions=true" : ""}`,
+  );
+}
+
+export async function uploadTransactionFile(
+  file: File,
+  accountId: number,
+  broker: string,
+): Promise<ImportResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("accountId", accountId.toString());
+  formData.append("broker", broker);
+
+  const response = await fetch(`${API_BASE}/api/import/upload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new APIError(response.status, error.detail || "Upload failed");
+  }
+
+  return response.json();
+}
+
+export async function deleteTransactions(
+  accountId?: number | string,
+): Promise<{ success: boolean; message: string }> {
+  const params = accountId
+    ? `accountId=${accountId}&confirm=true`
+    : "confirm=true";
+  return apiDelete(`/api/import/transactions?${params}`);
 }
 
 // ============================================================================

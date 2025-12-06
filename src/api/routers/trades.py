@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from api.models import PaginatedResponse, Trade
+from api.services.currency import CurrencyService
 from api.services.database import db
 
 
@@ -40,6 +41,26 @@ def serialize_trade(trade_dict: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def convert_trade_currency(
+    trade_dict: Dict[str, Any], target_currency: str
+) -> Dict[str, Any]:
+    """Convert trade P&L to target currency."""
+    trade_currency = trade_dict.get("currency")
+
+    if not trade_currency or trade_currency == target_currency:
+        trade_dict["currency"] = target_currency
+        return trade_dict
+
+    pnl = trade_dict.get("pnl", 0) or 0
+    converted_pnl = CurrencyService.convert(pnl, trade_currency, target_currency)
+
+    if converted_pnl is not None:
+        trade_dict["pnl"] = converted_pnl
+        trade_dict["currency"] = target_currency
+
+    return trade_dict
+
+
 router = APIRouter()
 
 
@@ -50,6 +71,9 @@ async def get_recent_trades(
     end_date: Optional[datetime] = Query(None, alias="to"),
     instruments: Optional[List[str]] = Query(None),
     account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for P&L conversion (required)"
+    ),
 ):
     """
     Get the most recent trades.
@@ -60,6 +84,7 @@ async def get_recent_trades(
         end_date: Filter trades until this date
         instruments: Filter by specific instruments
         account_id: Filter by specific account (default: all accounts)
+        currency: Target currency for P&L conversion
 
     Returns:
         List of recent trades
@@ -72,6 +97,10 @@ async def get_recent_trades(
             instruments=instruments,
             account_id=account_id,
         )
+
+        # Convert P&L to target currency
+        trades = [convert_trade_currency(t, currency) for t in trades]
+
         # Serialize to camelCase for frontend
         return [serialize_trade(t) for t in trades]
     except Exception as e:
@@ -90,6 +119,9 @@ async def get_all_trades(
     direction: Optional[str] = Query(None),
     sort_by: Optional[str] = Query("entryTime", alias="sortBy"),
     sort_order: Optional[str] = Query("desc", alias="sortOrder"),
+    currency: str = Query(
+        ..., description="Target currency for P&L conversion (required)"
+    ),
 ):
     """
     Get paginated list of all trades with optional filters.
@@ -103,6 +135,7 @@ async def get_all_trades(
         direction: Filter by trade direction (long/short)
         sort_by: Field to sort by
         sort_order: Sort order (asc/desc)
+        currency: Target currency for P&L conversion
 
     Returns:
         Paginated response with trades, total count, and page info
@@ -121,6 +154,9 @@ async def get_all_trades(
         # Filter by direction if specified
         if direction:
             trades = [t for t in trades if t.get("direction") == direction]
+
+        # Convert P&L to target currency
+        trades = [convert_trade_currency(t, currency) for t in trades]
 
         total_pages = (total + page_size - 1) // page_size
 

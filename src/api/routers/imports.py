@@ -17,6 +17,7 @@ import tempfile
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import chardet
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -420,6 +421,47 @@ async def upload_csv(
     # Save uploaded file to temp location
     try:
         content = await file.read()
+
+        # Detect file encoding
+        detection = chardet.detect(content)
+        encoding = detection.get("encoding")
+        confidence = detection.get("confidence", 0)
+
+        # Require high confidence for supported encodings
+        supported_encodings = [
+            "utf-8",
+            "utf-16",
+            "utf-16le",
+            "utf-16be",
+            "ascii",
+            "iso-8859-1",
+            "windows-1252",
+        ]
+
+        if not encoding:
+            raise HTTPException(
+                status_code=400,
+                detail="Unable to detect file encoding. Please convert the file to UTF-8 and try again.",
+            )
+
+        encoding_lower = encoding.lower()
+        if encoding_lower not in supported_encodings or confidence < 0.7:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported or uncertain file encoding: {encoding} (confidence: {confidence:.0%}). "
+                f"Please convert the file to UTF-8 and try again.",
+            )
+
+        # Decode content to string and re-encode as UTF-8 for consistent processing
+        try:
+            decoded_content = content.decode(encoding)
+            content = decoded_content.encode("utf-8")
+        except (UnicodeDecodeError, LookupError) as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to decode file with detected encoding {encoding}. "
+                f"Please convert the file to UTF-8 and try again.",
+            )
 
         # Create temp file
         with tempfile.NamedTemporaryFile(

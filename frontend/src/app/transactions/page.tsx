@@ -137,12 +137,27 @@ export default function TransactionsPage() {
 
   // Fetch data when date range or account changes (wait for settings)
   React.useEffect(() => {
-    if (!isClient || !localDateRange.from || !settingsLoaded) return;
+    if (
+      !isClient ||
+      !localDateRange.from ||
+      !settingsLoaded ||
+      !defaultCurrency
+    )
+      return;
 
     const fetchData = async () => {
       setIsLoading(true);
       try {
+        // Use account currency when single account selected, defaultCurrency for all accounts
+        const selectedAccount = selectedAccountId
+          ? accounts.find((a) => a.account_id === selectedAccountId)
+          : null;
+        const currency = selectedAccount
+          ? selectedAccount.currency
+          : defaultCurrency;
+
         const tradesData = await api.getRecentTrades(
+          currency,
           500,
           {
             from: localDateRange.from,
@@ -178,7 +193,25 @@ export default function TransactionsPage() {
       }
     };
     fetchData();
-  }, [localDateRange, isClient, selectedAccountId, settingsLoaded]);
+  }, [
+    localDateRange,
+    isClient,
+    selectedAccountId,
+    settingsLoaded,
+    defaultCurrency,
+    accounts,
+  ]);
+
+  // Compute display currency based on selected account
+  const displayCurrency = React.useMemo(() => {
+    if (selectedAccountId) {
+      const selectedAccount = accounts.find(
+        (a) => a.account_id === selectedAccountId,
+      );
+      return selectedAccount?.currency || defaultCurrency;
+    }
+    return defaultCurrency;
+  }, [selectedAccountId, accounts, defaultCurrency]);
 
   // Get unique instruments for filter
   const availableInstruments = React.useMemo(() => {
@@ -361,7 +394,7 @@ export default function TransactionsPage() {
         trade.quantity,
         trade.pnl.toFixed(2),
         trade.pnlPercent.toFixed(2),
-        trade.currency || defaultCurrency || "",
+        trade.currency || "",
       ].join(",");
     });
 
@@ -474,6 +507,14 @@ export default function TransactionsPage() {
           </div>
         )}
 
+        {/* Disclaimer when 500 trades limit reached */}
+        {trades.length >= 500 && (
+          <div className="bg-yellow-500/10 border border-yellow-500/50 text-yellow-600 dark:text-yellow-400 px-4 py-3 rounded-md text-sm">
+            <strong>Note:</strong> Showing maximum of 500 trades. Adjust the
+            date range to see fewer trades with complete data.
+          </div>
+        )}
+
         {/* Summary Stats */}
         {summaryStats && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -493,8 +534,8 @@ export default function TransactionsPage() {
                       : "text-red-500",
                   )}
                 >
-                  {defaultCurrency
-                    ? formatAmount(summaryStats.totalPnl, defaultCurrency)
+                  {displayCurrency
+                    ? formatAmount(summaryStats.totalPnl, displayCurrency)
                     : summaryStats.totalPnl.toFixed(2)}
                 </div>
                 <p className="text-xs text-muted-foreground">Total P&L</p>
@@ -822,11 +863,8 @@ export default function TransactionsPage() {
                             trade.pnl >= 0 ? "text-green-500" : "text-red-500",
                           )}
                         >
-                          {trade.currency || defaultCurrency
-                            ? formatAmount(
-                                trade.pnl,
-                                trade.currency || defaultCurrency!,
-                              )
+                          {trade.currency
+                            ? formatAmount(trade.pnl, trade.currency)
                             : trade.pnl.toFixed(2)}
                         </td>
                         <td

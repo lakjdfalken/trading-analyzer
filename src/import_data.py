@@ -322,39 +322,25 @@ def import_transaction_data(file_path, broker_name="trade_nation", account_id=No
         raise ValueError("Account ID must be provided for importing transactions")
 
     # Detect and handle file format
+    # File is already converted to UTF-8 by the import endpoint
     try:
         file_format = detect_file_format(file_path)
         logger.debug(f"Detected file format: {file_format}")
 
         # Read new data with appropriate format handling
         if file_format == "windows":
+            # Windows Excel format with ="value" encapsulation needs cleaning
             temp_file = clean_csv_format(file_path)
-            new_df = pd.read_csv(temp_file)
+            new_df = pd.read_csv(temp_file, encoding="utf-8")
             logger.debug(f"Successfully read Windows format CSV, shape: {new_df.shape}")
-        elif file_format == "mac":
-            new_df = pd.read_csv(file_path, encoding="utf-16le")
-            logger.debug(f"Successfully read Mac format CSV, shape: {new_df.shape}")
         else:
-            # Try standard encoding as fallback
-            try:
-                logger.warning(
-                    f"Unsupported file format: {file_format}, trying standard CSV"
-                )
-                new_df = pd.read_csv(file_path)
-                logger.debug(f"Successfully read standard CSV, shape: {new_df.shape}")
-            except Exception as e:
-                logger.error(f"Error reading CSV with standard encoding: {str(e)}")
-                # Try UTF-8 encoding
-                try:
-                    new_df = pd.read_csv(file_path, encoding="utf-8")
-                    logger.debug(f"Successfully read UTF-8 CSV, shape: {new_df.shape}")
-                except Exception as e2:
-                    logger.error(f"Error reading CSV with UTF-8 encoding: {str(e2)}")
-                    raise ValueError(f"Could not read file: {file_path}") from e2
+            # Standard CSV format (already UTF-8 from import endpoint)
+            new_df = pd.read_csv(file_path, encoding="utf-8")
+            logger.debug(f"Successfully read standard CSV, shape: {new_df.shape}")
     except Exception as e:
-        logger.error(f"Error detecting file format: {str(e)}")
+        logger.error(f"Error reading CSV file: {str(e)}")
         logger.debug(traceback.format_exc())
-        raise
+        raise ValueError(f"Could not read CSV file: {str(e)}")
 
     logger.debug(f"Original columns: {new_df.columns.tolist()}")
     logger.debug(f"Sample data:\n{new_df.head(2)}")

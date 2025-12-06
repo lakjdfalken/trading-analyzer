@@ -2,7 +2,6 @@
 
 import React from "react";
 import { useCurrencyStore } from "@/store/currency";
-import { useSettingsStore } from "@/store/settings";
 import { cn } from "@/lib/utils";
 
 interface CurrencyDisplayProps {
@@ -80,12 +79,11 @@ export function CurrencyDisplayCompact({
   colorize = false,
 }: Omit<CurrencyDisplayProps, "size" | "convertedClassName" | "showOriginal">) {
   const { formatAmount } = useCurrencyStore();
-  const { defaultCurrency } = useSettingsStore();
 
   // Display in the currency provided (backend should have already converted if needed)
-  const displayCurrency = currency || defaultCurrency;
-  const formatted = displayCurrency
-    ? formatAmount(amount, displayCurrency)
+  // No fallback - if currency is missing, show raw number to make the bug visible
+  const formatted = currency
+    ? formatAmount(amount, currency)
     : amount.toFixed(2);
 
   const colorClass = colorize

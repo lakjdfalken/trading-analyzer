@@ -653,33 +653,15 @@ export default function SettingsPage() {
                       try {
                         if (selectedAccountToDelete === "all") {
                           // Delete all transactions
-                          const res = await fetch(
-                            "/api/import/transactions?confirm=true",
-                            { method: "DELETE" },
-                          );
-                          if (!res.ok) {
-                            const err = await res.json();
-                            throw new Error(
-                              err.detail || "Failed to delete data",
-                            );
-                          }
-                          const result = await res.json();
+                          const result = await api.deleteTransactions();
                           setDeleteSuccess(
                             result.message || "All data deleted successfully",
                           );
                         } else {
                           // Delete transactions for specific account (not the account itself)
-                          const res = await fetch(
-                            `/api/import/transactions?accountId=${selectedAccountToDelete}&confirm=true`,
-                            { method: "DELETE" },
+                          const result = await api.deleteTransactions(
+                            selectedAccountToDelete,
                           );
-                          if (!res.ok) {
-                            const err = await res.json();
-                            throw new Error(
-                              err.detail || "Failed to delete transactions",
-                            );
-                          }
-                          const result = await res.json();
                           setDeleteSuccess(
                             result.message ||
                               "Transactions deleted successfully",
