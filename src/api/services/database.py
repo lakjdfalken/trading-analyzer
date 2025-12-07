@@ -7,7 +7,7 @@ in formats suitable for the API responses.
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -1115,8 +1115,8 @@ class TradingDatabase:
             start_date, end_date, instruments, None
         )
 
-        # Today's date for today's stats
-        today = datetime.now().date().isoformat()
+        # Today's date for today's stats (UTC for consistency)
+        today = datetime.now(timezone.utc).date().isoformat()
 
         # Get today's P&L with currency conversion (using account currency)
         today_pnl_query = f"""

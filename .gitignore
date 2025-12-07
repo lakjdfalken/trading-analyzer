@@ -22,6 +22,7 @@ frontend/node_modules/
 frontend/.next/
 frontend/out/
 frontend/tsconfig.tsbuildinfo
+tests/
 
 # Documentation drafts
 COMPLETE_REFACTORING_SUMMARY.md

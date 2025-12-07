@@ -14,7 +14,7 @@ import os
 # Add parent paths for imports
 import sys
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import chardet
@@ -736,7 +736,9 @@ async def export_transactions(
     output.seek(0)
 
     # Generate filename
-    filename = f"transactions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    filename = (
+        f"transactions_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+    )
 
     return StreamingResponse(
         iter([output.getvalue()]),

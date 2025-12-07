@@ -2,7 +2,7 @@ import logging
 import os
 import sqlite3
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -154,7 +154,7 @@ def fix_future_dates(df, date_columns=["transaction_date", "open_period"]):
     corrects them by swapping day and month if they appear to be in MM/DD format
     instead of DD/MM format.
     """
-    current_year = datetime.now().year
+    current_year = datetime.utcnow().year
 
     for col in date_columns:
         if col in df.columns:
@@ -162,8 +162,8 @@ def fix_future_dates(df, date_columns=["transaction_date", "open_period"]):
             if not pd.api.types.is_datetime64_any_dtype(df[col]):
                 df[col] = pd.to_datetime(df[col], errors="coerce")
 
-            # Check for future dates
-            future_mask = df[col] > datetime.now()
+            # Check for future dates (use naive datetime for pandas comparison)
+            future_mask = df[col] > datetime.utcnow()
             future_count = future_mask.sum()
 
             if future_count > 0:
@@ -199,7 +199,7 @@ def fix_future_dates(df, date_columns=["transaction_date", "open_period"]):
                 df.loc[future_mask, col] = fixed_dates
 
                 # Check if we still have future dates
-                still_future = (df[col] > datetime.now()).sum()
+                still_future = (df[col] > datetime.utcnow()).sum()
                 if still_future > 0:
                     logger.warning(
                         f"Still have {still_future} future dates after fixing"
