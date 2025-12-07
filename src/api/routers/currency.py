@@ -51,7 +51,7 @@ class BulkRatesUpdate(BaseModel):
 class CurrencyPreferences(BaseModel):
     """User currency preferences."""
 
-    default_currency: str = Field(alias="defaultCurrency")
+    default_currency: Optional[str] = Field(default=None, alias="defaultCurrency")
     show_converted: bool = Field(default=True, alias="showConverted")
 
     class Config:

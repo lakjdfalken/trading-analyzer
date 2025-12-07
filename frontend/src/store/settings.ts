@@ -48,7 +48,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       const settings = await api.getSettings();
       set({
-        defaultCurrency: settings.defaultCurrency,
+        defaultCurrency: settings.defaultCurrency ?? undefined,
         showConverted: settings.showConverted,
         isLoaded: true,
         isLoading: false,

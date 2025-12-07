@@ -14,7 +14,7 @@ export interface DateRange {
 }
 
 export interface Settings {
-  defaultCurrency: string;
+  defaultCurrency: string | null;
   showConverted: boolean;
 }
 
@@ -194,7 +194,7 @@ async function apiDelete<T>(url: string): Promise<T> {
 
 export async function getSettings(): Promise<Settings> {
   const response = await apiFetch<{
-    defaultCurrency: string;
+    defaultCurrency: string | null;
     showConverted: boolean;
   }>("/api/currency/preferences");
   return {
