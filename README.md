@@ -261,6 +261,12 @@ The application stores data in a platform-specific location:
 
 ## Changelog
 
+### v2.0.10
+
+- **Fixed Balance History**: Carry forward last known balance for accounts without transactions on a given day
+- **UTC Date Handling**: All backend date operations now use UTC for consistency
+- **Architecture Rules**: Added comprehensive `.rules` file to prevent common bugs
+
 ### v2.0.6
 
 - **Account Selection**: Filter all data by account across Dashboard and Analytics pages
