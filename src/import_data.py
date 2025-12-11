@@ -1,3 +1,4 @@
+import csv
 import logging
 import os
 import sqlite3
@@ -31,6 +32,60 @@ DB_COLUMN_NAMES = {
 }
 
 
+def detect_delimiter(file_path, encoding="utf-8-sig"):
+    """
+    Detect the delimiter used in a CSV file.
+
+    Args:
+        file_path: Path to the CSV file
+        encoding: File encoding to use
+
+    Returns:
+        Detected delimiter character (comma, semicolon, or tab)
+    """
+    try:
+        with open(file_path, "r", encoding=encoding) as f:
+            # Read first few lines for detection
+            sample = f.read(8192)
+
+        # Use csv.Sniffer to detect delimiter
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
+            logger.debug(f"Detected delimiter: {repr(dialect.delimiter)}")
+            return dialect.delimiter
+        except csv.Error:
+            # Sniffer failed, try manual detection
+            pass
+
+        # Manual detection: count occurrences in first line
+        first_line = sample.split("\n")[0] if "\n" in sample else sample
+
+        delimiters = {
+            ",": first_line.count(","),
+            ";": first_line.count(";"),
+            "\t": first_line.count("\t"),
+            "|": first_line.count("|"),
+        }
+
+        # Pick the delimiter with most occurrences
+        best_delimiter = max(delimiters, key=delimiters.get)
+
+        # Only use if we found at least a few occurrences
+        if delimiters[best_delimiter] >= 2:
+            logger.debug(
+                f"Manually detected delimiter: {repr(best_delimiter)} (count: {delimiters[best_delimiter]})"
+            )
+            return best_delimiter
+
+        # Default to comma
+        logger.debug("Could not detect delimiter, defaulting to comma")
+        return ","
+
+    except Exception as e:
+        logger.warning(f"Error detecting delimiter: {e}, defaulting to comma")
+        return ","
+
+
 def standardize_columns(df, mapping):
     """
     Standardize column names using the mapping configuration.
@@ -44,19 +99,52 @@ def standardize_columns(df, mapping):
     """
     standardized_df = df.copy()
 
+    # Clean column names: strip whitespace and remove invisible characters
+    cleaned_columns = {}
+    for col in df.columns:
+        # Strip whitespace, BOM, and other invisible characters
+        cleaned = col.strip().strip("\ufeff").strip("\u200b").strip()
+        cleaned_columns[col] = cleaned
+        if col != cleaned:
+            logger.debug(f"Cleaned column name: '{repr(col)}' -> '{cleaned}'")
+    standardized_df = standardized_df.rename(columns=cleaned_columns)
+
+    logger.debug(f"Columns after cleaning: {list(standardized_df.columns)}")
+
+    # Build a lowercase lookup for case-insensitive matching
+    column_lower_map = {col.lower(): col for col in standardized_df.columns}
+    logger.debug(f"Lowercase column map: {column_lower_map}")
+
     # Create a mapping from actual column names to standardized names
     column_map = {}
     for std_name, possible_names in mapping.items():
         for possible_name in possible_names:
-            if possible_name in df.columns:
+            # Try exact match first
+            if possible_name in standardized_df.columns:
                 column_map[possible_name] = std_name
+                break
+            # Try case-insensitive match
+            possible_lower = possible_name.lower()
+            if possible_lower in column_lower_map:
+                actual_col = column_lower_map[possible_lower]
+                column_map[actual_col] = std_name
+                logger.debug(f"Case-insensitive match: '{actual_col}' -> '{std_name}'")
                 break
 
     # Log any missing required columns
     for std_name, possible_names in mapping.items():
-        if not any(name in df.columns for name in possible_names):
+        found = False
+        for possible_name in possible_names:
+            if possible_name in standardized_df.columns:
+                found = True
+                break
+            if possible_name.lower() in column_lower_map:
+                found = True
+                break
+        if not found:
             logger.warning(
-                f"No match found for required column '{std_name}'. Expected one of: {possible_names}"
+                f"No match found for required column '{std_name}'. Expected one of: {possible_names}. "
+                f"Available columns: {list(standardized_df.columns)}"
             )
 
     # Rename the columns
@@ -331,12 +419,19 @@ def import_transaction_data(file_path, broker_name="trade_nation", account_id=No
         if file_format == "windows":
             # Windows Excel format with ="value" encapsulation needs cleaning
             temp_file = clean_csv_format(file_path)
-            new_df = pd.read_csv(temp_file, encoding="utf-8-sig")
-            logger.debug(f"Successfully read Windows format CSV, shape: {new_df.shape}")
+            delimiter = detect_delimiter(temp_file)
+            new_df = pd.read_csv(temp_file, encoding="utf-8-sig", sep=delimiter)
+            logger.debug(
+                f"Successfully read Windows format CSV with delimiter {repr(delimiter)}, shape: {new_df.shape}"
+            )
         else:
             # Standard CSV format (already UTF-8 from import endpoint)
-            new_df = pd.read_csv(file_path, encoding="utf-8-sig")
-            logger.debug(f"Successfully read standard CSV, shape: {new_df.shape}")
+            # Detect delimiter (could be comma, semicolon, or tab)
+            delimiter = detect_delimiter(file_path)
+            new_df = pd.read_csv(file_path, encoding="utf-8-sig", sep=delimiter)
+            logger.debug(
+                f"Successfully read standard CSV with delimiter {repr(delimiter)}, shape: {new_df.shape}"
+            )
     except Exception as e:
         logger.error(f"Error reading CSV file: {str(e)}")
         logger.debug(traceback.format_exc())

@@ -113,6 +113,25 @@ class KPIMetrics(BaseModel):
     avg_trade_duration: int = Field(alias="avgTradeDuration")  # in minutes
     currency: Optional[str] = None
 
+    # Daily averages
+    avg_daily_pnl: float = Field(default=0.0, alias="avgDailyPnl")
+    avg_daily_points: float = Field(default=0.0, alias="avgDailyPoints")
+    avg_trades_per_day: float = Field(default=0.0, alias="avgTradesPerDay")
+    best_day_pnl: float = Field(default=0.0, alias="bestDayPnl")
+    worst_day_pnl: float = Field(default=0.0, alias="worstDayPnl")
+
+    # Monthly averages
+    avg_monthly_pnl: float = Field(default=0.0, alias="avgMonthlyPnl")
+    avg_monthly_points: float = Field(default=0.0, alias="avgMonthlyPoints")
+    avg_trades_per_month: float = Field(default=0.0, alias="avgTradesPerMonth")
+    best_month_pnl: float = Field(default=0.0, alias="bestMonthPnl")
+    worst_month_pnl: float = Field(default=0.0, alias="worstMonthPnl")
+
+    # Yearly summary
+    current_year_pnl: float = Field(default=0.0, alias="currentYearPnl")
+    current_year_points: float = Field(default=0.0, alias="currentYearPoints")
+    avg_yearly_pnl: float = Field(default=0.0, alias="avgYearlyPnl")
+
     class Config:
         populate_by_name = True
 

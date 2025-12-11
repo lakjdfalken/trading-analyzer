@@ -36,6 +36,22 @@ export interface KPIMetrics {
   dailyLossUsed: number;
   dailyLossLimit: number;
   currency: string;
+  // Daily averages
+  avgDailyPnl: number;
+  avgDailyPoints: number;
+  avgTradesPerDay: number;
+  bestDayPnl: number;
+  worstDayPnl: number;
+  // Monthly averages
+  avgMonthlyPnl: number;
+  avgMonthlyPoints: number;
+  avgTradesPerMonth: number;
+  bestMonthPnl: number;
+  worstMonthPnl: number;
+  // Yearly summary
+  currentYearPnl: number;
+  currentYearPoints: number;
+  avgYearlyPnl: number;
 }
 
 export interface Trade {

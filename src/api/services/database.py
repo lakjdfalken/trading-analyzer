@@ -239,16 +239,21 @@ class TradingDatabase:
         where_clause = " AND ".join(conditions)
 
         # Get balance per date and account currency for conversion
+        # Use subquery to get the last transaction (by transaction_id) for each day/account
         query = f"""
             SELECT
                 DATE(bt."Transaction Date") as date,
                 bt.account_id,
-                MAX(bt."Balance") as balance,
+                bt."Balance" as balance,
                 a.currency as account_currency
             FROM broker_transactions bt
             LEFT JOIN accounts a ON bt.account_id = a.account_id
+            INNER JOIN (
+                SELECT DATE("Transaction Date") as txn_date, account_id, MAX("Transaction Date") as last_txn_time
+                FROM broker_transactions
+                GROUP BY DATE("Transaction Date"), account_id
+            ) last_txn ON bt."Transaction Date" = last_txn.last_txn_time AND bt.account_id = last_txn.account_id
             WHERE {where_clause}
-            GROUP BY DATE(bt."Transaction Date"), bt.account_id, a.currency
             ORDER BY date ASC
         """
 
@@ -372,14 +377,19 @@ class TradingDatabase:
 
             query = f"""
                 SELECT
-                    DATE("Transaction Date") as date,
-                    MAX("Balance") as balance
-                FROM broker_transactions
-                WHERE {where_clause} AND account_id = ?
-                GROUP BY DATE("Transaction Date")
+                    DATE(bt."Transaction Date") as date,
+                    bt."Balance" as balance
+                FROM broker_transactions bt
+                INNER JOIN (
+                    SELECT DATE("Transaction Date") as txn_date, MAX("Transaction Date") as last_txn_time
+                    FROM broker_transactions
+                    WHERE account_id = ?
+                    GROUP BY DATE("Transaction Date")
+                ) last_txn ON bt."Transaction Date" = last_txn.last_txn_time
+                WHERE {where_clause} AND bt.account_id = ?
                 ORDER BY date ASC
             """
-            acc_params = list(params) + [acc_id]
+            acc_params = [acc_id] + list(params) + [acc_id]
             data = execute_query(query, tuple(acc_params))
 
             if data:
@@ -1144,6 +1154,165 @@ class TradingDatabase:
             today_pnl += pnl
             today_trades += trades
 
+        # Get daily stats for averages (P&L and points per day)
+        daily_stats_query = f"""
+            SELECT
+                DATE(bt."Transaction Date") as date,
+                a.currency as currency,
+                SUM(bt."P/L") as pnl,
+                SUM(ABS(COALESCE(bt."Closing", 0) - COALESCE(bt."Opening", 0))) as points,
+                COUNT(*) as trades
+            FROM broker_transactions bt
+            JOIN accounts a ON bt.account_id = a.account_id
+            WHERE {where_clause}
+            GROUP BY DATE(bt."Transaction Date"), a.currency
+            ORDER BY date
+        """
+        daily_stats_results = execute_query(daily_stats_query, tuple(params))
+
+        # Aggregate daily stats by date with currency conversion
+        daily_pnl_map: Dict[str, float] = {}
+        daily_points_map: Dict[str, float] = {}
+        daily_trades_map: Dict[str, int] = {}
+
+        for row in daily_stats_results:
+            date = row["date"]
+            currency = row.get("currency") or target_currency
+            pnl = row.get("pnl") or 0
+            points = row.get("points") or 0
+            trades = row.get("trades") or 0
+
+            if currency != target_currency:
+                converted = CurrencyService.convert(pnl, currency, target_currency)
+                if converted is not None:
+                    pnl = converted
+
+            if date not in daily_pnl_map:
+                daily_pnl_map[date] = 0.0
+                daily_points_map[date] = 0.0
+                daily_trades_map[date] = 0
+
+            daily_pnl_map[date] += pnl
+            daily_points_map[date] += points
+            daily_trades_map[date] += trades
+
+        # Calculate daily averages
+        num_days = len(daily_pnl_map)
+        daily_pnl_values = list(daily_pnl_map.values())
+        daily_points_values = list(daily_points_map.values())
+        daily_trades_values = list(daily_trades_map.values())
+
+        avg_daily_pnl = sum(daily_pnl_values) / num_days if num_days > 0 else 0
+        avg_daily_points = sum(daily_points_values) / num_days if num_days > 0 else 0
+        avg_trades_per_day = sum(daily_trades_values) / num_days if num_days > 0 else 0
+        best_day_pnl = max(daily_pnl_values) if daily_pnl_values else 0
+        worst_day_pnl = min(daily_pnl_values) if daily_pnl_values else 0
+
+        # Get monthly stats for averages
+        monthly_stats_query = f"""
+            SELECT
+                strftime('%Y-%m', bt."Transaction Date") as month,
+                a.currency as currency,
+                SUM(bt."P/L") as pnl,
+                SUM(ABS(COALESCE(bt."Closing", 0) - COALESCE(bt."Opening", 0))) as points,
+                COUNT(*) as trades
+            FROM broker_transactions bt
+            JOIN accounts a ON bt.account_id = a.account_id
+            WHERE {where_clause}
+            GROUP BY strftime('%Y-%m', bt."Transaction Date"), a.currency
+            ORDER BY month
+        """
+        monthly_stats_results = execute_query(monthly_stats_query, tuple(params))
+
+        # Aggregate monthly stats by month with currency conversion
+        monthly_pnl_map: Dict[str, float] = {}
+        monthly_points_map: Dict[str, float] = {}
+        monthly_trades_map: Dict[str, int] = {}
+
+        for row in monthly_stats_results:
+            month = row["month"]
+            currency = row.get("currency") or target_currency
+            pnl = row.get("pnl") or 0
+            points = row.get("points") or 0
+            trades = row.get("trades") or 0
+
+            if currency != target_currency:
+                converted = CurrencyService.convert(pnl, currency, target_currency)
+                if converted is not None:
+                    pnl = converted
+
+            if month not in monthly_pnl_map:
+                monthly_pnl_map[month] = 0.0
+                monthly_points_map[month] = 0.0
+                monthly_trades_map[month] = 0
+
+            monthly_pnl_map[month] += pnl
+            monthly_points_map[month] += points
+            monthly_trades_map[month] += trades
+
+        # Calculate monthly averages
+        num_months = len(monthly_pnl_map)
+        monthly_pnl_values = list(monthly_pnl_map.values())
+        monthly_points_values = list(monthly_points_map.values())
+        monthly_trades_values = list(monthly_trades_map.values())
+
+        avg_monthly_pnl = sum(monthly_pnl_values) / num_months if num_months > 0 else 0
+        avg_monthly_points = (
+            sum(monthly_points_values) / num_months if num_months > 0 else 0
+        )
+        avg_trades_per_month = (
+            sum(monthly_trades_values) / num_months if num_months > 0 else 0
+        )
+        best_month_pnl = max(monthly_pnl_values) if monthly_pnl_values else 0
+        worst_month_pnl = min(monthly_pnl_values) if monthly_pnl_values else 0
+
+        # Get yearly stats
+        current_year = datetime.now(timezone.utc).year
+        yearly_stats_query = f"""
+            SELECT
+                strftime('%Y', bt."Transaction Date") as year,
+                a.currency as currency,
+                SUM(bt."P/L") as pnl,
+                SUM(ABS(COALESCE(bt."Closing", 0) - COALESCE(bt."Opening", 0))) as points
+            FROM broker_transactions bt
+            JOIN accounts a ON bt.account_id = a.account_id
+            WHERE {where_clause}
+            GROUP BY strftime('%Y', bt."Transaction Date"), a.currency
+            ORDER BY year
+        """
+        yearly_stats_results = execute_query(yearly_stats_query, tuple(params))
+
+        # Aggregate yearly stats by year with currency conversion
+        yearly_pnl_map: Dict[str, float] = {}
+        yearly_points_map: Dict[str, float] = {}
+
+        for row in yearly_stats_results:
+            year = row["year"]
+            currency = row.get("currency") or target_currency
+            pnl = row.get("pnl") or 0
+            points = row.get("points") or 0
+
+            if currency != target_currency:
+                converted = CurrencyService.convert(pnl, currency, target_currency)
+                if converted is not None:
+                    pnl = converted
+
+            if year not in yearly_pnl_map:
+                yearly_pnl_map[year] = 0.0
+                yearly_points_map[year] = 0.0
+
+            yearly_pnl_map[year] += pnl
+            yearly_points_map[year] += points
+
+        # Calculate yearly values
+        current_year_str = str(current_year)
+        current_year_pnl = yearly_pnl_map.get(current_year_str, 0)
+        current_year_points = yearly_points_map.get(current_year_str, 0)
+
+        num_years = len(yearly_pnl_map)
+        yearly_pnl_values = list(yearly_pnl_map.values())
+        avg_yearly_pnl = sum(yearly_pnl_values) / num_years if num_years > 0 else 0
+
         return {
             "totalPnl": round(total_pnl, 2),
             "winRate": round(win_rate, 1),
@@ -1160,6 +1329,22 @@ class TradingDatabase:
             "totalExposure": 0,  # Would need real-time data
             "avgTradeDuration": 120,  # Default 2 hours, would need calculation
             "currency": target_currency,
+            # Daily averages
+            "avgDailyPnl": round(avg_daily_pnl, 2),
+            "avgDailyPoints": round(avg_daily_points, 2),
+            "avgTradesPerDay": round(avg_trades_per_day, 1),
+            "bestDayPnl": round(best_day_pnl, 2),
+            "worstDayPnl": round(worst_day_pnl, 2),
+            # Monthly averages
+            "avgMonthlyPnl": round(avg_monthly_pnl, 2),
+            "avgMonthlyPoints": round(avg_monthly_points, 2),
+            "avgTradesPerMonth": round(avg_trades_per_month, 1),
+            "bestMonthPnl": round(best_month_pnl, 2),
+            "worstMonthPnl": round(worst_month_pnl, 2),
+            # Yearly summary
+            "currentYearPnl": round(current_year_pnl, 2),
+            "currentYearPoints": round(current_year_points, 2),
+            "avgYearlyPnl": round(avg_yearly_pnl, 2),
         }
 
     @staticmethod
@@ -1384,11 +1569,15 @@ class TradingDatabase:
                 DATE(bt."Transaction Date") as date,
                 bt.account_id,
                 a.currency as currency,
-                MAX(bt."Balance") as balance
+                bt."Balance" as balance
             FROM broker_transactions bt
             JOIN accounts a ON bt.account_id = a.account_id
+            INNER JOIN (
+                SELECT DATE("Transaction Date") as txn_date, account_id, MAX("Transaction Date") as last_txn_time
+                FROM broker_transactions
+                GROUP BY DATE("Transaction Date"), account_id
+            ) last_txn ON bt."Transaction Date" = last_txn.last_txn_time AND bt.account_id = last_txn.account_id
             WHERE {balance_where}
-            GROUP BY DATE(bt."Transaction Date"), bt.account_id
             ORDER BY date ASC
         """
 

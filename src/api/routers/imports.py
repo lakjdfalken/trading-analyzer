@@ -427,41 +427,81 @@ async def upload_csv(
         encoding = detection.get("encoding")
         confidence = detection.get("confidence", 0)
 
-        # Require high confidence for supported encodings
+        # Supported encodings with common aliases
         supported_encodings = [
             "utf-8",
+            "utf-8-sig",
             "utf-16",
             "utf-16le",
             "utf-16be",
             "ascii",
+            "us-ascii",
             "iso-8859-1",
+            "iso-8859-15",
+            "latin-1",
+            "latin1",
             "windows-1252",
+            "cp1252",
+            "mac-roman",
+            "macroman",
         ]
 
-        if not encoding:
-            raise HTTPException(
-                status_code=400,
-                detail="Unable to detect file encoding. Please convert the file to UTF-8 and try again.",
-            )
+        # Normalize encoding name
+        encoding_lower = (encoding or "").lower().replace("_", "-").replace(" ", "-")
 
-        encoding_lower = encoding.lower()
-        if encoding_lower not in supported_encodings or confidence < 0.7:
+        # Map common aliases to standard names
+        encoding_aliases = {
+            "us-ascii": "ascii",
+            "latin1": "latin-1",
+            "latin-1": "iso-8859-1",
+            "cp1252": "windows-1252",
+            "macroman": "mac-roman",
+        }
+
+        # Try to decode with detected encoding, then fallback chain
+        decoded_content = None
+        used_encoding = None
+
+        # Build list of encodings to try
+        encodings_to_try = []
+        if encoding_lower:
+            # Add detected encoding first
+            encodings_to_try.append(encoding_lower)
+            # Add alias if exists
+            if encoding_lower in encoding_aliases:
+                encodings_to_try.append(encoding_aliases[encoding_lower])
+
+        # Add fallback encodings (most common first)
+        fallbacks = [
+            "utf-8",
+            "utf-8-sig",
+            "iso-8859-1",
+            "windows-1252",
+            "ascii",
+            "mac-roman",
+        ]
+        for fb in fallbacks:
+            if fb not in encodings_to_try:
+                encodings_to_try.append(fb)
+
+        # Try each encoding until one works
+        for try_encoding in encodings_to_try:
+            try:
+                decoded_content = content.decode(try_encoding)
+                used_encoding = try_encoding
+                break
+            except (UnicodeDecodeError, LookupError):
+                continue
+
+        if decoded_content is None:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unsupported or uncertain file encoding: {encoding} (confidence: {confidence:.0%}). "
+                detail=f"Unable to decode file. Detected encoding: {encoding} (confidence: {confidence:.0%}). "
                 f"Please convert the file to UTF-8 and try again.",
             )
 
-        # Decode content to string and re-encode as UTF-8 for consistent processing
-        try:
-            decoded_content = content.decode(encoding)
-            content = decoded_content.encode("utf-8")
-        except (UnicodeDecodeError, LookupError) as e:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Failed to decode file with detected encoding {encoding}. "
-                f"Please convert the file to UTF-8 and try again.",
-            )
+        # Re-encode as UTF-8 for consistent processing
+        content = decoded_content.encode("utf-8")
 
         # Create temp file
         with tempfile.NamedTemporaryFile(

@@ -11,6 +11,10 @@ import {
   Target,
   RefreshCw,
   AlertCircle,
+  Calendar,
+  CalendarDays,
+  CalendarRange,
+  Activity,
 } from "lucide-react";
 
 import { KPICard, KPIGrid } from "@/components/kpi";
@@ -428,6 +432,155 @@ export default function Home() {
     ];
   }, [kpis, displayCurrency]);
 
+  // Build daily average KPI items
+  const dailyKpiItems = React.useMemo(() => {
+    if (!kpis) return [];
+
+    const currency = kpis.currency || displayCurrency;
+
+    return [
+      {
+        title: "Avg Daily P&L",
+        value: kpis.avgDailyPnl ?? 0,
+        subtitle: "Per trading day",
+        icon: Calendar,
+        variant:
+          (kpis.avgDailyPnl ?? 0) >= 0
+            ? ("success" as const)
+            : ("danger" as const),
+        isCurrency: true,
+        currency,
+      },
+      {
+        title: "Avg Daily Points",
+        value: (kpis.avgDailyPoints ?? 0).toFixed(1),
+        subtitle: "Points per day",
+        icon: Activity,
+        variant: "default" as const,
+      },
+      {
+        title: "Avg Trades/Day",
+        value: (kpis.avgTradesPerDay ?? 0).toFixed(1),
+        subtitle: "Trade frequency",
+        icon: BarChart3,
+        variant: "default" as const,
+      },
+      {
+        title: "Best Day",
+        value: kpis.bestDayPnl ?? 0,
+        subtitle: "Highest daily P&L",
+        icon: TrendingUp,
+        variant: "success" as const,
+        isCurrency: true,
+        currency,
+      },
+      {
+        title: "Worst Day",
+        value: kpis.worstDayPnl ?? 0,
+        subtitle: "Lowest daily P&L",
+        icon: TrendingDown,
+        variant: "danger" as const,
+        isCurrency: true,
+        currency,
+      },
+    ];
+  }, [kpis, displayCurrency]);
+
+  // Build monthly average KPI items
+  const monthlyKpiItems = React.useMemo(() => {
+    if (!kpis) return [];
+
+    const currency = kpis.currency || displayCurrency;
+
+    return [
+      {
+        title: "Avg Monthly P&L",
+        value: kpis.avgMonthlyPnl ?? 0,
+        subtitle: "Per month",
+        icon: CalendarDays,
+        variant:
+          (kpis.avgMonthlyPnl ?? 0) >= 0
+            ? ("success" as const)
+            : ("danger" as const),
+        isCurrency: true,
+        currency,
+      },
+      {
+        title: "Avg Monthly Points",
+        value: (kpis.avgMonthlyPoints ?? 0).toFixed(1),
+        subtitle: "Points per month",
+        icon: Activity,
+        variant: "default" as const,
+      },
+      {
+        title: "Avg Trades/Month",
+        value: (kpis.avgTradesPerMonth ?? 0).toFixed(1),
+        subtitle: "Monthly frequency",
+        icon: BarChart3,
+        variant: "default" as const,
+      },
+      {
+        title: "Best Month",
+        value: kpis.bestMonthPnl ?? 0,
+        subtitle: "Highest monthly P&L",
+        icon: TrendingUp,
+        variant: "success" as const,
+        isCurrency: true,
+        currency,
+      },
+      {
+        title: "Worst Month",
+        value: kpis.worstMonthPnl ?? 0,
+        subtitle: "Lowest monthly P&L",
+        icon: TrendingDown,
+        variant: "danger" as const,
+        isCurrency: true,
+        currency,
+      },
+    ];
+  }, [kpis, displayCurrency]);
+
+  // Build yearly KPI items
+  const yearlyKpiItems = React.useMemo(() => {
+    if (!kpis) return [];
+
+    const currency = kpis.currency || displayCurrency;
+
+    return [
+      {
+        title: "Current Year P&L",
+        value: kpis.currentYearPnl ?? 0,
+        subtitle: new Date().getFullYear().toString(),
+        icon: CalendarRange,
+        variant:
+          (kpis.currentYearPnl ?? 0) >= 0
+            ? ("success" as const)
+            : ("danger" as const),
+        isCurrency: true,
+        currency,
+      },
+      {
+        title: "Current Year Points",
+        value: (kpis.currentYearPoints ?? 0).toFixed(1),
+        subtitle: new Date().getFullYear().toString(),
+        icon: Activity,
+        variant: "default" as const,
+      },
+      {
+        title: "Avg Yearly P&L",
+        value: kpis.avgYearlyPnl ?? 0,
+        subtitle: "Per year average",
+        icon: CalendarRange,
+        variant:
+          (kpis.avgYearlyPnl ?? 0) >= 0
+            ? ("success" as const)
+            : ("danger" as const),
+        isCurrency: true,
+        currency,
+      },
+    ];
+  }, [kpis, displayCurrency]);
+
   // Format balance data for chart
   const formattedBalanceData = React.useMemo(() => {
     return balanceHistory.map((point) => ({
@@ -579,10 +732,35 @@ export default function Home() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* KPI Grid */}
+        {/* KPI Grid - Main Metrics */}
         {kpiItems.length > 0 && (
           <section>
+            <h2 className="text-lg font-semibold mb-3">Performance Overview</h2>
             <KPIGrid items={kpiItems} columns={6} />
+          </section>
+        )}
+
+        {/* KPI Grid - Daily Averages */}
+        {dailyKpiItems.length > 0 && (
+          <section>
+            <h2 className="text-lg font-semibold mb-3">Daily Averages</h2>
+            <KPIGrid items={dailyKpiItems} columns={5} />
+          </section>
+        )}
+
+        {/* KPI Grid - Monthly Averages */}
+        {monthlyKpiItems.length > 0 && (
+          <section>
+            <h2 className="text-lg font-semibold mb-3">Monthly Averages</h2>
+            <KPIGrid items={monthlyKpiItems} columns={5} />
+          </section>
+        )}
+
+        {/* KPI Grid - Yearly Summary */}
+        {yearlyKpiItems.length > 0 && (
+          <section>
+            <h2 className="text-lg font-semibold mb-3">Yearly Summary</h2>
+            <KPIGrid items={yearlyKpiItems} columns={3} />
           </section>
         )}
 
