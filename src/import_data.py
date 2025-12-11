@@ -331,11 +331,11 @@ def import_transaction_data(file_path, broker_name="trade_nation", account_id=No
         if file_format == "windows":
             # Windows Excel format with ="value" encapsulation needs cleaning
             temp_file = clean_csv_format(file_path)
-            new_df = pd.read_csv(temp_file, encoding="utf-8")
+            new_df = pd.read_csv(temp_file, encoding="utf-8-sig")
             logger.debug(f"Successfully read Windows format CSV, shape: {new_df.shape}")
         else:
             # Standard CSV format (already UTF-8 from import endpoint)
-            new_df = pd.read_csv(file_path, encoding="utf-8")
+            new_df = pd.read_csv(file_path, encoding="utf-8-sig")
             logger.debug(f"Successfully read standard CSV, shape: {new_df.shape}")
     except Exception as e:
         logger.error(f"Error reading CSV file: {str(e)}")

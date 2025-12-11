@@ -12,7 +12,7 @@ def clean_csv_format(file_path):
     content = None
     encoding_used = None
 
-    for encoding in ["utf-8", "utf-16le"]:
+    for encoding in ["utf-8-sig", "utf-16le"]:
         try:
             with open(file_path, "r", encoding=encoding) as file:
                 content = file.read()
@@ -101,8 +101,8 @@ def detect_file_format(file_path):
     """
     content = None
 
-    # Try UTF-8 first (converted by import endpoint), fallback to utf-16le for legacy
-    for encoding in ["utf-8", "utf-16le"]:
+    # Try UTF-8-sig first (handles BOM), fallback to utf-16le for legacy
+    for encoding in ["utf-8-sig", "utf-16le"]:
         try:
             with open(file_path, "r", encoding=encoding) as file:
                 first_line = file.readline()
