@@ -177,6 +177,7 @@ def get_unique_transaction_id(row):
     # Find the appropriate reference column - expanded list of candidates
     ref_col = None
     ref_candidates = [
+        "Serial / Ref. No.",
         "Ref. No.",
         "Ref No",
         "Ref",

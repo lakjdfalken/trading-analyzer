@@ -370,7 +370,7 @@ export default function Home() {
       {
         title: "Total P&L",
         value: kpis.totalPnl,
-        subtitle: "Last 30 days",
+        subtitle: "Selected period",
         icon: DollarSign,
         variant:
           kpis.totalPnl >= 0 ? ("success" as const) : ("danger" as const),

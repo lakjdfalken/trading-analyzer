@@ -407,7 +407,7 @@ async def get_streak_data(
         # Sort trades by date
         sorted_trades = sorted(
             trades,
-            key=lambda x: x.get("entry_time", "") or "",
+            key=lambda x: x.get("entryTime", "") or "",
         )
 
         # Calculate streaks
@@ -497,8 +497,8 @@ async def get_trade_duration_stats(
         loser_durations = []
 
         for trade in trades:
-            entry_time = trade.get("entry_time")
-            exit_time = trade.get("exit_time")
+            entry_time = trade.get("entryTime")
+            exit_time = trade.get("exitTime")
             pnl = trade.get("pnl", 0) or 0
 
             if entry_time and exit_time:

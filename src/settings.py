@@ -399,7 +399,11 @@ COLUMN_MAPPINGS = {
     "trade_nation": {
         "transaction_date": ["Transaction Date"],
         "open_period": ["Open Period", "Open date"],
-        "reference": ["Serial", "Ref. No."],  # Trade Nation uses Serial
+        "reference": [
+            "Serial / Ref. No.",
+            "Serial",
+            "Ref. No.",
+        ],  # Trade Nation uses Serial
         "action": ["Action"],
         "description": ["Description"],
         "amount": ["Amount"],
@@ -413,7 +417,7 @@ COLUMN_MAPPINGS = {
     "td365": {
         "transaction_date": ["Transaction Date"],
         "open_period": ["Open Period", "Open date"],
-        "reference": ["Ref. No.", "Serial"],
+        "reference": ["Serial / Ref. No.", "Ref. No.", "Serial"],
         "action": ["Action"],
         "description": ["Description"],
         "amount": ["Amount"],

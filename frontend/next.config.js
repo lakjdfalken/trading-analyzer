@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
   output: "export",
   trailingSlash: true,
   images: {
@@ -10,6 +9,9 @@ const nextConfig = {
   },
   experimental: {
     optimizePackageImports: ["lucide-react", "recharts"],
+  },
+  turbopack: {
+    root: __dirname,
   },
 };
 

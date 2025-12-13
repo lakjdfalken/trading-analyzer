@@ -935,8 +935,10 @@ class TradingDatabase:
         """
         Calculate maximum drawdown as peak-to-trough percentage decline.
 
-        Returns the largest percentage drop from a peak to a subsequent trough
-        in the balance history.
+        Uses cumulative P/L (equity curve) rather than account balance to avoid
+        issues with deposits/withdrawals and negative balances.
+
+        Returns the largest percentage drop from a peak to a subsequent trough.
         """
         conditions = [
             "\"Action\" NOT LIKE '%Fund%' AND \"Action\" NOT LIKE '%Charge%' "
@@ -963,12 +965,12 @@ class TradingDatabase:
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
 
-        # Get balance history ordered by date
+        # Get P/L for each trade ordered by date to build equity curve
         query = f"""
-            SELECT "Balance"
+            SELECT COALESCE("P/L", 0) as pnl
             FROM broker_transactions
             WHERE {where_clause}
-            ORDER BY "Transaction Date" ASC, "Transaction ID" ASC
+            ORDER BY "Transaction Date" ASC
         """
 
         results = execute_query(query, tuple(params))
@@ -976,24 +978,39 @@ class TradingDatabase:
         if not results:
             return 0.0
 
-        balances = [row.get("Balance", 0) or 0 for row in results]
+        # Build cumulative P/L (equity curve)
+        cumulative_pnl = 0.0
+        equity_curve = []
+        for row in results:
+            pnl = row.get("pnl", 0) or 0
+            cumulative_pnl += pnl
+            equity_curve.append(cumulative_pnl)
 
-        if not balances:
+        if not equity_curve:
             return 0.0
 
-        # Calculate max drawdown using peak-to-trough method
-        peak = balances[0]
+        # Calculate max drawdown using peak-to-trough method on equity curve
+        peak = equity_curve[0]
         max_drawdown = 0.0
 
-        for balance in balances:
-            if balance > peak:
-                peak = balance
+        for equity in equity_curve:
+            if equity > peak:
+                peak = equity
             elif peak > 0:
-                drawdown = (peak - balance) / peak * 100
+                # Only calculate drawdown when peak is positive
+                drawdown = (peak - equity) / peak * 100
+                if drawdown > max_drawdown:
+                    max_drawdown = drawdown
+            elif peak <= 0 and equity < peak:
+                # Handle case where we start negative or at zero
+                # Use absolute difference as a percentage of the absolute peak
+                abs_peak = abs(peak) if peak != 0 else 1
+                drawdown = abs(peak - equity) / abs_peak * 100
                 if drawdown > max_drawdown:
                     max_drawdown = drawdown
 
-        return max_drawdown
+        # Cap max drawdown at 100% for display purposes
+        return min(max_drawdown, 100.0)
 
     @staticmethod
     def get_kpi_metrics(
