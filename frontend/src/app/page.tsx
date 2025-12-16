@@ -20,15 +20,10 @@ import {
 import { KPICard, KPIGrid } from "@/components/kpi";
 import { ChartCard } from "@/components/charts/ChartCard";
 import { BalanceChart } from "@/components/charts/BalanceChart";
-import { MonthlyPnLChart } from "@/components/charts/MonthlyPnLChart";
-import { WinRateChart } from "@/components/charts/WinRateChart";
+
 import { ExpandedChartModal } from "@/components/charts/ExpandedChartModal";
 import { MultiAccountBalanceChart } from "@/components/charts/MultiAccountBalanceChart";
-import { MultiAccountMonthlyPnLChart } from "@/components/charts/MultiAccountMonthlyPnLChart";
 import type { AccountSeries } from "@/components/charts/MultiAccountBalanceChart";
-import type { AccountPnLSeries } from "@/components/charts/MultiAccountMonthlyPnLChart";
-import { RecentTradesList } from "@/components/trades/RecentTradesList";
-import type { Trade } from "@/components/trades/RecentTradesList";
 import { DateRangePicker } from "@/components/filters/DateRangePicker";
 import { useDashboardStore, getDateRangeFromPreset } from "@/store/dashboard";
 import type { DateRangePreset } from "@/components/filters/types";
@@ -55,18 +50,7 @@ export default function Home() {
       data: Array<{ date: string; balance: number }>;
     };
   } | null>(null);
-  const [monthlyPnLByAccount, setMonthlyPnLByAccount] = React.useState<{
-    series: AccountPnLSeries[];
-    total: {
-      accountName: string;
-      data: Array<{
-        month: string;
-        pnl: number;
-        trades?: number;
-        winRate?: number;
-      }>;
-    };
-  } | null>(null);
+
   const {
     dateRange,
     selectedInstruments,
@@ -76,8 +60,6 @@ export default function Home() {
     kpis,
     balanceHistory,
     monthlyPnL,
-    winRateByInstrument,
-    recentTrades,
     loading,
     errors,
     lastUpdated,
@@ -89,8 +71,6 @@ export default function Home() {
     setKPIs,
     setBalanceHistory,
     setMonthlyPnL,
-    setWinRateByInstrument,
-    setRecentTrades,
     setAvailableInstruments,
     setLoading,
     setError,
@@ -146,12 +126,9 @@ export default function Home() {
         kpisResult,
         balanceResult,
         monthlyResult,
-        tradesResult,
         instrumentsResult,
         accountsResult,
         balanceByAccResult,
-        monthlyByAccResult,
-        winRateResult,
       ] = await Promise.allSettled([
         api.getKPIs(
           effectiveCurrency,
@@ -170,13 +147,6 @@ export default function Home() {
           selectedInstruments.length > 0 ? selectedInstruments : undefined,
           selectedAccountId,
         ),
-        api.getRecentTrades(
-          effectiveCurrency,
-          10,
-          dateRangeParam,
-          selectedInstruments.length > 0 ? selectedInstruments : undefined,
-          selectedAccountId,
-        ),
         api.getInstruments(),
         api.getAccounts(),
         api.getBalanceByAccount(
@@ -184,12 +154,6 @@ export default function Home() {
           dateRangeParam,
           selectedAccountId,
         ),
-        api.getMonthlyPnLByAccount(
-          effectiveCurrency,
-          dateRangeParam,
-          selectedAccountId,
-        ),
-        api.getWinRateByInstrument(dateRangeParam, selectedAccountId),
       ]);
 
       // Process KPIs
@@ -230,28 +194,6 @@ export default function Home() {
         }
       }
 
-      // Process recent trades
-      if (tradesResult.status === "fulfilled") {
-        const mappedTrades: Trade[] = tradesResult.value.map((t) => {
-          const entryTime = t.entryTime ? new Date(t.entryTime) : new Date();
-          const exitTime = t.exitTime ? new Date(t.exitTime) : new Date();
-          return {
-            id: t.id,
-            instrument: t.instrument,
-            direction: t.direction,
-            entryPrice: t.entryPrice,
-            exitPrice: t.exitPrice,
-            entryTime: isValid(entryTime) ? entryTime : new Date(),
-            exitTime: isValid(exitTime) ? exitTime : new Date(),
-            quantity: t.quantity,
-            pnl: t.pnl,
-            pnlPercent: t.pnlPercent,
-            currency: t.currency,
-          };
-        });
-        setRecentTrades(mappedTrades);
-      }
-
       // Process instruments
       if (instrumentsResult.status === "fulfilled") {
         setAvailableInstruments(instrumentsResult.value);
@@ -267,18 +209,6 @@ export default function Home() {
         setBalanceByAccount(
           balanceByAccResult.value as typeof balanceByAccount,
         );
-      }
-
-      // Process monthly P&L by account
-      if (monthlyByAccResult.status === "fulfilled") {
-        setMonthlyPnLByAccount(
-          monthlyByAccResult.value as typeof monthlyPnLByAccount,
-        );
-      }
-
-      // Process win rate by instrument
-      if (winRateResult.status === "fulfilled") {
-        setWinRateByInstrument(winRateResult.value);
       }
 
       setLastUpdated(new Date());
@@ -302,8 +232,6 @@ export default function Home() {
     setKPIs,
     setBalanceHistory,
     setMonthlyPnL,
-    setWinRateByInstrument,
-    setRecentTrades,
     setAvailableInstruments,
     setAvailableAccounts,
     setLastUpdated,
@@ -587,15 +515,11 @@ export default function Home() {
       date: new Date(point.date).toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
+        year: "numeric",
       }),
       balance: point.balance,
     }));
   }, [balanceHistory]);
-
-  // Format win rate data for chart
-  const formattedWinRateData = React.useMemo(() => {
-    return winRateByInstrument;
-  }, [winRateByInstrument]);
 
   // Loading state
   if (loading.dashboard && !isInitialized) {
@@ -631,8 +555,7 @@ export default function Home() {
   }
 
   // Empty state when no data
-  const hasNoData =
-    !kpis && balanceHistory.length === 0 && recentTrades.length === 0;
+  const hasNoData = !kpis && balanceHistory.length === 0;
 
   if (hasNoData && isInitialized) {
     return (
@@ -764,97 +687,37 @@ export default function Home() {
           </section>
         )}
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Balance Chart */}
-          {formattedBalanceData.length > 0 && (
-            <ChartCard
-              title="Account Balance"
-              subtitle="Equity curve over time"
-              onExpand={() => setExpandedChart("balance")}
-              onDownload={() => console.log("Download balance chart")}
-            >
-              {balanceByAccount && balanceByAccount.series.length > 1 ? (
-                <MultiAccountBalanceChart
-                  series={balanceByAccount.series}
-                  total={balanceByAccount.total}
-                  height={300}
-                  showTotal={true}
-                  showLegend={true}
-                />
-              ) : currencyNotSet ? (
-                <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                  Please set your default currency in Settings
-                </div>
-              ) : (
-                <BalanceChart
-                  data={formattedBalanceData}
-                  height={300}
-                  startingBalance={10000}
-                  showGrid
-                  currency={displayCurrency}
-                />
-              )}
-            </ChartCard>
-          )}
-
-          {/* Win Rate Chart */}
-          {formattedWinRateData.length > 0 && (
-            <ChartCard
-              title="Win Rate by Instrument"
-              subtitle="Performance breakdown"
-              onExpand={() => setExpandedChart("winRate")}
-            >
-              <WinRateChart data={formattedWinRateData} height={300} />
-            </ChartCard>
-          )}
-        </div>
-
-        {/* Second Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Monthly P&L Chart */}
-          {monthlyPnL.length > 0 && (
-            <div className="lg:col-span-2">
-              <ChartCard
-                title="Monthly P&L"
-                subtitle="Profit and loss by month"
-                onExpand={() => setExpandedChart("monthlyPnL")}
-              >
-                {monthlyPnLByAccount &&
-                monthlyPnLByAccount.series.length > 1 ? (
-                  <MultiAccountMonthlyPnLChart
-                    series={monthlyPnLByAccount.series}
-                    total={monthlyPnLByAccount.total}
-                    height={280}
-                    showTotal={false}
-                    stacked={false}
-                  />
-                ) : currencyNotSet ? (
-                  <div className="flex items-center justify-center h-[280px] text-muted-foreground">
-                    Please set your default currency in Settings
-                  </div>
-                ) : (
-                  <MonthlyPnLChart
-                    data={monthlyPnL}
-                    height={280}
-                    currency={displayCurrency}
-                  />
-                )}
-              </ChartCard>
-            </div>
-          )}
-
-          {/* Recent Trades */}
-          <div className="lg:col-span-1">
-            <RecentTradesList
-              trades={recentTrades}
-              maxItems={5}
-              showHeader
-              title="Recent Trades"
-              loading={loading.recentTrades}
-            />
-          </div>
-        </div>
+        {/* Balance Chart */}
+        {formattedBalanceData.length > 0 && (
+          <ChartCard
+            title="Account Balance"
+            subtitle="Equity curve over time"
+            onExpand={() => setExpandedChart("balance")}
+            onDownload={() => console.log("Download balance chart")}
+          >
+            {balanceByAccount && balanceByAccount.series.length > 1 ? (
+              <MultiAccountBalanceChart
+                series={balanceByAccount.series}
+                total={balanceByAccount.total}
+                height={300}
+                showTotal={true}
+                showLegend={true}
+              />
+            ) : currencyNotSet ? (
+              <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                Please set your default currency in Settings
+              </div>
+            ) : (
+              <BalanceChart
+                data={formattedBalanceData}
+                height={300}
+                startingBalance={10000}
+                showGrid
+                currency={displayCurrency}
+              />
+            )}
+          </ChartCard>
+        )}
       </main>
 
       {/* Expanded Balance Chart Modal */}
@@ -885,48 +748,6 @@ export default function Home() {
             currency={displayCurrency}
           />
         )}
-      </ExpandedChartModal>
-
-      {/* Expanded Monthly P&L Chart Modal */}
-      <ExpandedChartModal
-        isOpen={expandedChart === "monthlyPnL"}
-        onClose={() => setExpandedChart(null)}
-        title="Monthly P&L"
-        subtitle="Profit and loss by month - All accounts"
-      >
-        {monthlyPnLByAccount && monthlyPnLByAccount.series.length > 1 ? (
-          <MultiAccountMonthlyPnLChart
-            series={monthlyPnLByAccount.series}
-            total={monthlyPnLByAccount.total}
-            height={600}
-            showTotal={false}
-            stacked={false}
-          />
-        ) : currencyNotSet ? (
-          <div className="flex items-center justify-center h-[600px] text-muted-foreground">
-            Please set your default currency in Settings
-          </div>
-        ) : (
-          <MonthlyPnLChart
-            data={monthlyPnL}
-            height={600}
-            currency={displayCurrency}
-          />
-        )}
-      </ExpandedChartModal>
-
-      {/* Expanded Win Rate Chart Modal */}
-      <ExpandedChartModal
-        isOpen={expandedChart === "winRate"}
-        onClose={() => setExpandedChart(null)}
-        title="Win Rate by Instrument"
-        subtitle="Performance breakdown across different markets"
-      >
-        <WinRateChart
-          data={formattedWinRateData}
-          height={600}
-          layout="horizontal"
-        />
       </ExpandedChartModal>
     </div>
   );

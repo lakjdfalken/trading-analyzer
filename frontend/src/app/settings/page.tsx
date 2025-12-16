@@ -14,6 +14,9 @@ import {
   Moon,
   Sun,
   Monitor,
+  TrendingUp,
+  Plus,
+  X,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -97,6 +100,17 @@ export default function SettingsPage() {
   const [deleteError, setDeleteError] = React.useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = React.useState<string | null>(null);
 
+  // Instrument point factors state
+  const [pointFactors, setPointFactors] = React.useState<
+    Record<string, number>
+  >({});
+  const [savedPointFactors, setSavedPointFactors] = React.useState<
+    Record<string, number>
+  >({});
+  const [newInstrumentName, setNewInstrumentName] = React.useState("");
+  const [newInstrumentFactor, setNewInstrumentFactor] = React.useState("1.0");
+  const [pointFactorsLoaded, setPointFactorsLoaded] = React.useState(false);
+
   // Track initial currency settings for change detection
   const [initialCurrency, setInitialCurrency] = React.useState<
     string | undefined
@@ -146,6 +160,29 @@ export default function SettingsPage() {
     };
     fetchAccounts();
   }, [deleteSuccess]);
+
+  // Load point factors from backend
+  React.useEffect(() => {
+    const loadPointFactors = async () => {
+      try {
+        const response = await fetch("/api/currency/point-factors");
+        if (response.ok) {
+          const data = await response.json();
+          setPointFactors(data.factors || {});
+          setSavedPointFactors(data.factors || {});
+          setPointFactorsLoaded(true);
+        }
+      } catch (err) {
+        console.error("Failed to load point factors:", err);
+        // Set defaults
+        const defaults = { "Gold (per 0.1)": 0.1 };
+        setPointFactors(defaults);
+        setSavedPointFactors(defaults);
+        setPointFactorsLoaded(true);
+      }
+    };
+    loadPointFactors();
+  }, []);
 
   // Load exchange rates from backend on mount
   React.useEffect(() => {
@@ -222,8 +259,16 @@ export default function SettingsPage() {
       ratesInitialized &&
       Object.keys(localRates).length > 0 &&
       JSON.stringify(localRates) !== JSON.stringify(savedRates);
+    const pointFactorsChanged =
+      pointFactorsLoaded &&
+      JSON.stringify(pointFactors) !== JSON.stringify(savedPointFactors);
 
-    setHasChanges(currencyChanged || showConvertedChanged || !!ratesChanged);
+    setHasChanges(
+      currencyChanged ||
+        showConvertedChanged ||
+        !!ratesChanged ||
+        pointFactorsChanged,
+    );
   }, [
     defaultCurrency,
     showConverted,
@@ -232,6 +277,9 @@ export default function SettingsPage() {
     localRates,
     savedRates,
     ratesInitialized,
+    pointFactors,
+    savedPointFactors,
+    pointFactorsLoaded,
   ]);
 
   // Handle save - saves to backend via settings store
@@ -254,6 +302,18 @@ export default function SettingsPage() {
           rates: localRates,
           updatedAt: new Date().toISOString(),
         });
+      }
+
+      // Save point factors to backend
+      if (Object.keys(pointFactors).length > 0) {
+        const response = await fetch("/api/currency/point-factors", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(pointFactors),
+        });
+        if (response.ok) {
+          setSavedPointFactors(pointFactors);
+        }
       }
 
       // Update initial values to current (so changes are relative to saved state)
@@ -487,6 +547,133 @@ export default function SettingsPage() {
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Instrument Point Factors */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Instrument Point Factors
+              </CardTitle>
+              <CardDescription>
+                Configure how points are calculated for different instruments.
+                For example, Gold (per 0.1) has a factor of 0.1 because the
+                price difference needs to be multiplied by 0.1 to get actual
+                points.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Existing Factors */}
+              <div className="space-y-2">
+                {Object.entries(pointFactors).map(([instrument, factor]) => (
+                  <div
+                    key={instrument}
+                    className="flex items-center gap-3 p-3 bg-accent/50 rounded-lg"
+                  >
+                    <div className="flex-1">
+                      <span className="font-medium">{instrument}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">
+                        Factor:
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={factor}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(",", ".");
+                          const parsed = parseFloat(value);
+                          if (!isNaN(parsed)) {
+                            setPointFactors((prev) => ({
+                              ...prev,
+                              [instrument]: parsed,
+                            }));
+                          }
+                        }}
+                        className="w-20 px-2 py-1 bg-background border border-input rounded text-sm text-right"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setPointFactors((prev) => {
+                            const newFactors = { ...prev };
+                            delete newFactors[instrument];
+                            return newFactors;
+                          });
+                        }}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {Object.keys(pointFactors).length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No instrument factors configured. Add one below.
+                  </p>
+                )}
+              </div>
+
+              {/* Add New Factor */}
+              <div className="flex items-end gap-3 pt-4 border-t">
+                <div className="flex-1">
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                    Instrument Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newInstrumentName}
+                    onChange={(e) => setNewInstrumentName(e.target.value)}
+                    placeholder="e.g., Gold (per 0.1)"
+                    className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm"
+                  />
+                </div>
+                <div className="w-24">
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                    Factor
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={newInstrumentFactor}
+                    onChange={(e) =>
+                      setNewInstrumentFactor(e.target.value.replace(",", "."))
+                    }
+                    placeholder="0.1"
+                    className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (newInstrumentName.trim()) {
+                      const factor = parseFloat(newInstrumentFactor) || 1.0;
+                      setPointFactors((prev) => ({
+                        ...prev,
+                        [newInstrumentName.trim()]: factor,
+                      }));
+                      setNewInstrumentName("");
+                      setNewInstrumentFactor("1.0");
+                    }
+                  }}
+                  disabled={!newInstrumentName.trim()}
+                  className="gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add
+                </Button>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Points are calculated as: |Closing - Opening| × Factor. A factor
+                of 1.0 means no adjustment. Use 0.1 for instruments quoted per
+                0.1 (like Gold), or 0.0001 for forex pips.
+              </p>
             </CardContent>
           </Card>
 

@@ -392,6 +392,95 @@ class CurrencyService:
         return CurrencyService.set_user_preference("show_converted_currency", show)
 
     @staticmethod
+    def get_instrument_point_factors() -> Dict[str, float]:
+        """Get instrument point factors for points calculation.
+
+        Returns a dict mapping instrument name patterns to their point factors.
+        For example: {"Gold (per 0.1)": 0.1, "EUR/USD": 0.0001}
+        """
+        default_factors = {
+            "Gold (per 0.1)": 0.1,
+        }
+        return CurrencyService.get_user_preference(
+            "instrument_point_factors", default_factors
+        )
+
+    @staticmethod
+    def set_instrument_point_factors(factors: Dict[str, float]) -> bool:
+        """Set instrument point factors."""
+        return CurrencyService.set_user_preference("instrument_point_factors", factors)
+
+    @staticmethod
+    def get_point_factor_for_instrument(instrument: str) -> float:
+        """Get the point factor for a specific instrument.
+
+        Returns 1.0 if no specific factor is configured.
+        """
+        factors = CurrencyService.get_instrument_point_factors()
+
+        # Exact match first
+        if instrument in factors:
+            return factors[instrument]
+
+        # Check for partial matches (e.g., "Gold" matches "Gold (per 0.1)")
+        for pattern, factor in factors.items():
+            if (
+                pattern.lower() in instrument.lower()
+                or instrument.lower() in pattern.lower()
+            ):
+                return factor
+
+        return 1.0
+
+    @staticmethod
+    def calculate_points(
+        opening: float,
+        closing: float,
+        pnl: float,
+        instrument: str,
+        point_factors: Optional[Dict[str, float]] = None,
+    ) -> float:
+        """Calculate points for a trade with instrument-specific factor.
+
+        This is the SINGLE SOURCE OF TRUTH for points calculation.
+        All code that needs to calculate points should use this function.
+
+        Args:
+            opening: Opening price of the trade
+            closing: Closing price of the trade
+            pnl: Profit/Loss of the trade (used to determine sign)
+            instrument: Instrument name (used to look up point factor)
+            point_factors: Optional pre-fetched factors dict (for batch processing)
+
+        Returns:
+            Signed points value (positive for winning trades, negative for losing)
+        """
+        if point_factors is not None:
+            # Use pre-fetched factors (fast path for batch processing)
+            point_factor = point_factors.get(instrument, 1.0)
+            # Check partial matches if no exact match
+            if point_factor == 1.0 and instrument not in point_factors:
+                for pattern, factor in point_factors.items():
+                    if (
+                        pattern.lower() in instrument.lower()
+                        or instrument.lower() in pattern.lower()
+                    ):
+                        point_factor = factor
+                        break
+        else:
+            # Fetch from DB (single trade calculation)
+            point_factor = CurrencyService.get_point_factor_for_instrument(instrument)
+
+        raw_points = abs(closing - opening)
+        points = raw_points * point_factor
+
+        # Apply sign based on P/L
+        if pnl < 0:
+            points = -points
+
+        return points
+
+    @staticmethod
     def format_currency(
         amount: float,
         currency: str,

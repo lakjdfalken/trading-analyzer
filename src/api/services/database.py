@@ -13,7 +13,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from db_path import DATABASE_PATH
-from settings import DEFAULT_POINT_MULTIPLIER, MARKET_POINT_MULTIPLIERS
 
 
 @contextmanager
@@ -238,6 +237,60 @@ class TradingDatabase:
 
         where_clause = " AND ".join(conditions)
 
+        # Get all accounts that should be included (have any transactions)
+        if account_id:
+            all_accounts_query = """
+                SELECT a.account_id, a.currency
+                FROM accounts a
+                WHERE a.account_id = ?
+            """
+            all_accounts = execute_query(all_accounts_query, (account_id,))
+        else:
+            all_accounts_query = """
+                SELECT a.account_id, a.currency
+                FROM accounts a
+                WHERE EXISTS (
+                    SELECT 1 FROM broker_transactions bt
+                    WHERE bt.account_id = a.account_id
+                )
+            """
+            all_accounts = execute_query(all_accounts_query, ())
+
+        account_currencies: Dict[int, str] = {}
+        for acc in all_accounts:
+            account_currencies[acc["account_id"]] = acc["currency"]
+
+        # Get initial balance for each account BEFORE the start_date
+        # This is the balance to carry forward from the beginning
+        initial_balances: Dict[int, float] = {}
+        for acct_id in account_currencies:
+            if start_date:
+                # Get the last balance before start_date
+                init_query = """
+                    SELECT "Balance" as balance
+                    FROM broker_transactions
+                    WHERE account_id = ? AND "Transaction Date" < ?
+                    ORDER BY "Transaction Date" DESC, "Transaction ID" DESC
+                    LIMIT 1
+                """
+                init_result = execute_query(
+                    init_query, (acct_id, start_date.isoformat())
+                )
+                if init_result:
+                    initial_balances[acct_id] = init_result[0]["balance"] or 0
+                else:
+                    # No transactions before start_date, check if there's an initial_balance in accounts
+                    acc_query = (
+                        "SELECT initial_balance FROM accounts WHERE account_id = ?"
+                    )
+                    acc_result = execute_query(acc_query, (acct_id,))
+                    if acc_result and acc_result[0]["initial_balance"]:
+                        initial_balances[acct_id] = acc_result[0]["initial_balance"]
+                    else:
+                        initial_balances[acct_id] = 0
+            else:
+                initial_balances[acct_id] = 0
+
         # Get balance per date and account currency for conversion
         # Use subquery to get the last transaction (by transaction_id) for each day/account
         query = f"""
@@ -263,25 +316,24 @@ class TradingDatabase:
         # First, collect all dates and per-account balances
         all_dates: set = set()
         account_date_balances: Dict[int, Dict[str, float]] = {}
-        account_currencies: Dict[int, str] = {}
+
+        # Initialize all accounts with empty date maps
+        for acct_id in account_currencies:
+            account_date_balances[acct_id] = {}
 
         for row in raw_data:
             date_str = row["date"]
             acct_id = row["account_id"]
             balance = row["balance"] or 0
-            acct_currency = row["account_currency"]
 
             all_dates.add(date_str)
-            account_currencies[acct_id] = acct_currency
-
-            if acct_id not in account_date_balances:
-                account_date_balances[acct_id] = {}
             account_date_balances[acct_id][date_str] = balance
 
-        # For each account, carry forward the last known balance for missing dates
+        # For each account, carry forward from initial balance through all dates
         sorted_dates = sorted(all_dates)
-        for acct_id in account_date_balances:
-            last_balance = 0.0
+        for acct_id in account_currencies:
+            # Start with the initial balance (from before start_date)
+            last_balance = initial_balances.get(acct_id, 0)
             for date_str in sorted_dates:
                 if date_str in account_date_balances[acct_id]:
                     last_balance = account_date_balances[acct_id][date_str]
@@ -293,7 +345,7 @@ class TradingDatabase:
         date_balances: Dict[str, float] = {}
         for date_str in sorted_dates:
             total = 0.0
-            for acct_id in account_date_balances:
+            for acct_id in account_currencies:
                 balance = account_date_balances[acct_id].get(date_str, 0)
                 acct_currency = account_currencies.get(acct_id)
 
@@ -352,14 +404,14 @@ class TradingDatabase:
         # Get all accounts with their info (or just the selected one)
         if account_id:
             accounts_query = """
-                SELECT a.account_id, a.account_name, a.broker_name, a.currency
+                SELECT a.account_id, a.account_name, a.broker_name, a.currency, a.initial_balance
                 FROM accounts a
                 WHERE a.account_id = ?
             """
             accounts = execute_query(accounts_query, (account_id,))
         else:
             accounts_query = """
-                SELECT a.account_id, a.account_name, a.broker_name, a.currency
+                SELECT a.account_id, a.account_name, a.broker_name, a.currency, a.initial_balance
                 FROM accounts a
                 WHERE EXISTS (
                     SELECT 1 FROM broker_transactions bt
@@ -368,12 +420,37 @@ class TradingDatabase:
             """
             accounts = execute_query(accounts_query, ())
 
-        # Get balance history per account
-        series = []
+        # Get initial balance for each account BEFORE the start_date
+        initial_balances: Dict[int, float] = {}
         for account in accounts:
             acc_id = account["account_id"]
-            acc_name = account["account_name"] or f"Account {acc_id}"
-            acc_currency = account["currency"]
+            if start_date:
+                # Get the last balance before start_date
+                init_query = """
+                    SELECT "Balance" as balance
+                    FROM broker_transactions
+                    WHERE account_id = ? AND "Transaction Date" < ?
+                    ORDER BY "Transaction Date" DESC, "Transaction ID" DESC
+                    LIMIT 1
+                """
+                init_result = execute_query(
+                    init_query, (acc_id, start_date.isoformat())
+                )
+                if init_result:
+                    initial_balances[acc_id] = init_result[0]["balance"] or 0
+                elif account["initial_balance"]:
+                    initial_balances[acc_id] = account["initial_balance"]
+                else:
+                    initial_balances[acc_id] = 0
+            else:
+                initial_balances[acc_id] = 0
+
+        # Collect all dates across all accounts first
+        all_dates: set = set()
+        account_raw_data: Dict[int, List[Dict]] = {}
+
+        for account in accounts:
+            acc_id = account["account_id"]
 
             query = f"""
                 SELECT
@@ -392,31 +469,50 @@ class TradingDatabase:
             acc_params = [acc_id] + list(params) + [acc_id]
             data = execute_query(query, tuple(acc_params))
 
-            if data:
-                # Convert balances if target currency specified and different from account currency
+            account_raw_data[acc_id] = data
+            for row in data:
+                all_dates.add(row["date"])
+
+        sorted_dates = sorted(all_dates)
+
+        # Build series with carry-forward logic
+        series = []
+        for account in accounts:
+            acc_id = account["account_id"]
+            acc_name = account["account_name"] or f"Account {acc_id}"
+            acc_currency = account["currency"]
+
+            # Build date->balance map from raw data
+            date_balance_map: Dict[str, float] = {}
+            for row in account_raw_data[acc_id]:
+                date_balance_map[row["date"]] = row["balance"] or 0
+
+            # Carry forward balances for all dates
+            carried_data = []
+            last_balance = initial_balances.get(acc_id, 0)
+            for date_str in sorted_dates:
+                if date_str in date_balance_map:
+                    last_balance = date_balance_map[date_str]
+                carried_data.append({"date": date_str, "balance": last_balance})
+
+            # Convert balances if target currency specified and different from account currency
+            if carried_data:
                 if target_currency and acc_currency and acc_currency != target_currency:
-                    converted_data = []
                     rate = CurrencyService.get_exchange_rate(
                         acc_currency, target_currency
                     )
                     if rate:
-                        for point in data:
-                            converted_data.append(
-                                {
-                                    "date": point["date"],
-                                    "balance": point["balance"] * rate
-                                    if point["balance"]
-                                    else 0,
-                                }
-                            )
-                        data = converted_data
+                        carried_data = [
+                            {"date": p["date"], "balance": p["balance"] * rate}
+                            for p in carried_data
+                        ]
 
                 series.append(
                     {
                         "accountId": acc_id,
                         "accountName": acc_name,
                         "currency": target_currency or acc_currency,
-                        "data": data,
+                        "data": carried_data,
                     }
                 )
 
@@ -794,11 +890,15 @@ class TradingDatabase:
         """
         Get points/pips statistics per instrument.
 
-        Points are calculated based on price movement:
-        - Gold: 0.1 price movement = 1 point (multiplier 10)
-        - Indexes: 1.0 price movement = 1 point (multiplier 1)
-        - Forex: pip-based calculation (e.g., 0.0001 = 1 pip for EUR/USD)
+        Points are calculated using CurrencyService.calculate_points(),
+        which is the SINGLE SOURCE OF TRUTH for points calculation.
+        Point factors are user-configurable via Settings.
         """
+        from api.services.currency import CurrencyService
+
+        # Fetch point factors ONCE before processing trades
+        point_factors = CurrencyService.get_instrument_point_factors()
+
         conditions = [
             "\"Action\" NOT LIKE '%Fund%' AND \"Action\" NOT LIKE '%Charge%' "
             "AND \"Action\" NOT LIKE '%Deposit%' AND \"Action\" NOT LIKE '%Withdraw%'",
@@ -843,33 +943,14 @@ class TradingDatabase:
             entry = trade["entry_price"] or 0
             exit_price = trade["exit_price"] or 0
             pnl = trade["pnl"] or 0
-            action = (trade["action"] or "").lower()
-            amount = abs(trade["amount"] or 1)
 
             if entry == 0 or exit_price == 0:
                 continue
 
-            # Determine multiplier based on instrument name
-            multiplier = DEFAULT_POINT_MULTIPLIER
-            for market_key, mult in MARKET_POINT_MULTIPLIERS.items():
-                if market_key.lower() in name.lower():
-                    multiplier = mult
-                    break
-
-            # Calculate raw price difference
-            price_diff = exit_price - entry
-
-            # Determine direction from action or P/L
-            is_long = "buy" in action or "long" in action
-            if not is_long and not ("sell" in action or "short" in action):
-                # Infer from P/L and price movement
-                is_long = (price_diff > 0 and pnl > 0) or (price_diff < 0 and pnl < 0)
-
-            # Calculate points (positive if profitable direction)
-            if is_long:
-                points = price_diff * multiplier
-            else:
-                points = -price_diff * multiplier
+            # Calculate points using single source of truth (with pre-fetched factors)
+            points = CurrencyService.calculate_points(
+                entry, exit_price, pnl, name, point_factors
+            )
 
             # Initialize instrument stats if needed
             if name not in instrument_stats:
@@ -884,7 +965,6 @@ class TradingDatabase:
                     "avgPointsPerTrade": 0,
                     "avgWinPoints": 0,
                     "avgLossPoints": 0,
-                    "multiplier": multiplier,
                 }
 
             stats = instrument_stats[name]
@@ -1022,6 +1102,9 @@ class TradingDatabase:
     ) -> Dict[str, Any]:
         """Calculate KPI metrics with currency conversion."""
         from api.services.currency import CurrencyService
+
+        # Fetch point factors ONCE before processing trades
+        point_factors = CurrencyService.get_instrument_point_factors()
 
         conditions = [
             "bt.\"Action\" NOT LIKE '%Fund%' AND bt.\"Action\" NOT LIKE '%Charge%' "
@@ -1172,32 +1255,39 @@ class TradingDatabase:
             today_trades += trades
 
         # Get daily stats for averages (P&L and points per day)
-        daily_stats_query = f"""
+        # Fetch individual trades to apply instrument point factors
+        daily_trades_query = f"""
             SELECT
                 DATE(bt."Transaction Date") as date,
                 a.currency as currency,
-                SUM(bt."P/L") as pnl,
-                SUM(ABS(COALESCE(bt."Closing", 0) - COALESCE(bt."Opening", 0))) as points,
-                COUNT(*) as trades
+                bt."P/L" as pnl,
+                bt."Description" as instrument,
+                COALESCE(bt."Closing", 0) as closing,
+                COALESCE(bt."Opening", 0) as opening
             FROM broker_transactions bt
             JOIN accounts a ON bt.account_id = a.account_id
             WHERE {where_clause}
-            GROUP BY DATE(bt."Transaction Date"), a.currency
             ORDER BY date
         """
-        daily_stats_results = execute_query(daily_stats_query, tuple(params))
+        daily_trades_results = execute_query(daily_trades_query, tuple(params))
 
-        # Aggregate daily stats by date with currency conversion
+        # Aggregate daily stats by date with currency conversion and point factors
         daily_pnl_map: Dict[str, float] = {}
         daily_points_map: Dict[str, float] = {}
         daily_trades_map: Dict[str, int] = {}
 
-        for row in daily_stats_results:
+        for row in daily_trades_results:
             date = row["date"]
             currency = row.get("currency") or target_currency
             pnl = row.get("pnl") or 0
-            points = row.get("points") or 0
-            trades = row.get("trades") or 0
+            instrument = row.get("instrument") or ""
+            closing = row.get("closing") or 0
+            opening = row.get("opening") or 0
+
+            # Calculate points using single source of truth (with pre-fetched factors)
+            points = CurrencyService.calculate_points(
+                opening, closing, pnl, instrument, point_factors
+            )
 
             if currency != target_currency:
                 converted = CurrencyService.convert(pnl, currency, target_currency)
@@ -1211,7 +1301,7 @@ class TradingDatabase:
 
             daily_pnl_map[date] += pnl
             daily_points_map[date] += points
-            daily_trades_map[date] += trades
+            daily_trades_map[date] += 1
 
         # Calculate daily averages
         num_days = len(daily_pnl_map)
@@ -1226,32 +1316,39 @@ class TradingDatabase:
         worst_day_pnl = min(daily_pnl_values) if daily_pnl_values else 0
 
         # Get monthly stats for averages
-        monthly_stats_query = f"""
+        # Fetch individual trades to apply instrument point factors
+        monthly_trades_query = f"""
             SELECT
                 strftime('%Y-%m', bt."Transaction Date") as month,
                 a.currency as currency,
-                SUM(bt."P/L") as pnl,
-                SUM(ABS(COALESCE(bt."Closing", 0) - COALESCE(bt."Opening", 0))) as points,
-                COUNT(*) as trades
+                bt."P/L" as pnl,
+                bt."Description" as instrument,
+                COALESCE(bt."Closing", 0) as closing,
+                COALESCE(bt."Opening", 0) as opening
             FROM broker_transactions bt
             JOIN accounts a ON bt.account_id = a.account_id
             WHERE {where_clause}
-            GROUP BY strftime('%Y-%m', bt."Transaction Date"), a.currency
             ORDER BY month
         """
-        monthly_stats_results = execute_query(monthly_stats_query, tuple(params))
+        monthly_trades_results = execute_query(monthly_trades_query, tuple(params))
 
-        # Aggregate monthly stats by month with currency conversion
+        # Aggregate monthly stats by month with currency conversion and point factors
         monthly_pnl_map: Dict[str, float] = {}
         monthly_points_map: Dict[str, float] = {}
         monthly_trades_map: Dict[str, int] = {}
 
-        for row in monthly_stats_results:
+        for row in monthly_trades_results:
             month = row["month"]
             currency = row.get("currency") or target_currency
             pnl = row.get("pnl") or 0
-            points = row.get("points") or 0
-            trades = row.get("trades") or 0
+            instrument = row.get("instrument") or ""
+            closing = row.get("closing") or 0
+            opening = row.get("opening") or 0
+
+            # Calculate points using single source of truth (with pre-fetched factors)
+            points = CurrencyService.calculate_points(
+                opening, closing, pnl, instrument, point_factors
+            )
 
             if currency != target_currency:
                 converted = CurrencyService.convert(pnl, currency, target_currency)
@@ -1265,7 +1362,7 @@ class TradingDatabase:
 
             monthly_pnl_map[month] += pnl
             monthly_points_map[month] += points
-            monthly_trades_map[month] += trades
+            monthly_trades_map[month] += 1
 
         # Calculate monthly averages
         num_months = len(monthly_pnl_map)
@@ -1283,31 +1380,58 @@ class TradingDatabase:
         best_month_pnl = max(monthly_pnl_values) if monthly_pnl_values else 0
         worst_month_pnl = min(monthly_pnl_values) if monthly_pnl_values else 0
 
-        # Get yearly stats
+        # Get yearly stats - use separate where clause without date filter
+        # so yearly KPIs always reflect full year data regardless of selected timeframe
         current_year = datetime.now(timezone.utc).year
-        yearly_stats_query = f"""
+        yearly_conditions = [
+            "bt.\"Action\" NOT LIKE '%Fund%' AND bt.\"Action\" NOT LIKE '%Charge%' "
+            "AND bt.\"Action\" NOT LIKE '%Deposit%' AND bt.\"Action\" NOT LIKE '%Withdraw%'"
+        ]
+        yearly_params = []
+
+        if instruments:
+            placeholders = ",".join("?" * len(instruments))
+            yearly_conditions.append(f'bt."Description" IN ({placeholders})')
+            yearly_params.extend(instruments)
+
+        if account_id:
+            yearly_conditions.append("bt.account_id = ?")
+            yearly_params.append(account_id)
+
+        yearly_where_clause = " AND ".join(yearly_conditions)
+
+        # Fetch individual trades for yearly stats to apply instrument point factors
+        yearly_trades_query = f"""
             SELECT
                 strftime('%Y', bt."Transaction Date") as year,
                 a.currency as currency,
-                SUM(bt."P/L") as pnl,
-                SUM(ABS(COALESCE(bt."Closing", 0) - COALESCE(bt."Opening", 0))) as points
+                bt."P/L" as pnl,
+                bt."Description" as instrument,
+                COALESCE(bt."Closing", 0) as closing,
+                COALESCE(bt."Opening", 0) as opening
             FROM broker_transactions bt
             JOIN accounts a ON bt.account_id = a.account_id
-            WHERE {where_clause}
-            GROUP BY strftime('%Y', bt."Transaction Date"), a.currency
+            WHERE {yearly_where_clause}
             ORDER BY year
         """
-        yearly_stats_results = execute_query(yearly_stats_query, tuple(params))
+        yearly_trades_results = execute_query(yearly_trades_query, tuple(yearly_params))
 
-        # Aggregate yearly stats by year with currency conversion
+        # Aggregate yearly stats by year with currency conversion and point factors
         yearly_pnl_map: Dict[str, float] = {}
         yearly_points_map: Dict[str, float] = {}
 
-        for row in yearly_stats_results:
+        for row in yearly_trades_results:
             year = row["year"]
             currency = row.get("currency") or target_currency
             pnl = row.get("pnl") or 0
-            points = row.get("points") or 0
+            instrument = row.get("instrument") or ""
+            closing = row.get("closing") or 0
+            opening = row.get("opening") or 0
+
+            # Calculate points using single source of truth (with pre-fetched factors)
+            points = CurrencyService.calculate_points(
+                opening, closing, pnl, instrument, point_factors
+            )
 
             if currency != target_currency:
                 converted = CurrencyService.convert(pnl, currency, target_currency)

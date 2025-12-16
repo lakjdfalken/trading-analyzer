@@ -6,6 +6,7 @@ Provides endpoints for:
 - Getting/updating exchange rates
 - Managing user currency preferences
 - Currency conversion
+- Instrument point factors
 """
 
 from typing import Any, Dict, List, Optional
@@ -300,6 +301,29 @@ async def get_account_currencies():
         )
         for acc in accounts
     ]
+
+
+@router.get("/point-factors")
+async def get_point_factors():
+    """Get instrument point factors for points calculation."""
+    return {
+        "factors": CurrencyService.get_instrument_point_factors(),
+    }
+
+
+@router.put("/point-factors")
+async def set_point_factors(factors: Dict[str, float]):
+    """Set instrument point factors."""
+    success = CurrencyService.set_instrument_point_factors(factors)
+    if not success:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to save point factors",
+        )
+    return {
+        "success": True,
+        "factors": factors,
+    }
 
 
 @router.get("/format")
