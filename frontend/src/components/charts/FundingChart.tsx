@@ -149,6 +149,11 @@ export function FundingChart({
     return [Math.floor(min - padding), Math.ceil(max + padding)];
   }, [chartData]);
 
+  // Calculate Y-axis ticks to always include 0
+  const yTicks = React.useMemo(() => {
+    return [yDomain[0], 0, yDomain[1]];
+  }, [yDomain]);
+
   const formatXAxis = (dateStr: string) => {
     try {
       const date = new Date(dateStr);
@@ -230,6 +235,7 @@ export function FundingChart({
             tickLine={false}
             axisLine={false}
             domain={yDomain}
+            ticks={yTicks}
           />
           <Tooltip
             content={
