@@ -261,41 +261,12 @@ The application stores data in a platform-specific location:
 
 ## Changelog
 
-### v2.0.10
+### v2.0.18 (January 6, 2026)
 
-- **Fixed Balance History**: Carry forward last known balance for accounts without transactions on a given day
-- **UTC Date Handling**: All backend date operations now use UTC for consistency
-- **Architecture Rules**: Added comprehensive `.rules` file to prevent common bugs
-
-### v2.0.6
-
-- **Account Selection**: Filter all data by account across Dashboard and Analytics pages
-- **Fixed Currency Conversion**: Proper conversion when viewing combined accounts
-- **Analytics Improvements**:
-  - Daily P&L respects account filter
-  - Cumulative P&L with correct currency display
-  - Equity Curve respects account filter
-  - Funding Activity with totals summary
-  - Hourly/Weekday performance now working correctly
-  - Position size analysis with currency conversion
-
-### v2.0.5
-
-- **Multi-Account Charts**: Balance and P&L charts show individual account lines
-- **Currency Handling**: Backend-only conversion per architecture rules
-
-### v2.0.0
-
-- **Standalone Desktop App**: Native application for macOS and Windows
-- **Improved Charts**: Win Rate by Instrument now displays proper market names
-- **Points Analytics**: New points/pips tracking by instrument with configurable multipliers
-- **Enhanced Export**: CSV export for filtered transactions
-- **Better KPIs**: Corrected Max Drawdown calculation (peak-to-trough)
-- **Date Filtering**: Persistent date range selection across sessions
-- **UI Improvements**: Tooltips explaining KPI calculations
-- **Currency Conversion**: Multi-currency support with conversion toggle
-- **Performance**: Optimized data fetching and caching
-- **Versioning**: Single `VERSION` file for all version management
+- **Trade Frequency Chart**: New chart in Analytics → Performance showing trades per day, month, and year with totals and averages per account and aggregated
+- **Monthly P&L Totals**: Added positive/negative month totals to the Monthly P&L chart alongside yearly totals
+- **Spread Cost Analysis**: New chart in Analytics → Risk showing spread cost per trade based on Trade Nation market data with time-based spread lookups
+- **Spread Data Source Note**: Settings page now shows when spread data was last updated with reference URL to Trade Nation Market Information Sheet
 
 ## License
 
