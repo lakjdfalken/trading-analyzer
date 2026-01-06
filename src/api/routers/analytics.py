@@ -993,31 +993,56 @@ async def get_spread_cost_analysis(
             if not spread_key or spread_key not in MARKET_SPREADS:
                 continue
 
-            # Extract time from open_period for time-based spread lookup
-            trade_time = "12:00:00"  # Default to midday if no time available
+            # Extract time from open_period for opening spread lookup
+            open_time = "12:00:00"  # Default to midday if no time available
             if open_period:
                 try:
                     if isinstance(open_period, str):
                         # Parse time from datetime string like "2025-10-09 19:28:33"
                         if " " in open_period:
-                            trade_time = open_period.split(" ")[1]
+                            open_time = open_period.split(" ")[1]
                         elif "T" in open_period:
-                            trade_time = (
+                            open_time = (
                                 open_period.split("T")[1].split("+")[0].split("Z")[0]
                             )
                     else:
-                        trade_time = open_period.strftime("%H:%M:%S")
+                        open_time = open_period.strftime("%H:%M:%S")
                 except (ValueError, AttributeError):
                     pass
 
-            # Get spread for this time
-            spread = get_spread_for_time(spread_key, trade_time)
-            if spread is None:
+            # Extract time from tx_date (Transaction Date) for closing spread lookup
+            close_time = "12:00:00"  # Default to midday if no time available
+            if tx_date:
+                try:
+                    if isinstance(tx_date, str):
+                        # Parse time from datetime string like "2025-10-09 19:28:33"
+                        if " " in tx_date:
+                            close_time = tx_date.split(" ")[1]
+                        elif "T" in tx_date:
+                            close_time = (
+                                tx_date.split("T")[1].split("+")[0].split("Z")[0]
+                            )
+                    else:
+                        close_time = tx_date.strftime("%H:%M:%S")
+                except (ValueError, AttributeError):
+                    pass
+
+            # Get spread at opening and closing times
+            opening_spread = get_spread_for_time(spread_key, open_time)
+            closing_spread = get_spread_for_time(spread_key, close_time)
+
+            if opening_spread is None and closing_spread is None:
                 continue
 
-            # Spread cost = spread (points) × position size
-            # For most instruments, 1 point = 1 currency unit per contract
-            spread_cost = spread * amount
+            # Use available spreads, defaulting to the other if one is missing
+            if opening_spread is None:
+                opening_spread = closing_spread
+            if closing_spread is None:
+                closing_spread = opening_spread
+
+            # Spread cost = (half opening spread + half closing spread) × position size
+            # You pay half the spread on entry (mid to ask/bid) and half on exit
+            spread_cost = ((opening_spread / 2) + (closing_spread / 2)) * amount
 
             # Convert to target currency (spreads are in account currency)
             if tx_currency != currency:
