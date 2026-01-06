@@ -4,6 +4,7 @@ Analytics API router.
 Provides endpoints for advanced analytics and performance metrics.
 """
 
+from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -874,4 +875,556 @@ async def get_funding_data(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error fetching funding data: {str(e)}"
+        )
+
+
+class SpreadCostDataPoint(BaseModel):
+    """Spread cost data point for monthly breakdown."""
+
+    month: str
+    month_key: str
+    spread_cost: float
+    trades: int
+    avg_spread_cost: float
+    instruments: Dict[str, float]
+
+
+class SpreadCostByInstrument(BaseModel):
+    """Spread cost breakdown by instrument."""
+
+    instrument: str
+    spread_cost: float
+    trades: int
+    avg_spread_cost: float
+
+
+class SpreadCostResponse(BaseModel):
+    """Complete spread cost analysis response."""
+
+    monthly: List[SpreadCostDataPoint]
+    by_instrument: List[SpreadCostByInstrument]
+    total_spread_cost: float
+    total_trades: int
+    avg_spread_per_trade: float
+    currency: str
+
+
+@router.get("/spread-cost")
+async def get_spread_cost_analysis(
+    start_date: Optional[datetime] = Query(None, alias="from"),
+    end_date: Optional[datetime] = Query(None, alias="to"),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for spread cost calculation (required)"
+    ),
+):
+    """
+    Get spread cost analysis showing how much was spent on spreads.
+
+    Spread cost = spread (points) × position size × point value
+
+    Args:
+        start_date: Start of date range
+        end_date: End of date range
+        account_id: Filter to specific account
+        currency: Target currency for spread cost values
+
+    Returns:
+        Monthly breakdown and by-instrument breakdown of spread costs
+    """
+    try:
+        from api.services.currency import CurrencyService
+        from settings import (
+            MARKET_SPREADS,
+            get_instrument_spread_key,
+            get_spread_for_time,
+        )
+
+        conditions = ["(\"Action\" IN ('Trade Receivable', 'Trade Payable'))"]
+        params: List[Any] = []
+
+        if start_date:
+            conditions.append('"Transaction Date" >= ?')
+            params.append(start_date.strftime("%Y-%m-%d"))
+        if end_date:
+            conditions.append('"Transaction Date" <= ?')
+            params.append(end_date.strftime("%Y-%m-%d"))
+        if account_id:
+            conditions.append("account_id = ?")
+            params.append(account_id)
+
+        where_clause = " AND ".join(conditions)
+
+        query = f"""
+            SELECT
+                "Transaction Date",
+                "Open Period",
+                "Description",
+                "Amount",
+                "Currency"
+            FROM broker_transactions
+            WHERE {where_clause}
+            ORDER BY "Transaction Date" ASC
+        """
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+        # Calculate spread costs
+        monthly_data: Dict[str, Dict[str, Any]] = {}
+        instrument_data: Dict[str, Dict[str, Any]] = {}
+        total_spread_cost = 0.0
+        total_trades = 0
+
+        for row in rows:
+            tx_date = row[0]
+            open_period = row[1]  # When the trade was opened
+            description = row[2] or ""
+            amount = abs(float(row[3] or 0))
+            tx_currency = row[4] or "USD"
+
+            if amount == 0:
+                continue
+
+            # Get instrument spread info
+            spread_key = get_instrument_spread_key(description)
+            if not spread_key or spread_key not in MARKET_SPREADS:
+                continue
+
+            # Extract time from open_period for time-based spread lookup
+            trade_time = "12:00:00"  # Default to midday if no time available
+            if open_period:
+                try:
+                    if isinstance(open_period, str):
+                        # Parse time from datetime string like "2025-10-09 19:28:33"
+                        if " " in open_period:
+                            trade_time = open_period.split(" ")[1]
+                        elif "T" in open_period:
+                            trade_time = (
+                                open_period.split("T")[1].split("+")[0].split("Z")[0]
+                            )
+                    else:
+                        trade_time = open_period.strftime("%H:%M:%S")
+                except (ValueError, AttributeError):
+                    pass
+
+            # Get spread for this time
+            spread = get_spread_for_time(spread_key, trade_time)
+            if spread is None:
+                continue
+
+            # Spread cost = spread (points) × position size
+            # For most instruments, 1 point = 1 currency unit per contract
+            spread_cost = spread * amount
+
+            # Convert to target currency (spreads are in account currency)
+            if tx_currency != currency:
+                rate = CurrencyService.get_exchange_rate(tx_currency, currency)
+                if rate:
+                    spread_cost *= rate
+
+            # Parse month
+            if isinstance(tx_date, str):
+                try:
+                    dt = datetime.fromisoformat(tx_date.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+            else:
+                dt = tx_date
+
+            month_key = dt.strftime("%Y-%m")
+            month_label = dt.strftime("%b %Y")
+
+            # Aggregate monthly
+            if month_key not in monthly_data:
+                monthly_data[month_key] = {
+                    "month": month_label,
+                    "month_key": month_key,
+                    "spread_cost": 0.0,
+                    "trades": 0,
+                    "instruments": {},
+                }
+            monthly_data[month_key]["spread_cost"] += spread_cost
+            monthly_data[month_key]["trades"] += 1
+
+            # Track per instrument within month
+            if spread_key not in monthly_data[month_key]["instruments"]:
+                monthly_data[month_key]["instruments"][spread_key] = 0.0
+            monthly_data[month_key]["instruments"][spread_key] += spread_cost
+
+            # Aggregate by instrument
+            if spread_key not in instrument_data:
+                instrument_data[spread_key] = {
+                    "instrument": spread_key,
+                    "spread_cost": 0.0,
+                    "trades": 0,
+                }
+            instrument_data[spread_key]["spread_cost"] += spread_cost
+            instrument_data[spread_key]["trades"] += 1
+
+            total_spread_cost += spread_cost
+            total_trades += 1
+
+        # Build response
+        monthly_result = []
+        for month_key in sorted(monthly_data.keys()):
+            data = monthly_data[month_key]
+            avg_spread = (
+                data["spread_cost"] / data["trades"] if data["trades"] > 0 else 0
+            )
+            monthly_result.append(
+                SpreadCostDataPoint(
+                    month=data["month"],
+                    month_key=data["month_key"],
+                    spread_cost=round(data["spread_cost"], 2),
+                    trades=data["trades"],
+                    avg_spread_cost=round(avg_spread, 2),
+                    instruments={
+                        k: round(v, 2) for k, v in data["instruments"].items()
+                    },
+                )
+            )
+
+        instrument_result = []
+        for inst_key in sorted(
+            instrument_data.keys(),
+            key=lambda x: instrument_data[x]["spread_cost"],
+            reverse=True,
+        ):
+            data = instrument_data[inst_key]
+            avg_spread = (
+                data["spread_cost"] / data["trades"] if data["trades"] > 0 else 0
+            )
+            instrument_result.append(
+                SpreadCostByInstrument(
+                    instrument=data["instrument"],
+                    spread_cost=round(data["spread_cost"], 2),
+                    trades=data["trades"],
+                    avg_spread_cost=round(avg_spread, 2),
+                )
+            )
+
+        avg_spread_per_trade = (
+            total_spread_cost / total_trades if total_trades > 0 else 0
+        )
+
+        return SpreadCostResponse(
+            monthly=monthly_result,
+            by_instrument=instrument_result,
+            total_spread_cost=round(total_spread_cost, 2),
+            total_trades=total_trades,
+            avg_spread_per_trade=round(avg_spread_per_trade, 2),
+            currency=currency,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching spread cost analysis: {str(e)}"
+        )
+
+
+# Trade Frequency Models
+class DailyTradeCount(BaseModel):
+    """Trade count for a single day."""
+
+    date: str = Field(..., description="Date in YYYY-MM-DD format")
+    trades: int = Field(..., description="Number of trades on this day")
+
+
+class MonthlyTradeCount(BaseModel):
+    """Trade count for a single month."""
+
+    month: str = Field(..., description="Month in YYYY-MM format")
+    trades: int = Field(..., description="Number of trades in this month")
+    trading_days: int = Field(..., description="Number of days with trades")
+
+
+class YearlyTradeCount(BaseModel):
+    """Trade count for a single year."""
+
+    year: int = Field(..., description="Year")
+    trades: int = Field(..., description="Number of trades in this year")
+    trading_days: int = Field(..., description="Number of days with trades")
+    trading_months: int = Field(..., description="Number of months with trades")
+
+
+class AccountTradeFrequency(BaseModel):
+    """Trade frequency data for a single account."""
+
+    account_id: int
+    account_name: str
+    daily: List[DailyTradeCount]
+    monthly: List[MonthlyTradeCount]
+    yearly: List[YearlyTradeCount]
+    total_trades: int
+    total_trading_days: int
+    avg_trades_per_day: float
+    avg_trades_per_trading_day: float
+    avg_trades_per_month: float
+
+
+class TradeFrequencyResponse(BaseModel):
+    """Complete trade frequency response."""
+
+    by_account: List[AccountTradeFrequency]
+    aggregated: AccountTradeFrequency
+    date_range_days: int
+
+
+@router.get("/trade-frequency", response_model=TradeFrequencyResponse)
+async def get_trade_frequency(
+    start_date: Optional[datetime] = Query(None, alias="from"),
+    end_date: Optional[datetime] = Query(None, alias="to"),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+):
+    """
+    Get trade frequency analysis with daily, monthly, and yearly breakdowns.
+
+    Args:
+        start_date: Start of date range
+        end_date: End of date range
+        account_id: Filter by specific account
+
+    Returns:
+        Trade frequency data per account and aggregated
+    """
+    try:
+        # Build WHERE clause for trades
+        conditions = [
+            "\"Action\" NOT LIKE '%Fund%'",
+            "\"Action\" NOT LIKE '%Charge%'",
+            "\"Action\" NOT LIKE '%Deposit%'",
+            "\"Action\" NOT LIKE '%Withdraw%'",
+        ]
+        params: List[Any] = []
+
+        if start_date:
+            conditions.append('"Transaction Date" >= ?')
+            params.append(start_date.isoformat())
+
+        if end_date:
+            conditions.append('"Transaction Date" <= ?')
+            params.append(end_date.isoformat())
+
+        if account_id:
+            conditions.append("account_id = ?")
+            params.append(account_id)
+
+        where_clause = " AND ".join(conditions)
+
+        # Query to get all trades with account info
+        query = f"""
+            SELECT
+                DATE("Transaction Date") as trade_date,
+                account_id,
+                COALESCE(
+                    (SELECT account_name FROM accounts a WHERE a.account_id = bt.account_id),
+                    'Account ' || account_id
+                ) as account_name,
+                COUNT(*) as trade_count
+            FROM broker_transactions bt
+            WHERE {where_clause}
+            GROUP BY DATE("Transaction Date"), account_id
+            ORDER BY trade_date, account_id
+        """
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+
+        if not rows:
+            empty_account = AccountTradeFrequency(
+                account_id=0,
+                account_name="All Accounts",
+                daily=[],
+                monthly=[],
+                yearly=[],
+                total_trades=0,
+                total_trading_days=0,
+                avg_trades_per_day=0,
+                avg_trades_per_trading_day=0,
+                avg_trades_per_month=0,
+            )
+            return TradeFrequencyResponse(
+                by_account=[],
+                aggregated=empty_account,
+                date_range_days=0,
+            )
+
+        # Organize data by account
+        account_data: Dict[int, Dict[str, Any]] = defaultdict(
+            lambda: {
+                "account_name": "",
+                "daily": defaultdict(int),
+                "monthly": defaultdict(lambda: {"trades": 0, "days": set()}),
+                "yearly": defaultdict(
+                    lambda: {"trades": 0, "days": set(), "months": set()}
+                ),
+            }
+        )
+
+        # Aggregated data
+        agg_daily: Dict[str, int] = defaultdict(int)
+        agg_monthly: Dict[str, Dict[str, Any]] = defaultdict(
+            lambda: {"trades": 0, "days": set()}
+        )
+        agg_yearly: Dict[int, Dict[str, Any]] = defaultdict(
+            lambda: {"trades": 0, "days": set(), "months": set()}
+        )
+
+        all_dates: set = set()
+
+        for row in rows:
+            trade_date = row[0]
+            acc_id = row[1]
+            acc_name = row[2]
+            trade_count = row[3]
+
+            # Parse date components
+            year = int(trade_date[:4])
+            month = trade_date[:7]  # YYYY-MM
+
+            # Per-account data
+            account_data[acc_id]["account_name"] = acc_name
+            account_data[acc_id]["daily"][trade_date] += trade_count
+            account_data[acc_id]["monthly"][month]["trades"] += trade_count
+            account_data[acc_id]["monthly"][month]["days"].add(trade_date)
+            account_data[acc_id]["yearly"][year]["trades"] += trade_count
+            account_data[acc_id]["yearly"][year]["days"].add(trade_date)
+            account_data[acc_id]["yearly"][year]["months"].add(month)
+
+            # Aggregated data
+            agg_daily[trade_date] += trade_count
+            agg_monthly[month]["trades"] += trade_count
+            agg_monthly[month]["days"].add(trade_date)
+            agg_yearly[year]["trades"] += trade_count
+            agg_yearly[year]["days"].add(trade_date)
+            agg_yearly[year]["months"].add(month)
+
+            all_dates.add(trade_date)
+
+        # Calculate date range
+        if all_dates:
+            min_date = min(all_dates)
+            max_date = max(all_dates)
+            from datetime import date as dt_date
+
+            d1 = dt_date.fromisoformat(min_date)
+            d2 = dt_date.fromisoformat(max_date)
+            date_range_days = (d2 - d1).days + 1
+        else:
+            date_range_days = 0
+
+        # Build per-account responses
+        by_account: List[AccountTradeFrequency] = []
+
+        for acc_id, data in sorted(account_data.items()):
+            daily_list = [
+                DailyTradeCount(date=d, trades=t)
+                for d, t in sorted(data["daily"].items())
+            ]
+            monthly_list = [
+                MonthlyTradeCount(
+                    month=m, trades=info["trades"], trading_days=len(info["days"])
+                )
+                for m, info in sorted(data["monthly"].items())
+            ]
+            yearly_list = [
+                YearlyTradeCount(
+                    year=y,
+                    trades=info["trades"],
+                    trading_days=len(info["days"]),
+                    trading_months=len(info["months"]),
+                )
+                for y, info in sorted(data["yearly"].items())
+            ]
+
+            total_trades = sum(d.trades for d in daily_list)
+            total_trading_days = len(data["daily"])
+            total_months = len(data["monthly"])
+
+            avg_trades_per_day = (
+                total_trades / date_range_days if date_range_days > 0 else 0
+            )
+            avg_trades_per_trading_day = (
+                total_trades / total_trading_days if total_trading_days > 0 else 0
+            )
+            avg_trades_per_month = (
+                total_trades / total_months if total_months > 0 else 0
+            )
+
+            by_account.append(
+                AccountTradeFrequency(
+                    account_id=acc_id,
+                    account_name=data["account_name"],
+                    daily=daily_list,
+                    monthly=monthly_list,
+                    yearly=yearly_list,
+                    total_trades=total_trades,
+                    total_trading_days=total_trading_days,
+                    avg_trades_per_day=round(avg_trades_per_day, 2),
+                    avg_trades_per_trading_day=round(avg_trades_per_trading_day, 2),
+                    avg_trades_per_month=round(avg_trades_per_month, 2),
+                )
+            )
+
+        # Build aggregated response
+        agg_daily_list = [
+            DailyTradeCount(date=d, trades=t) for d, t in sorted(agg_daily.items())
+        ]
+        agg_monthly_list = [
+            MonthlyTradeCount(
+                month=m, trades=info["trades"], trading_days=len(info["days"])
+            )
+            for m, info in sorted(agg_monthly.items())
+        ]
+        agg_yearly_list = [
+            YearlyTradeCount(
+                year=y,
+                trades=info["trades"],
+                trading_days=len(info["days"]),
+                trading_months=len(info["months"]),
+            )
+            for y, info in sorted(agg_yearly.items())
+        ]
+
+        agg_total_trades = sum(d.trades for d in agg_daily_list)
+        agg_total_trading_days = len(agg_daily)
+        agg_total_months = len(agg_monthly)
+
+        agg_avg_trades_per_day = (
+            agg_total_trades / date_range_days if date_range_days > 0 else 0
+        )
+        agg_avg_trades_per_trading_day = (
+            agg_total_trades / agg_total_trading_days
+            if agg_total_trading_days > 0
+            else 0
+        )
+        agg_avg_trades_per_month = (
+            agg_total_trades / agg_total_months if agg_total_months > 0 else 0
+        )
+
+        aggregated = AccountTradeFrequency(
+            account_id=0,
+            account_name="All Accounts",
+            daily=agg_daily_list,
+            monthly=agg_monthly_list,
+            yearly=agg_yearly_list,
+            total_trades=agg_total_trades,
+            total_trading_days=agg_total_trading_days,
+            avg_trades_per_day=round(agg_avg_trades_per_day, 2),
+            avg_trades_per_trading_day=round(agg_avg_trades_per_trading_day, 2),
+            avg_trades_per_month=round(agg_avg_trades_per_month, 2),
+        )
+
+        return TradeFrequencyResponse(
+            by_account=by_account,
+            aggregated=aggregated,
+            date_range_days=date_range_days,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching trade frequency: {str(e)}"
         )

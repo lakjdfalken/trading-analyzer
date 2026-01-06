@@ -42,6 +42,7 @@ export { DrawdownChart } from "./DrawdownChart";
 export { HourlyPerformanceChart } from "./HourlyPerformanceChart";
 export { WeekdayPerformanceChart } from "./WeekdayPerformanceChart";
 export { StreakChart } from "./StreakChart";
+export { TradeFrequencyChart } from "./TradeFrequencyChart";
 export { TradeDurationChart } from "./TradeDurationChart";
 export { CumulativePnLChart } from "./CumulativePnLChart";
 export { PositionSizeChart } from "./PositionSizeChart";

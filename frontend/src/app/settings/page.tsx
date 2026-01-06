@@ -674,6 +674,25 @@ export default function SettingsPage() {
                 of 1.0 means no adjustment. Use 0.1 for instruments quoted per
                 0.1 (like Gold), or 0.0001 for forex pips.
               </p>
+
+              {/* Spread Data Source Note */}
+              <div className="mt-4 p-3 bg-muted/50 border border-border rounded-lg">
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium">Spread Data Source:</span>{" "}
+                  Market spread data and trading hours were last updated on{" "}
+                  <span className="font-medium">January 6, 2026</span>. Data
+                  sourced from{" "}
+                  <a
+                    href="https://tradenation.com/en-bs/tntrader-market-information-sheet/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    Trade Nation Market Information Sheet
+                  </a>
+                  .
+                </p>
+              </div>
             </CardContent>
           </Card>
 

@@ -454,6 +454,96 @@ export async function getFunding(
   return apiFetch(`/api/analytics/funding${params}`);
 }
 
+// Spread Cost Types
+export interface SpreadCostDataPoint {
+  month: string;
+  month_key: string;
+  spread_cost: number;
+  trades: number;
+  avg_spread_cost: number;
+  instruments: Record<string, number>;
+}
+
+export interface SpreadCostByInstrument {
+  instrument: string;
+  spread_cost: number;
+  trades: number;
+  avg_spread_cost: number;
+}
+
+export interface SpreadCostResponse {
+  monthly: SpreadCostDataPoint[];
+  by_instrument: SpreadCostByInstrument[];
+  total_spread_cost: number;
+  total_trades: number;
+  avg_spread_per_trade: number;
+  currency: string;
+}
+
+// Trade Frequency Types
+export interface DailyTradeCount {
+  date: string;
+  trades: number;
+}
+
+export interface MonthlyTradeCount {
+  month: string;
+  trades: number;
+  trading_days: number;
+}
+
+export interface YearlyTradeCount {
+  year: number;
+  trades: number;
+  trading_days: number;
+  trading_months: number;
+}
+
+export interface AccountTradeFrequency {
+  account_id: number;
+  account_name: string;
+  daily: DailyTradeCount[];
+  monthly: MonthlyTradeCount[];
+  yearly: YearlyTradeCount[];
+  total_trades: number;
+  total_trading_days: number;
+  avg_trades_per_day: number;
+  avg_trades_per_trading_day: number;
+  avg_trades_per_month: number;
+}
+
+export interface TradeFrequencyResponse {
+  by_account: AccountTradeFrequency[];
+  aggregated: AccountTradeFrequency;
+  date_range_days: number;
+}
+
+export async function getTradeFrequency(
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<TradeFrequencyResponse> {
+  const params = buildQueryString({
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/analytics/trade-frequency${params}`);
+}
+
+export async function getSpreadCost(
+  currency: string,
+  dateRange?: DateRange,
+  accountId?: number | null,
+): Promise<SpreadCostResponse> {
+  const params = buildQueryString({
+    currency,
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch(`/api/analytics/spread-cost${params}`);
+}
+
 // ============================================================================
 // Trades API
 // ============================================================================

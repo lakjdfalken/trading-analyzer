@@ -145,6 +145,24 @@ export function MonthlyPnLChart({
     );
   }, [data]);
 
+  // Calculate positive and negative month totals
+  const posNegTotals = React.useMemo(() => {
+    const positive = { pnl: 0, count: 0 };
+    const negative = { pnl: 0, count: 0 };
+
+    data.forEach((item) => {
+      if (item.pnl >= 0) {
+        positive.pnl += item.pnl;
+        positive.count += 1;
+      } else {
+        negative.pnl += item.pnl;
+        negative.count += 1;
+      }
+    });
+
+    return { positive, negative };
+  }, [data]);
+
   if (!data || data.length === 0) {
     return (
       <div
@@ -215,6 +233,34 @@ export function MonthlyPnLChart({
                   ({grandTotal.trades} trades)
                 </span>
               )}
+            </div>
+          )}
+
+          {/* Positive Months Total */}
+          {posNegTotals.positive.count > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-green-500/10 border border-green-500/20">
+              <span className="text-muted-foreground font-medium">
+                Winning:
+              </span>
+              <span className="font-semibold text-green-500">
+                +{formatCurrency(posNegTotals.positive.pnl, currency)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                ({posNegTotals.positive.count} months)
+              </span>
+            </div>
+          )}
+
+          {/* Negative Months Total */}
+          {posNegTotals.negative.count > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-red-500/10 border border-red-500/20">
+              <span className="text-muted-foreground font-medium">Losing:</span>
+              <span className="font-semibold text-red-500">
+                {formatCurrency(posNegTotals.negative.pnl, currency)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                ({posNegTotals.negative.count} months)
+              </span>
             </div>
           )}
         </div>

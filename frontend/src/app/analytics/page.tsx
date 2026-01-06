@@ -43,6 +43,8 @@ import { MultiAccountCumulativePnLChart } from "@/components/charts/MultiAccount
 import type { AccountPnLSeries as CumulativePnLAccountSeries } from "@/components/charts/MultiAccountCumulativePnLChart";
 import { PositionSizeChart } from "@/components/charts/PositionSizeChart";
 import { FundingChart } from "@/components/charts/FundingChart";
+import { SpreadCostChart } from "@/components/charts/SpreadCostChart";
+import { TradeFrequencyChart } from "@/components/charts/TradeFrequencyChart";
 import { PointsChart } from "@/components/charts/PointsChart";
 import type { PointsData } from "@/components/charts/PointsChart";
 import type { AccountSeries } from "@/components/charts/MultiAccountBalanceChart";
@@ -181,6 +183,12 @@ export default function AnalyticsPage() {
     PointsData[]
   >([]);
 
+  const [spreadCostData, setSpreadCostData] =
+    React.useState<api.SpreadCostResponse | null>(null);
+
+  const [tradeFrequencyData, setTradeFrequencyData] =
+    React.useState<api.TradeFrequencyResponse | null>(null);
+
   // Dashboard store
   const {
     dateRange,
@@ -247,6 +255,8 @@ export default function AnalyticsPage() {
         fundingResult,
         equityCurveResult,
         pointsResult,
+        spreadCostResult,
+        tradeFrequencyResult,
         accountsResult,
       ] = await Promise.allSettled([
         api.getBalanceHistory(
@@ -301,6 +311,8 @@ export default function AnalyticsPage() {
           selectedAccountId,
         ),
         api.getPointsByInstrument(dateRangeParam, selectedAccountId),
+        api.getSpreadCost(effectiveCurrency, dateRangeParam, selectedAccountId),
+        api.getTradeFrequency(dateRangeParam, selectedAccountId),
         api.getAccounts(),
       ]);
 
@@ -418,6 +430,18 @@ export default function AnalyticsPage() {
           Array.isArray(pointsResult.value)
             ? pointsResult.value
             : [pointsResult.value],
+        );
+      }
+
+      // Process spread cost data
+      if (spreadCostResult.status === "fulfilled") {
+        setSpreadCostData(spreadCostResult.value as api.SpreadCostResponse);
+      }
+
+      // Process trade frequency data
+      if (tradeFrequencyResult.status === "fulfilled") {
+        setTradeFrequencyData(
+          tradeFrequencyResult.value as api.TradeFrequencyResponse,
         );
       }
 
@@ -683,6 +707,20 @@ export default function AnalyticsPage() {
       component: <StreakChart data={streakData} height={300} />,
     },
     {
+      id: "tradeFrequency",
+      title: "Trade Frequency",
+      description: "Daily, monthly, and yearly trade counts with averages",
+      category: "performance",
+      icon: BarChart3,
+      component: (
+        <TradeFrequencyChart
+          data={tradeFrequencyData}
+          height={300}
+          showByAccount={true}
+        />
+      ),
+    },
+    {
       id: "duration",
       title: "Trade Duration Analysis",
       description: "Performance by trade holding time",
@@ -715,6 +753,28 @@ export default function AnalyticsPage() {
       category: "instruments",
       icon: Target,
       component: <PointsChart data={pointsByInstrument} height={300} />,
+    },
+    {
+      id: "spreadCost",
+      title: "Spread Cost Analysis",
+      description: "Monthly breakdown of spread costs paid per trade",
+      category: "risk",
+      icon: DollarSign,
+      component: currencyNotSet ? (
+        <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+          Please set your default currency in Settings
+        </div>
+      ) : (
+        <SpreadCostChart
+          data={spreadCostData?.monthly || []}
+          byInstrument={spreadCostData?.by_instrument || []}
+          totalSpreadCost={spreadCostData?.total_spread_cost || 0}
+          totalTrades={spreadCostData?.total_trades || 0}
+          avgSpreadPerTrade={spreadCostData?.avg_spread_per_trade || 0}
+          height={300}
+          currency={displayCurrency}
+        />
+      ),
     },
   ];
 
