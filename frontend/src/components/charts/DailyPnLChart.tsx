@@ -63,6 +63,12 @@ function CustomTooltip({
     // Keep original if parsing fails
   }
 
+  // Only show percentage if previous balance exists and is meaningful (> 100)
+  const showPercent =
+    dataPoint.pnlPercent != null &&
+    dataPoint.previousBalance != null &&
+    dataPoint.previousBalance > 100;
+
   return (
     <div
       className="rounded-lg border bg-popover p-3 shadow-md"
@@ -77,12 +83,12 @@ function CustomTooltip({
             {formatAmount(dataPoint.pnl, currency)}
           </span>
         </div>
-        {dataPoint.pnlPercent != null && (
+        {showPercent && (
           <div className="flex justify-between gap-4">
-            <span className="text-muted-foreground">P&L %:</span>
+            <span className="text-muted-foreground">Return (at open):</span>
             <span className={isProfit ? "text-green-500" : "text-red-500"}>
               {isProfit ? "+" : ""}
-              {dataPoint.pnlPercent.toFixed(2)}%
+              {dataPoint.pnlPercent!.toFixed(2)}%
             </span>
           </div>
         )}
@@ -101,10 +107,10 @@ function CustomTooltip({
           <span className="text-muted-foreground">Trades:</span>
           <span>{dataPoint.trades}</span>
         </div>
-        {dataPoint.previousBalance != null && (
+        {dataPoint.previousBalance != null && dataPoint.previousBalance > 0 && (
           <div className="flex justify-between gap-4 pt-1 border-t border-border mt-1">
             <span className="text-muted-foreground text-xs">
-              Prev. Balance:
+              Avg Balance at Open:
             </span>
             <span className="text-xs">
               {formatAmount(dataPoint.previousBalance, currency)}
@@ -126,19 +132,23 @@ function InfoTooltip() {
         onMouseLeave={() => setIsVisible(false)}
         onClick={() => setIsVisible(!isVisible)}
         className="text-muted-foreground hover:text-foreground transition-colors ml-2"
-        aria-label="Information about P&L percentage calculation"
+        aria-label="Information about Win Rate calculation"
       >
         <Info className="h-4 w-4" />
       </button>
       {isVisible && (
-        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-popover border border-border rounded-lg shadow-lg text-sm">
-          <p className="text-foreground font-medium mb-1">P&L % Calculation</p>
+        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-3 bg-popover border border-border rounded-lg shadow-lg text-sm">
+          <p className="text-foreground font-medium mb-1">Win Rate</p>
           <p className="text-muted-foreground text-xs">
-            The daily P&L percentage is calculated as the day&apos;s profit or
-            loss divided by the previous day&apos;s closing account balance.
+            Percentage of trading days that ended with a positive P&L (Winning
+            Days ÷ Total Trading Days).
           </p>
-          <p className="text-muted-foreground text-xs mt-2">
-            Formula: (Daily P&L ÷ Previous Day Balance) × 100
+          <p className="text-foreground font-medium mb-1 mt-3">
+            Return % (in tooltip)
+          </p>
+          <p className="text-muted-foreground text-xs">
+            The return percentage is calculated using the account balance at the
+            moment each trade was opened, not when it was closed.
           </p>
           <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full">
             <div className="border-8 border-transparent border-t-border" />
@@ -206,22 +216,45 @@ export function DailyPnLChart({
     return value.toFixed(0);
   };
 
-  // Calculate summary stats
+  // Calculate improved summary stats
   const stats = React.useMemo(() => {
     if (chartData.length === 0) return null;
 
-    const percentages = chartData
-      .filter((d) => d.pnlPercent != null)
-      .map((d) => d.pnlPercent as number);
+    const totalDays = chartData.length;
+    const profitableDays = chartData.filter((d) => d.pnl > 0).length;
+    const losingDays = chartData.filter((d) => d.pnl < 0).length;
+    const winRate = (profitableDays / totalDays) * 100;
 
-    if (percentages.length === 0) return null;
+    // Find best and worst days by absolute P&L
+    const sortedByPnl = [...chartData].sort((a, b) => b.pnl - a.pnl);
+    const bestDay = sortedByPnl[0];
+    const worstDay = sortedByPnl[sortedByPnl.length - 1];
 
-    const avgPercent =
-      percentages.reduce((a, b) => a + b, 0) / percentages.length;
-    const maxPercent = Math.max(...percentages);
-    const minPercent = Math.min(...percentages);
+    // Calculate total P&L for the period
+    const totalPnl = chartData.reduce((sum, d) => sum + d.pnl, 0);
 
-    return { avgPercent, maxPercent, minPercent };
+    // Calculate average P&L per day
+    const avgPnl = totalPnl / totalDays;
+
+    // Calculate average daily return % (based on balance at open)
+    const daysWithPercent = chartData.filter((d) => d.pnlPercent != null);
+    const avgDailyReturnPercent =
+      daysWithPercent.length > 0
+        ? daysWithPercent.reduce((sum, d) => sum + (d.pnlPercent || 0), 0) /
+          daysWithPercent.length
+        : null;
+
+    return {
+      winRate,
+      profitableDays,
+      losingDays,
+      totalDays,
+      bestDay,
+      worstDay,
+      totalPnl,
+      avgPnl,
+      avgDailyReturnPercent,
+    };
   }, [chartData]);
 
   if (!data || data.length === 0) {
@@ -238,29 +271,48 @@ export function DailyPnLChart({
   return (
     <div>
       {stats && (
-        <div className="flex items-center gap-4 mb-3 text-sm">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3 text-sm">
           <div className="flex items-center">
-            <span className="text-muted-foreground">Avg Daily %:</span>
+            <span className="text-muted-foreground">Win Rate:</span>
             <span
-              className={`ml-1 font-medium ${stats.avgPercent >= 0 ? "text-green-500" : "text-red-500"}`}
+              className={`ml-1 font-medium ${stats.winRate >= 50 ? "text-green-500" : "text-red-500"}`}
             >
-              {stats.avgPercent >= 0 ? "+" : ""}
-              {stats.avgPercent.toFixed(2)}%
+              {stats.winRate.toFixed(1)}%
             </span>
             <InfoTooltip />
           </div>
-          <div>
-            <span className="text-muted-foreground">Best:</span>
+          <div className="flex items-center">
+            <span className="text-muted-foreground">Best Day:</span>
             <span className="ml-1 font-medium text-green-500">
-              +{stats.maxPercent.toFixed(2)}%
+              +{formatAmount(stats.bestDay.pnl, currency)}
             </span>
           </div>
-          <div>
-            <span className="text-muted-foreground">Worst:</span>
+          <div className="flex items-center">
+            <span className="text-muted-foreground">Worst Day:</span>
             <span className="ml-1 font-medium text-red-500">
-              {stats.minPercent.toFixed(2)}%
+              {formatAmount(stats.worstDay.pnl, currency)}
             </span>
           </div>
+          <div className="flex items-center">
+            <span className="text-muted-foreground">Avg/Day:</span>
+            <span
+              className={`ml-1 font-medium ${stats.avgPnl >= 0 ? "text-green-500" : "text-red-500"}`}
+            >
+              {stats.avgPnl >= 0 ? "+" : ""}
+              {formatAmount(stats.avgPnl, currency)}
+            </span>
+          </div>
+          {stats.avgDailyReturnPercent != null && (
+            <div className="flex items-center">
+              <span className="text-muted-foreground">Avg Return:</span>
+              <span
+                className={`ml-1 font-medium ${stats.avgDailyReturnPercent >= 0 ? "text-green-500" : "text-red-500"}`}
+              >
+                {stats.avgDailyReturnPercent >= 0 ? "+" : ""}
+                {stats.avgDailyReturnPercent.toFixed(2)}%
+              </span>
+            </div>
+          )}
         </div>
       )}
       <ResponsiveContainer width="100%" height={height}>
