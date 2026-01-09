@@ -166,15 +166,22 @@ export default function AnalyticsPage() {
     sizePnLCorrelation: Array<{ size: number; pnl: number }>;
   } | null>(null);
 
-  const [fundingData, setFundingData] = React.useState<
-    Array<{
+  const [fundingData, setFundingData] = React.useState<{
+    daily: Array<{
       date: string;
       deposits: number;
       withdrawals: number;
+      funding_charges: number;
       net: number;
       cumulative: number;
-    }>
-  >([]);
+    }>;
+    charges_by_market: Array<{
+      market: string;
+      total_charges: number;
+      count: number;
+    }>;
+    total_funding_charges: number;
+  }>({ daily: [], charges_by_market: [], total_funding_charges: 0 });
   const [equityCurve, setEquityCurve] = React.useState<
     Array<{ date: string; balance: number; drawdown?: number }>
   >([]);
@@ -399,18 +406,25 @@ export default function AnalyticsPage() {
         );
       }
 
-      // Process funding data - API returns array directly with date, deposits, withdrawals, net, cumulative
+      // Process funding data - API returns FundingResponse with daily data and charges_by_market
       if (fundingResult.status === "fulfilled") {
-        const result = fundingResult.value as Array<{
-          date: string;
-          deposits: number;
-          withdrawals: number;
-          net: number;
-          cumulative: number;
-        }>;
-        if (Array.isArray(result)) {
-          setFundingData(result);
-        }
+        const result = fundingResult.value as {
+          daily: Array<{
+            date: string;
+            deposits: number;
+            withdrawals: number;
+            funding_charges: number;
+            net: number;
+            cumulative: number;
+          }>;
+          charges_by_market: Array<{
+            market: string;
+            total_charges: number;
+            count: number;
+          }>;
+          total_funding_charges: number;
+        };
+        setFundingData(result);
       }
 
       // Process equity curve (P/L based, excludes funding)
@@ -648,7 +662,8 @@ export default function AnalyticsPage() {
         </div>
       ) : (
         <FundingChart
-          data={fundingData}
+          data={fundingData.daily}
+          chargesByMarket={fundingData.charges_by_market}
           height={300}
           currency={displayCurrency}
         />

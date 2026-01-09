@@ -19,12 +19,20 @@ interface FundingDataPoint {
   date: string;
   deposits: number;
   withdrawals: number;
+  funding_charges: number;
   net: number;
   cumulative: number;
 }
 
+interface FundingChargeByMarket {
+  market: string;
+  total_charges: number;
+  count: number;
+}
+
 interface FundingChartProps {
   data: FundingDataPoint[];
+  chargesByMarket?: FundingChargeByMarket[];
   height?: number;
   currency: string;
 }
@@ -78,6 +86,14 @@ function CustomTooltip({
             -{formatAmount(dataPoint.withdrawals, currency)}
           </span>
         </div>
+        {dataPoint.funding_charges > 0 && (
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">Funding Charges:</span>
+            <span className="text-orange-500">
+              -{formatAmount(dataPoint.funding_charges, currency)}
+            </span>
+          </div>
+        )}
         <div className="flex justify-between gap-4 border-t pt-1 mt-1">
           <span className="text-muted-foreground">Net:</span>
           <span
@@ -105,6 +121,7 @@ function CustomTooltip({
 
 export function FundingChart({
   data,
+  chargesByMarket = [],
   height = 300,
   currency,
 }: FundingChartProps) {
@@ -113,14 +130,19 @@ export function FundingChart({
   // Calculate totals
   const totals = React.useMemo(() => {
     if (!data || data.length === 0) {
-      return { deposits: 0, withdrawals: 0, net: 0 };
+      return { deposits: 0, withdrawals: 0, fundingCharges: 0, net: 0 };
     }
     const deposits = data.reduce((sum, d) => sum + d.deposits, 0);
     const withdrawals = data.reduce((sum, d) => sum + d.withdrawals, 0);
+    const fundingCharges = data.reduce(
+      (sum, d) => sum + (d.funding_charges || 0),
+      0,
+    );
     return {
       deposits,
       withdrawals,
-      net: deposits - withdrawals,
+      fundingCharges,
+      net: deposits - withdrawals - fundingCharges,
     };
   }, [data]);
 
@@ -186,7 +208,7 @@ export function FundingChart({
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-6 text-sm px-4">
+      <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm px-4">
         <div>
           <span className="text-muted-foreground">Total Deposits: </span>
           <span className="text-green-500 font-medium">
@@ -199,6 +221,25 @@ export function FundingChart({
             -{formatAmount(totals.withdrawals, currency)}
           </span>
         </div>
+        {totals.fundingCharges > 0 && (
+          <div>
+            <span className="text-muted-foreground">Funding Charges: </span>
+            <span className="text-orange-500 font-medium">
+              -{formatAmount(totals.fundingCharges, currency)}
+            </span>
+          </div>
+        )}
+
+        {chargesByMarket.length > 0 && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs px-4 text-muted-foreground">
+            <span className="font-medium">Charges by market:</span>
+            {chargesByMarket.map((item) => (
+              <span key={item.market}>
+                {item.market}: -{formatAmount(item.total_charges, currency)}
+              </span>
+            ))}
+          </div>
+        )}
         <div>
           <span className="text-muted-foreground">Net: </span>
           <span

@@ -761,17 +761,34 @@ async def get_position_size_analysis(
         )
 
 
+class FundingChargeByMarket(BaseModel):
+    """Funding charge breakdown by market."""
+
+    market: str
+    total_charges: float
+    count: int
+
+
 class FundingDataPoint(BaseModel):
     """Funding data point for deposits/withdrawals chart."""
 
     date: str
     deposits: float
     withdrawals: float
+    funding_charges: float
     net: float
     cumulative: float
 
 
-@router.get("/funding", response_model=List[FundingDataPoint])
+class FundingResponse(BaseModel):
+    """Complete funding response with daily data and market breakdown."""
+
+    daily: List[FundingDataPoint]
+    charges_by_market: List[FundingChargeByMarket]
+    total_funding_charges: float
+
+
+@router.get("/funding", response_model=FundingResponse)
 async def get_funding_data(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
@@ -796,7 +813,9 @@ async def get_funding_data(
     try:
         from api.services.currency import CurrencyService
 
-        conditions = ["(\"Action\" = 'Fund receivable' OR \"Action\" = 'Fund payable')"]
+        conditions = [
+            "(\"Action\" = 'Fund receivable' OR \"Action\" = 'Fund payable' OR \"Action\" = 'Funding Charges')"
+        ]
         params: List[Any] = []
 
         if start_date:
@@ -817,6 +836,7 @@ async def get_funding_data(
                 DATE(bt."Transaction Date") as date,
                 SUM(CASE WHEN bt."Action" = 'Fund receivable' THEN COALESCE(bt."P/L", 0) ELSE 0 END) as deposits,
                 SUM(CASE WHEN bt."Action" = 'Fund payable' THEN ABS(COALESCE(bt."P/L", 0)) ELSE 0 END) as withdrawals,
+                SUM(CASE WHEN bt."Action" = 'Funding Charges' THEN ABS(COALESCE(bt."P/L", 0)) ELSE 0 END) as funding_charges,
                 a.currency as account_currency
             FROM broker_transactions bt
             LEFT JOIN accounts a ON bt.account_id = a.account_id
@@ -837,7 +857,8 @@ async def get_funding_data(
             date_str = row[0]
             deposits = float(row[1] or 0)
             withdrawals = float(row[2] or 0)
-            account_currency = row[3] or currency
+            funding_charges = float(row[3] or 0)
+            account_currency = row[4] or currency
 
             # Convert to target currency if needed
             if account_currency != currency:
@@ -845,11 +866,17 @@ async def get_funding_data(
                 if rate:
                     deposits *= rate
                     withdrawals *= rate
+                    funding_charges *= rate
 
             if date_str not in date_data:
-                date_data[date_str] = {"deposits": 0, "withdrawals": 0}
+                date_data[date_str] = {
+                    "deposits": 0,
+                    "withdrawals": 0,
+                    "funding_charges": 0,
+                }
             date_data[date_str]["deposits"] += deposits
             date_data[date_str]["withdrawals"] += withdrawals
+            date_data[date_str]["funding_charges"] += funding_charges
 
         result = []
         cumulative = 0.0
@@ -858,7 +885,8 @@ async def get_funding_data(
             data = date_data[date_str]
             deposits = data["deposits"]
             withdrawals = data["withdrawals"]
-            net = deposits - withdrawals
+            funding_charges = data["funding_charges"]
+            net = deposits - withdrawals - funding_charges
             cumulative += net
 
             result.append(
@@ -866,12 +894,84 @@ async def get_funding_data(
                     date=date_str,
                     deposits=round(deposits, 2),
                     withdrawals=round(withdrawals, 2),
+                    funding_charges=round(funding_charges, 2),
                     net=round(net, 2),
                     cumulative=round(cumulative, 2),
                 )
             )
 
-        return result
+        # Get funding charges breakdown by market
+        charges_conditions = ["\"Action\" = 'Funding Charges'"]
+        charges_params: List[Any] = []
+
+        if start_date:
+            charges_conditions.append('"Transaction Date" >= ?')
+            charges_params.append(start_date.strftime("%Y-%m-%d"))
+        if end_date:
+            charges_conditions.append('"Transaction Date" <= ?')
+            charges_params.append(end_date.strftime("%Y-%m-%d"))
+        if account_id:
+            charges_conditions.append("bt.account_id = ?")
+            charges_params.append(account_id)
+
+        charges_where = " AND ".join(charges_conditions)
+
+        charges_query = f"""
+            SELECT
+                bt."Description" as market,
+                SUM(ABS(COALESCE(bt."P/L", 0))) as total_charges,
+                COUNT(*) as count,
+                a.currency as account_currency
+            FROM broker_transactions bt
+            LEFT JOIN accounts a ON bt.account_id = a.account_id
+            WHERE {charges_where}
+            GROUP BY bt."Description", a.currency
+            ORDER BY total_charges DESC
+        """
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(charges_query, charges_params)
+            charges_rows = cursor.fetchall()
+
+        # Aggregate by market with currency conversion
+        market_data: Dict[str, Dict[str, float]] = {}
+        total_funding_charges = 0.0
+
+        for row in charges_rows:
+            market = row[0] or "Unknown"
+            total_charges = float(row[1] or 0)
+            count = int(row[2] or 0)
+            account_currency = row[3] or currency
+
+            # Convert to target currency if needed
+            if account_currency != currency:
+                rate = CurrencyService.get_exchange_rate(account_currency, currency)
+                if rate:
+                    total_charges *= rate
+
+            if market not in market_data:
+                market_data[market] = {"total_charges": 0, "count": 0}
+            market_data[market]["total_charges"] += total_charges
+            market_data[market]["count"] += count
+            total_funding_charges += total_charges
+
+        charges_by_market = [
+            FundingChargeByMarket(
+                market=market,
+                total_charges=round(data["total_charges"], 2),
+                count=int(data["count"]),
+            )
+            for market, data in sorted(
+                market_data.items(), key=lambda x: x[1]["total_charges"], reverse=True
+            )
+        ]
+
+        return FundingResponse(
+            daily=result,
+            charges_by_market=charges_by_market,
+            total_funding_charges=round(total_funding_charges, 2),
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error fetching funding data: {str(e)}"
