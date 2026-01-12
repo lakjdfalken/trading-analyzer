@@ -1007,6 +1007,7 @@ class SpreadCostResponse(BaseModel):
     total_trades: int
     avg_spread_per_trade: float
     currency: str
+    valid_from: Optional[str] = None  # ISO date from which spread data is valid
 
 
 @router.get("/spread-cost")
@@ -1040,12 +1041,25 @@ async def get_spread_cost_analysis(
             get_spread_for_time,
         )
 
+        # Get the spread cost valid from date (when spread data became reliable)
+        spread_cost_valid_from = CurrencyService.get_spread_cost_valid_from()
+
         conditions = ["(\"Action\" IN ('Trade Receivable', 'Trade Payable'))"]
         params: List[Any] = []
 
+        # Apply spread_cost_valid_from as minimum date filter
+        # If user-provided start_date is later, use that instead
+        effective_start_date = None
+        if spread_cost_valid_from:
+            effective_start_date = spread_cost_valid_from
         if start_date:
+            start_date_str = start_date.strftime("%Y-%m-%d")
+            if effective_start_date is None or start_date_str > effective_start_date:
+                effective_start_date = start_date_str
+
+        if effective_start_date:
             conditions.append('"Transaction Date" >= ?')
-            params.append(start_date.strftime("%Y-%m-%d"))
+            params.append(effective_start_date)
         if end_date:
             conditions.append('"Transaction Date" <= ?')
             params.append(end_date.strftime("%Y-%m-%d"))
@@ -1242,6 +1256,7 @@ async def get_spread_cost_analysis(
             total_trades=total_trades,
             avg_spread_per_trade=round(avg_spread_per_trade, 2),
             currency=currency,
+            valid_from=spread_cost_valid_from,
         )
     except Exception as e:
         raise HTTPException(

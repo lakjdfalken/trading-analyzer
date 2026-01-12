@@ -123,10 +123,18 @@ export default function SettingsPage() {
   const {
     defaultCurrency,
     showConverted,
+    spreadCostValidFrom,
     setDefaultCurrency,
     setShowConverted,
+    setSpreadCostValidFrom,
     isLoaded: settingsLoaded,
   } = useSettingsStore();
+
+  // Local state for spread cost valid from date editing
+  const [localSpreadCostValidFrom, setLocalSpreadCostValidFrom] =
+    React.useState<string>("2025-06-08");
+  const [spreadCostValidFromInitialized, setSpreadCostValidFromInitialized] =
+    React.useState(false);
 
   // Currency store (formatting only)
   const { formatAmount } = useCurrencyStore();
@@ -239,6 +247,14 @@ export default function SettingsPage() {
     }
   }, [settingsLoaded, defaultCurrency]);
 
+  // Sync local spread cost valid from with store value (only once when loaded)
+  React.useEffect(() => {
+    if (settingsLoaded && !spreadCostValidFromInitialized) {
+      setLocalSpreadCostValidFrom(spreadCostValidFrom || "2025-06-08");
+      setSpreadCostValidFromInitialized(true);
+    }
+  }, [settingsLoaded, spreadCostValidFrom, spreadCostValidFromInitialized]);
+
   // Set initial values for change tracking (only once)
   React.useEffect(() => {
     if (initialCurrency === undefined && defaultCurrency) {
@@ -262,12 +278,16 @@ export default function SettingsPage() {
     const pointFactorsChanged =
       pointFactorsLoaded &&
       JSON.stringify(pointFactors) !== JSON.stringify(savedPointFactors);
+    const spreadCostValidFromChanged =
+      spreadCostValidFromInitialized &&
+      localSpreadCostValidFrom !== (spreadCostValidFrom || "2025-06-08");
 
     setHasChanges(
       currencyChanged ||
         showConvertedChanged ||
         !!ratesChanged ||
-        pointFactorsChanged,
+        pointFactorsChanged ||
+        spreadCostValidFromChanged,
     );
   }, [
     defaultCurrency,
@@ -280,6 +300,9 @@ export default function SettingsPage() {
     pointFactors,
     savedPointFactors,
     pointFactorsLoaded,
+    localSpreadCostValidFrom,
+    spreadCostValidFrom,
+    spreadCostValidFromInitialized,
   ]);
 
   // Handle save - saves to backend via settings store
@@ -292,6 +315,7 @@ export default function SettingsPage() {
       // Save currency preferences to backend
       await setDefaultCurrency(defaultCurrency);
       await setShowConverted(showConverted);
+      await setSpreadCostValidFrom(localSpreadCostValidFrom);
 
       // Save exchange rates to backend
       if (defaultCurrency && Object.keys(localRates).length > 0) {
@@ -674,6 +698,28 @@ export default function SettingsPage() {
                 of 1.0 means no adjustment. Use 0.1 for instruments quoted per
                 0.1 (like Gold), or 0.0001 for forex pips.
               </p>
+
+              {/* Spread Cost Valid From Date */}
+              <div className="mt-6 space-y-3">
+                <label className="text-sm font-medium">
+                  Spread Cost Analysis Valid From
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="date"
+                    value={localSpreadCostValidFrom}
+                    onChange={(e) =>
+                      setLocalSpreadCostValidFrom(e.target.value)
+                    }
+                    className="px-3 py-2 rounded-md border border-input bg-background text-sm"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Spread cost analysis will only include transactions from this
+                  date onwards. Set this to the date when reliable spread data
+                  became available.
+                </p>
+              </div>
 
               {/* Spread Data Source Note */}
               <div className="mt-4 p-3 bg-muted/50 border border-border rounded-lg">

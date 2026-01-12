@@ -16,6 +16,7 @@ export interface DateRange {
 export interface Settings {
   defaultCurrency: string | null;
   showConverted: boolean;
+  spreadCostValidFrom: string | null;
 }
 
 export interface KPIMetrics {
@@ -212,10 +213,12 @@ export async function getSettings(): Promise<Settings> {
   const response = await apiFetch<{
     defaultCurrency: string | null;
     showConverted: boolean;
+    spreadCostValidFrom: string | null;
   }>("/api/currency/preferences");
   return {
     defaultCurrency: response.defaultCurrency,
     showConverted: response.showConverted,
+    spreadCostValidFrom: response.spreadCostValidFrom,
   };
 }
 
@@ -223,6 +226,7 @@ export async function updateSettings(settings: Settings): Promise<void> {
   await apiPut("/api/currency/preferences", {
     defaultCurrency: settings.defaultCurrency,
     showConverted: settings.showConverted,
+    spreadCostValidFrom: settings.spreadCostValidFrom,
   });
 }
 
@@ -478,6 +482,7 @@ export interface SpreadCostResponse {
   total_trades: number;
   avg_spread_per_trade: number;
   currency: string;
+  valid_from: string | null;
 }
 
 // Trade Frequency Types

@@ -13,6 +13,7 @@ export interface SettingsState {
   // Settings values
   defaultCurrency: string | undefined;
   showConverted: boolean;
+  spreadCostValidFrom: string | null;
 
   // Loading state
   isLoaded: boolean;
@@ -23,8 +24,14 @@ export interface SettingsState {
   loadSettings: () => Promise<void>;
   setDefaultCurrency: (currency: string) => Promise<void>;
   setShowConverted: (show: boolean) => Promise<void>;
+  setSpreadCostValidFrom: (date: string | null) => Promise<void>;
   updateSettings: (
-    settings: Partial<Pick<SettingsState, "defaultCurrency" | "showConverted">>,
+    settings: Partial<
+      Pick<
+        SettingsState,
+        "defaultCurrency" | "showConverted" | "spreadCostValidFrom"
+      >
+    >,
   ) => Promise<void>;
 }
 
@@ -32,6 +39,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   // Initial state - empty until loaded from backend
   defaultCurrency: "",
   showConverted: true,
+  spreadCostValidFrom: null,
   isLoaded: false,
   isLoading: false,
   error: null,
@@ -50,6 +58,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({
         defaultCurrency: settings.defaultCurrency ?? undefined,
         showConverted: settings.showConverted,
+        spreadCostValidFrom: settings.spreadCostValidFrom,
         isLoaded: true,
         isLoading: false,
         error: null,
@@ -63,6 +72,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         // No defaults per .rules - currency must be set by user
         defaultCurrency: undefined,
         showConverted: true,
+        spreadCostValidFrom: null,
         isLoaded: true,
       });
       console.error("Failed to load settings:", error);
@@ -71,7 +81,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   // Update default currency
   setDefaultCurrency: async (currency: string) => {
-    const { showConverted } = get();
+    const { showConverted, spreadCostValidFrom } = get();
     const previousCurrency = get().defaultCurrency;
 
     // Optimistic update
@@ -81,6 +91,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       await api.updateSettings({
         defaultCurrency: currency,
         showConverted,
+        spreadCostValidFrom,
       });
     } catch (error) {
       // Revert on failure
@@ -92,7 +103,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   // Update show converted preference
   setShowConverted: async (show: boolean) => {
-    const { defaultCurrency } = get();
+    const { defaultCurrency, spreadCostValidFrom } = get();
     const previousShow = get().showConverted;
 
     // Can't update if defaultCurrency is not set
@@ -108,11 +119,42 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       await api.updateSettings({
         defaultCurrency,
         showConverted: show,
+        spreadCostValidFrom,
       });
     } catch (error) {
       // Revert on failure
       set({ showConverted: previousShow });
       console.error("Failed to update show converted:", error);
+      throw error;
+    }
+  },
+
+  // Update spread cost valid from date
+  setSpreadCostValidFrom: async (date: string | null) => {
+    const { defaultCurrency, showConverted } = get();
+    const previousDate = get().spreadCostValidFrom;
+
+    // Can't update if defaultCurrency is not set
+    if (!defaultCurrency) {
+      console.error(
+        "Cannot update spreadCostValidFrom: defaultCurrency is not set",
+      );
+      return;
+    }
+
+    // Optimistic update
+    set({ spreadCostValidFrom: date });
+
+    try {
+      await api.updateSettings({
+        defaultCurrency,
+        showConverted,
+        spreadCostValidFrom: date,
+      });
+    } catch (error) {
+      // Revert on failure
+      set({ spreadCostValidFrom: previousDate });
+      console.error("Failed to update spread cost valid from:", error);
       throw error;
     }
   },
@@ -124,6 +166,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       settings.defaultCurrency ?? currentState.defaultCurrency;
     const newShowConverted =
       settings.showConverted ?? currentState.showConverted;
+    const newSpreadCostValidFrom =
+      settings.spreadCostValidFrom !== undefined
+        ? settings.spreadCostValidFrom
+        : currentState.spreadCostValidFrom;
 
     // Can't update if defaultCurrency is not set
     if (!newDefaultCurrency) {
@@ -134,6 +180,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const newSettings = {
       defaultCurrency: newDefaultCurrency,
       showConverted: newShowConverted,
+      spreadCostValidFrom: newSpreadCostValidFrom,
     };
 
     // Optimistic update
@@ -146,6 +193,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({
         defaultCurrency: currentState.defaultCurrency,
         showConverted: currentState.showConverted,
+        spreadCostValidFrom: currentState.spreadCostValidFrom,
       });
       console.error("Failed to update settings:", error);
       throw error;
@@ -158,6 +206,8 @@ export const useDefaultCurrency = () =>
   useSettingsStore((state) => state.defaultCurrency);
 export const useShowConverted = () =>
   useSettingsStore((state) => state.showConverted);
+export const useSpreadCostValidFrom = () =>
+  useSettingsStore((state) => state.spreadCostValidFrom);
 export const useSettingsLoaded = () =>
   useSettingsStore((state) => state.isLoaded);
 export const useSettingsLoading = () =>

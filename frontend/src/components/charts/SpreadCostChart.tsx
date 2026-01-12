@@ -22,6 +22,7 @@ interface SpreadCostChartProps {
   avgSpreadPerTrade: number;
   height?: number;
   currency: string;
+  validFrom?: string | null;
 }
 
 interface CustomTooltipProps {
@@ -92,6 +93,7 @@ export function SpreadCostChart({
   avgSpreadPerTrade,
   height = 300,
   currency,
+  validFrom,
 }: SpreadCostChartProps) {
   // Calculate yearly totals
   const yearlyTotals = React.useMemo(() => {

@@ -392,6 +392,25 @@ class CurrencyService:
         return CurrencyService.set_user_preference("show_converted_currency", show)
 
     @staticmethod
+    def get_spread_cost_valid_from() -> Optional[str]:
+        """Get the date from which spread cost analysis is valid.
+
+        Returns ISO 8601 date string (YYYY-MM-DD) or None if not set.
+        """
+        return CurrencyService.get_user_preference("spread_cost_valid_from", None)
+
+    @staticmethod
+    def set_spread_cost_valid_from(date: Optional[str]) -> bool:
+        """Set the date from which spread cost analysis is valid.
+
+        Args:
+            date: ISO 8601 date string (YYYY-MM-DD) or None to clear
+        """
+        if date is None:
+            return CurrencyService.set_user_preference("spread_cost_valid_from", None)
+        return CurrencyService.set_user_preference("spread_cost_valid_from", date)
+
+    @staticmethod
     def get_instrument_point_factors() -> Dict[str, float]:
         """Get instrument point factors for points calculation.
 

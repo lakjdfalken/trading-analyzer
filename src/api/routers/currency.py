@@ -54,6 +54,7 @@ class CurrencyPreferences(BaseModel):
 
     default_currency: Optional[str] = Field(default=None, alias="defaultCurrency")
     show_converted: bool = Field(default=True, alias="showConverted")
+    spread_cost_valid_from: Optional[str] = Field(default=None, alias="spreadCostValidFrom")
 
     class Config:
         populate_by_name = True
@@ -235,6 +236,7 @@ async def get_currency_preferences():
     return CurrencyPreferences(
         defaultCurrency=CurrencyService.get_default_currency(),
         showConverted=CurrencyService.get_show_converted(),
+        spreadCostValidFrom=CurrencyService.get_spread_cost_valid_from(),
     )
 
 
@@ -243,6 +245,9 @@ async def update_currency_preferences(prefs: CurrencyPreferences):
     """Update user currency preferences."""
     success_currency = CurrencyService.set_default_currency(prefs.default_currency)
     success_converted = CurrencyService.set_show_converted(prefs.show_converted)
+
+    if prefs.spread_cost_valid_from is not None:
+        CurrencyService.set_spread_cost_valid_from(prefs.spread_cost_valid_from)
 
     if not success_currency:
         raise HTTPException(
@@ -255,6 +260,7 @@ async def update_currency_preferences(prefs: CurrencyPreferences):
         "preferences": {
             "defaultCurrency": prefs.default_currency,
             "showConverted": prefs.show_converted,
+            "spreadCostValidFrom": CurrencyService.get_spread_cost_valid_from(),
         },
     }
 
@@ -279,6 +285,31 @@ async def set_default_currency(currency: str = Query(..., description="Currency 
     return {
         "success": True,
         "defaultCurrency": currency,
+    }
+
+
+@router.get("/preferences/spread-cost-valid-from")
+async def get_spread_cost_valid_from():
+    """Get the date from which spread cost analysis is valid."""
+    return {
+        "spreadCostValidFrom": CurrencyService.get_spread_cost_valid_from(),
+    }
+
+
+@router.put("/preferences/spread-cost-valid-from")
+async def set_spread_cost_valid_from(
+    date: str = Query(..., description="Date in YYYY-MM-DD format")
+):
+    """Set the date from which spread cost analysis is valid."""
+    success = CurrencyService.set_spread_cost_valid_from(date)
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid date format: {date}. Expected YYYY-MM-DD",
+        )
+    return {
+        "success": True,
+        "spreadCostValidFrom": date,
     }
 
 
