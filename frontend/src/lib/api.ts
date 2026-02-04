@@ -21,38 +21,69 @@ export interface Settings {
 
 export interface KPIMetrics {
   totalPnl: number;
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
   winRate: number;
   avgWin: number;
   avgLoss: number;
   profitFactor: number;
   maxDrawdown: number;
-  totalTrades: number;
-  winningTrades: number;
-  losingTrades: number;
+  avgPnlPerTrade: number;
+  dailyAvgPnl: number;
+  bestTrade: number;
+  worstTrade: number;
+  maxBalance: number;
+  minBalance: number;
   todayPnl: number;
   todayTrades: number;
-  openPositions: number;
-  totalExposure: number;
-  avgTradeDuration: number;
-  dailyLossUsed: number;
-  dailyLossLimit: number;
+  weekPnl: number;
+  weekTrades: number;
+  monthPnl: number;
+  monthTrades: number;
+  monthWinRate: number;
+  yearPnl: number;
+  yearTrades: number;
+  yearWinRate: number;
+  tradingDays: number;
   currency: string;
-  // Daily averages
-  avgDailyPnl: number;
-  avgDailyPoints: number;
-  avgTradesPerDay: number;
-  bestDayPnl: number;
-  worstDayPnl: number;
-  // Monthly averages
-  avgMonthlyPnl: number;
-  avgMonthlyPoints: number;
-  avgTradesPerMonth: number;
-  bestMonthPnl: number;
-  worstMonthPnl: number;
-  // Yearly summary
-  currentYearPnl: number;
-  currentYearPoints: number;
-  avgYearlyPnl: number;
+  // Legacy fields for backward compatibility
+  openPositions?: number;
+  totalExposure?: number;
+  avgTradeDuration?: number;
+  dailyLossUsed?: number;
+  dailyLossLimit?: number;
+  avgDailyPnl?: number;
+  avgDailyPoints?: number;
+  avgTradesPerDay?: number;
+  bestDayPnl?: number;
+  worstDayPnl?: number;
+  avgMonthlyPnl?: number;
+  avgMonthlyPoints?: number;
+  avgTradesPerMonth?: number;
+  bestMonthPnl?: number;
+  worstMonthPnl?: number;
+  currentYearPnl?: number;
+  currentYearPoints?: number;
+  avgYearlyPnl?: number;
+}
+
+export interface CombinedDashboardResponse {
+  kpis: KPIMetrics;
+  balanceHistory: { data: BalanceDataPoint[]; currency: string };
+  monthlyPnL: { data: MonthlyPnLDataPoint[]; currency: string };
+  balanceByAccount: {
+    series: Array<{
+      accountId: number;
+      accountName: string;
+      data: BalanceDataPoint[];
+    }>;
+    total: BalanceDataPoint[];
+    currency: string;
+  };
+  instruments: string[];
+  accounts: Account[];
+  currency: string;
 }
 
 export interface Trade {
@@ -109,6 +140,7 @@ export interface Account {
   currency: string;
   initial_balance?: number;
   notes?: string;
+  include_in_stats?: boolean;
   transaction_count?: number;
 }
 
@@ -248,6 +280,24 @@ export async function getKPIs(
     accountId: accountId?.toString(),
   });
   return apiFetch<KPIMetrics>(`/api/dashboard/kpis${params}`);
+}
+
+export async function getCombinedDashboard(
+  currency: string,
+  dateRange?: DateRange,
+  instruments?: string[],
+  accountId?: number | null,
+): Promise<CombinedDashboardResponse> {
+  const params = buildQueryString({
+    currency,
+    from: formatDate(dateRange?.from),
+    to: formatDate(dateRange?.to),
+    instruments: instruments?.join(","),
+    accountId: accountId?.toString(),
+  });
+  return apiFetch<CombinedDashboardResponse>(
+    `/api/dashboard/combined${params}`,
+  );
 }
 
 export async function getBalanceHistory(
@@ -664,6 +714,7 @@ export interface CreateAccountParams {
   currency: string;
   initialBalance?: number;
   notes?: string | null;
+  includeInStats?: boolean;
 }
 
 export async function getBrokers(): Promise<Broker[]> {
@@ -687,6 +738,22 @@ export async function deleteAccount(
   return apiDelete(
     `/api/import/accounts/${accountId}${deleteTransactions ? "?deleteTransactions=true" : ""}`,
   );
+}
+
+export interface UpdateAccountParams {
+  accountName?: string;
+  brokerName?: string;
+  currency?: string;
+  initialBalance?: number;
+  notes?: string | null;
+  includeInStats?: boolean;
+}
+
+export async function updateAccount(
+  accountId: number,
+  params: UpdateAccountParams,
+): Promise<Account> {
+  return apiPut(`/api/import/accounts/${accountId}`, params);
 }
 
 export async function uploadTransactionFile(

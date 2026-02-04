@@ -823,10 +823,19 @@ async def get_funding_data(
             params.append(start_date.strftime("%Y-%m-%d"))
         if end_date:
             conditions.append('"Transaction Date" <= ?')
-            params.append(end_date.strftime("%Y-%m-%d"))
+            params.append(end_date.strftime("%Y-%m-%d") + " 23:59:59")
         if account_id:
             conditions.append("bt.account_id = ?")
             params.append(account_id)
+        else:
+            # Filter to only accounts included in statistics
+            from api.services.database import get_included_account_ids
+
+            included_ids = get_included_account_ids()
+            if included_ids:
+                placeholders = ",".join("?" * len(included_ids))
+                conditions.append(f"bt.account_id IN ({placeholders})")
+                params.extend(included_ids)
 
         where_clause = " AND ".join(conditions)
 
@@ -909,10 +918,16 @@ async def get_funding_data(
             charges_params.append(start_date.strftime("%Y-%m-%d"))
         if end_date:
             charges_conditions.append('"Transaction Date" <= ?')
-            charges_params.append(end_date.strftime("%Y-%m-%d"))
+            charges_params.append(end_date.strftime("%Y-%m-%d") + " 23:59:59")
         if account_id:
             charges_conditions.append("bt.account_id = ?")
             charges_params.append(account_id)
+        else:
+            # Filter to only accounts included in statistics
+            if included_ids:
+                placeholders = ",".join("?" * len(included_ids))
+                charges_conditions.append(f"bt.account_id IN ({placeholders})")
+                charges_params.extend(included_ids)
 
         charges_where = " AND ".join(charges_conditions)
 
@@ -1036,6 +1051,7 @@ async def get_spread_cost_analysis(
     try:
         from api.services.currency import CurrencyService
         from settings import (
+            HISTORICAL_SPREADS,
             MARKET_SPREADS,
             get_instrument_spread_key,
             get_spread_for_time,
@@ -1062,10 +1078,19 @@ async def get_spread_cost_analysis(
             params.append(effective_start_date)
         if end_date:
             conditions.append('"Transaction Date" <= ?')
-            params.append(end_date.strftime("%Y-%m-%d"))
+            params.append(end_date.strftime("%Y-%m-%d") + " 23:59:59")
         if account_id:
             conditions.append("account_id = ?")
             params.append(account_id)
+        else:
+            # Filter to only accounts included in statistics
+            from api.services.database import get_included_account_ids
+
+            included_ids = get_included_account_ids()
+            if included_ids:
+                placeholders = ",".join("?" * len(included_ids))
+                conditions.append(f"account_id IN ({placeholders})")
+                params.extend(included_ids)
 
         where_clause = " AND ".join(conditions)
 
@@ -1104,46 +1129,60 @@ async def get_spread_cost_analysis(
 
             # Get instrument spread info
             spread_key = get_instrument_spread_key(description)
-            if not spread_key or spread_key not in MARKET_SPREADS:
+            if not spread_key:
+                continue
+            # Check if instrument exists in current or historical spreads
+            has_spread_data = spread_key in MARKET_SPREADS or any(
+                spread_key in hist for hist in HISTORICAL_SPREADS.values()
+            )
+            if not has_spread_data:
                 continue
 
-            # Extract time from open_period for opening spread lookup
+            # Extract date and time from open_period for opening spread lookup
             open_time = "12:00:00"  # Default to midday if no time available
+            open_date = None
             if open_period:
                 try:
                     if isinstance(open_period, str):
-                        # Parse time from datetime string like "2025-10-09 19:28:33"
+                        # Parse date and time from datetime string like "2025-10-09 19:28:33"
                         if " " in open_period:
+                            open_date = open_period.split(" ")[0]
                             open_time = open_period.split(" ")[1]
                         elif "T" in open_period:
+                            open_date = open_period.split("T")[0]
                             open_time = (
                                 open_period.split("T")[1].split("+")[0].split("Z")[0]
                             )
                     else:
+                        open_date = open_period.strftime("%Y-%m-%d")
                         open_time = open_period.strftime("%H:%M:%S")
                 except (ValueError, AttributeError):
                     pass
 
-            # Extract time from tx_date (Transaction Date) for closing spread lookup
+            # Extract date and time from tx_date (Transaction Date) for closing spread lookup
             close_time = "12:00:00"  # Default to midday if no time available
+            close_date = None
             if tx_date:
                 try:
                     if isinstance(tx_date, str):
-                        # Parse time from datetime string like "2025-10-09 19:28:33"
+                        # Parse date and time from datetime string like "2025-10-09 19:28:33"
                         if " " in tx_date:
+                            close_date = tx_date.split(" ")[0]
                             close_time = tx_date.split(" ")[1]
                         elif "T" in tx_date:
+                            close_date = tx_date.split("T")[0]
                             close_time = (
                                 tx_date.split("T")[1].split("+")[0].split("Z")[0]
                             )
                     else:
+                        close_date = tx_date.strftime("%Y-%m-%d")
                         close_time = tx_date.strftime("%H:%M:%S")
                 except (ValueError, AttributeError):
                     pass
 
-            # Get spread at opening and closing times
-            opening_spread = get_spread_for_time(spread_key, open_time)
-            closing_spread = get_spread_for_time(spread_key, close_time)
+            # Get spread at opening and closing times (with date for historical lookups)
+            opening_spread = get_spread_for_time(spread_key, open_time, open_date)
+            closing_spread = get_spread_for_time(spread_key, close_time, close_date)
 
             if opening_spread is None and closing_spread is None:
                 continue
@@ -1345,11 +1384,20 @@ async def get_trade_frequency(
 
         if end_date:
             conditions.append('"Transaction Date" <= ?')
-            params.append(end_date.isoformat())
+            params.append(end_date.strftime("%Y-%m-%d") + " 23:59:59")
 
         if account_id:
             conditions.append("account_id = ?")
             params.append(account_id)
+        else:
+            # Filter to only accounts included in statistics
+            from api.services.database import get_included_account_ids
+
+            included_ids = get_included_account_ids()
+            if included_ids:
+                placeholders = ",".join("?" * len(included_ids))
+                conditions.append(f"account_id IN ({placeholders})")
+                params.extend(included_ids)
 
         where_clause = " AND ".join(conditions)
 

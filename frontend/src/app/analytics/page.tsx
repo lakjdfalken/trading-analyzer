@@ -17,6 +17,7 @@ import {
   Filter,
   Maximize2,
   Download,
+  RefreshCw,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -859,6 +860,20 @@ export default function AnalyticsPage() {
                   ))}
                 </select>
               )}
+
+              {/* Refresh Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchData}
+                disabled={loading.dashboard}
+                className="flex items-center gap-2"
+              >
+                <RefreshCw
+                  className={cn("h-4 w-4", loading.dashboard && "animate-spin")}
+                />
+                Refresh
+              </Button>
             </div>
           </div>
 

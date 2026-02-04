@@ -15,6 +15,7 @@ import {
   Loader2,
   Building,
   CreditCard,
+  BarChart3,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -183,6 +184,25 @@ export default function ImportPage() {
       await fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create account");
+    }
+  };
+
+  // Toggle include in stats for an account
+  const handleToggleIncludeInStats = async (
+    accountId: number,
+    currentValue: boolean,
+  ) => {
+    try {
+      await api.updateAccount(accountId, {
+        includeInStats: !currentValue,
+      });
+      await fetchData();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to update account settings",
+      );
     }
   };
 
@@ -482,6 +502,32 @@ export default function ImportPage() {
                           <Badge variant="secondary">
                             {account.transaction_count}
                           </Badge>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleIncludeInStats(
+                                account.account_id,
+                                account.include_in_stats !== false,
+                              );
+                            }}
+                            className="h-8 w-8 p-0"
+                            title={
+                              account.include_in_stats !== false
+                                ? "Included in statistics - click to exclude"
+                                : "Excluded from statistics - click to include"
+                            }
+                          >
+                            <BarChart3
+                              className={cn(
+                                "h-4 w-4",
+                                account.include_in_stats !== false
+                                  ? "text-primary"
+                                  : "text-muted-foreground/40",
+                              )}
+                            />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"

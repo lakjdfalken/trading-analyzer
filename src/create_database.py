@@ -21,7 +21,8 @@ def create_db_schema():
         broker_name TEXT,
         currency TEXT,
         initial_balance DECIMAL(10,2),
-        notes TEXT
+        notes TEXT,
+        include_in_stats INTEGER DEFAULT 1
     )
     """)
 
@@ -50,5 +51,79 @@ def create_db_schema():
     )
     """)
 
+    # Create indexes for performance optimization
+    # Index on Transaction Date - used in almost every WHERE/ORDER BY clause
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_bt_transaction_date
+    ON broker_transactions("Transaction Date")
+    """)
+
+    # Index on account_id - used for filtering by account
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_bt_account_id
+    ON broker_transactions(account_id)
+    """)
+
+    # Composite index on account_id and Transaction Date - used together frequently
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_bt_account_date
+    ON broker_transactions(account_id, "Transaction Date")
+    """)
+
+    # Index on Description - used for instrument filtering
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_bt_description
+    ON broker_transactions("Description")
+    """)
+
+    # Index on Action - used for filtering trades vs funding
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_bt_action
+    ON broker_transactions("Action")
+    """)
+
+    # Index on accounts include_in_stats for filtering
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_accounts_include_stats
+    ON accounts(include_in_stats)
+    """)
+
     conn.commit()
     conn.close()
+
+
+def create_indexes_if_missing():
+    """Create indexes on existing database if they don't exist."""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    # Check existing indexes
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='index'")
+    existing_indexes = {row[0] for row in cursor.fetchall()}
+
+    indexes_to_create = [
+        ("idx_bt_transaction_date", 'broker_transactions("Transaction Date")'),
+        ("idx_bt_account_id", "broker_transactions(account_id)"),
+        ("idx_bt_account_date", 'broker_transactions(account_id, "Transaction Date")'),
+        ("idx_bt_description", 'broker_transactions("Description")'),
+        ("idx_bt_action", 'broker_transactions("Action")'),
+        ("idx_accounts_include_stats", "accounts(include_in_stats)"),
+    ]
+
+    created = []
+    for index_name, index_def in indexes_to_create:
+        if index_name not in existing_indexes:
+            try:
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS {index_name} ON {index_def}"
+                )
+                created.append(index_name)
+            except Exception as e:
+                logger.warning(f"Could not create index {index_name}: {e}")
+
+    if created:
+        conn.commit()
+        logger.info(f"Created indexes: {', '.join(created)}")
+
+    conn.close()
+    return created

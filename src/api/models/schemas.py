@@ -98,39 +98,52 @@ class KPIMetrics(BaseModel):
     """Key Performance Indicator metrics."""
 
     total_pnl: float = Field(alias="totalPnl")
+    total_trades: int = Field(alias="totalTrades")
+    winning_trades: int = Field(alias="winningTrades")
+    losing_trades: int = Field(alias="losingTrades")
     win_rate: float = Field(alias="winRate")
     avg_win: float = Field(alias="avgWin")
     avg_loss: float = Field(alias="avgLoss")
     profit_factor: float = Field(alias="profitFactor")
     max_drawdown: float = Field(alias="maxDrawdown")
-    total_trades: int = Field(alias="totalTrades")
-    winning_trades: int = Field(alias="winningTrades")
-    losing_trades: int = Field(alias="losingTrades")
-    today_pnl: float = Field(alias="todayPnl")
-    today_trades: int = Field(alias="todayTrades")
-    open_positions: int = Field(alias="openPositions")
-    total_exposure: float = Field(alias="totalExposure")
-    avg_trade_duration: int = Field(alias="avgTradeDuration")  # in minutes
+    avg_pnl_per_trade: float = Field(default=0.0, alias="avgPnlPerTrade")
+    daily_avg_pnl: float = Field(default=0.0, alias="dailyAvgPnl")
+    best_trade: float = Field(default=0.0, alias="bestTrade")
+    worst_trade: float = Field(default=0.0, alias="worstTrade")
+    max_balance: float = Field(default=0.0, alias="maxBalance")
+    min_balance: float = Field(default=0.0, alias="minBalance")
+    today_pnl: float = Field(default=0.0, alias="todayPnl")
+    today_trades: int = Field(default=0, alias="todayTrades")
+    week_pnl: float = Field(default=0.0, alias="weekPnl")
+    week_trades: int = Field(default=0, alias="weekTrades")
+    month_pnl: float = Field(default=0.0, alias="monthPnl")
+    month_trades: int = Field(default=0, alias="monthTrades")
+    month_win_rate: float = Field(default=0.0, alias="monthWinRate")
+    year_pnl: float = Field(default=0.0, alias="yearPnl")
+    year_trades: int = Field(default=0, alias="yearTrades")
+    year_win_rate: float = Field(default=0.0, alias="yearWinRate")
+    trading_days: int = Field(default=0, alias="tradingDays")
     currency: Optional[str] = None
 
-    # Daily averages
-    avg_daily_pnl: float = Field(default=0.0, alias="avgDailyPnl")
-    avg_daily_points: float = Field(default=0.0, alias="avgDailyPoints")
-    avg_trades_per_day: float = Field(default=0.0, alias="avgTradesPerDay")
-    best_day_pnl: float = Field(default=0.0, alias="bestDayPnl")
-    worst_day_pnl: float = Field(default=0.0, alias="worstDayPnl")
-
-    # Monthly averages
-    avg_monthly_pnl: float = Field(default=0.0, alias="avgMonthlyPnl")
-    avg_monthly_points: float = Field(default=0.0, alias="avgMonthlyPoints")
-    avg_trades_per_month: float = Field(default=0.0, alias="avgTradesPerMonth")
-    best_month_pnl: float = Field(default=0.0, alias="bestMonthPnl")
-    worst_month_pnl: float = Field(default=0.0, alias="worstMonthPnl")
-
-    # Yearly summary
-    current_year_pnl: float = Field(default=0.0, alias="currentYearPnl")
-    current_year_points: float = Field(default=0.0, alias="currentYearPoints")
-    avg_yearly_pnl: float = Field(default=0.0, alias="avgYearlyPnl")
+    # Legacy fields for backward compatibility (optional)
+    open_positions: Optional[int] = Field(default=0, alias="openPositions")
+    total_exposure: Optional[float] = Field(default=0.0, alias="totalExposure")
+    avg_trade_duration: Optional[int] = Field(default=0, alias="avgTradeDuration")
+    avg_daily_pnl: Optional[float] = Field(default=0.0, alias="avgDailyPnl")
+    avg_daily_points: Optional[float] = Field(default=0.0, alias="avgDailyPoints")
+    avg_trades_per_day: Optional[float] = Field(default=0.0, alias="avgTradesPerDay")
+    best_day_pnl: Optional[float] = Field(default=0.0, alias="bestDayPnl")
+    worst_day_pnl: Optional[float] = Field(default=0.0, alias="worstDayPnl")
+    avg_monthly_pnl: Optional[float] = Field(default=0.0, alias="avgMonthlyPnl")
+    avg_monthly_points: Optional[float] = Field(default=0.0, alias="avgMonthlyPoints")
+    avg_trades_per_month: Optional[float] = Field(
+        default=0.0, alias="avgTradesPerMonth"
+    )
+    best_month_pnl: Optional[float] = Field(default=0.0, alias="bestMonthPnl")
+    worst_month_pnl: Optional[float] = Field(default=0.0, alias="worstMonthPnl")
+    current_year_pnl: Optional[float] = Field(default=0.0, alias="currentYearPnl")
+    current_year_points: Optional[float] = Field(default=0.0, alias="currentYearPoints")
+    avg_yearly_pnl: Optional[float] = Field(default=0.0, alias="avgYearlyPnl")
 
     class Config:
         populate_by_name = True

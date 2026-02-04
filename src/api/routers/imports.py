@@ -43,6 +43,7 @@ class AccountCreate(BaseModel):
     currency: str
     initial_balance: float = Field(default=0.0, alias="initialBalance")
     notes: Optional[str] = None
+    include_in_stats: bool = Field(default=True, alias="includeInStats")
 
     class Config:
         populate_by_name = True
@@ -56,6 +57,7 @@ class AccountUpdate(BaseModel):
     currency: Optional[str] = None
     initial_balance: Optional[float] = Field(None, alias="initialBalance")
     notes: Optional[str] = None
+    include_in_stats: Optional[bool] = Field(None, alias="includeInStats")
 
     class Config:
         populate_by_name = True
@@ -70,6 +72,7 @@ class AccountResponse(BaseModel):
     currency: str
     initial_balance: float = Field(alias="initialBalance")
     notes: Optional[str] = None
+    include_in_stats: bool = Field(default=True, alias="includeInStats")
     transaction_count: Optional[int] = Field(None, alias="transactionCount")
 
     class Config:
@@ -145,6 +148,7 @@ async def get_accounts():
                 a.currency,
                 a.initial_balance,
                 a.notes,
+                COALESCE(a.include_in_stats, 1) as include_in_stats,
                 COUNT(bt."Transaction Date") as transaction_count
             FROM accounts a
             LEFT JOIN broker_transactions bt ON a.account_id = bt.account_id
@@ -163,6 +167,7 @@ async def get_accounts():
                     currency,
                     initial_balance,
                     notes,
+                    COALESCE(include_in_stats, 1) as include_in_stats,
                     0 as transaction_count
                 FROM accounts
                 ORDER BY broker_name, account_name
@@ -180,6 +185,7 @@ async def get_accounts():
                 "currency": row["currency"],
                 "initial_balance": row["initial_balance"] or 0.0,
                 "notes": row["notes"],
+                "include_in_stats": bool(row.get("include_in_stats", 1)),
                 "transaction_count": row["transaction_count"],
             }
             for row in results
@@ -202,6 +208,7 @@ async def get_account(account_id: int):
             a.currency,
             a.initial_balance,
             a.notes,
+            COALESCE(a.include_in_stats, 1) as include_in_stats,
             COUNT(bt."Transaction Date") as transaction_count
         FROM accounts a
         LEFT JOIN broker_transactions bt ON a.account_id = bt.account_id
@@ -221,6 +228,7 @@ async def get_account(account_id: int):
         currency=row["currency"],
         initialBalance=row["initial_balance"] or 0.0,
         notes=row["notes"],
+        includeInStats=bool(row.get("include_in_stats", 1)),
         transactionCount=row["transaction_count"],
     )
 
@@ -249,8 +257,8 @@ async def create_account(account: AccountCreate):
         # Insert new account
         cursor.execute(
             """
-            INSERT INTO accounts (account_name, broker_name, currency, initial_balance, notes)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO accounts (account_name, broker_name, currency, initial_balance, notes, include_in_stats)
+            VALUES (?, ?, ?, ?, ?, ?)
         """,
             (
                 account.account_name,
@@ -258,6 +266,7 @@ async def create_account(account: AccountCreate):
                 account.currency,
                 account.initial_balance,
                 account.notes,
+                1 if account.include_in_stats else 0,
             ),
         )
 
@@ -271,6 +280,7 @@ async def create_account(account: AccountCreate):
         currency=account.currency,
         initialBalance=account.initial_balance,
         notes=account.notes,
+        includeInStats=account.include_in_stats,
         transactionCount=0,
     )
 
@@ -311,6 +321,10 @@ async def update_account(account_id: int, account: AccountUpdate):
         if account.notes is not None:
             updates.append("notes = ?")
             params.append(account.notes)
+
+        if account.include_in_stats is not None:
+            updates.append("include_in_stats = ?")
+            params.append(1 if account.include_in_stats else 0)
 
         if updates:
             params.append(account_id)
@@ -734,7 +748,11 @@ async def export_transactions(
 
     if end_date is not None:
         conditions.append('"Transaction Date" <= ?')
-        params.append(end_date)
+        # Append time to ensure full day is included when comparing against timestamps
+        if len(end_date) == 10:  # Just date, no time (YYYY-MM-DD)
+            params.append(end_date + " 23:59:59")
+        else:
+            params.append(end_date)
 
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 

@@ -49,6 +49,7 @@ export default function Home() {
       accountName: string;
       data: Array<{ date: string; balance: number }>;
     };
+    currency?: string;
   } | null>(null);
 
   const {
@@ -111,7 +112,7 @@ export default function Home() {
     };
   }, [dateRange.from, dateRange.to]);
 
-  // Fetch dashboard data using centralized API client
+  // Fetch dashboard data using combined endpoint for better performance
   const fetchDashboardData = React.useCallback(async () => {
     if (!effectiveCurrency) return;
 
@@ -121,7 +122,82 @@ export default function Home() {
     try {
       const dateRangeParam = getDateRangeForApi();
 
-      // Fetch all data in parallel using centralized API client
+      // Use combined endpoint for initial load (no instrument filter)
+      // This reduces 6 round trips to 1
+      if (selectedInstruments.length === 0) {
+        try {
+          const combined = await api.getCombinedDashboard(
+            effectiveCurrency,
+            dateRangeParam,
+            undefined,
+            selectedAccountId,
+          );
+
+          // Process combined response
+          setKPIs(combined.kpis);
+          if (combined.kpis.currency) {
+            setDataCurrency(combined.kpis.currency);
+          }
+
+          const balanceData = Array.isArray(combined.balanceHistory)
+            ? combined.balanceHistory
+            : combined.balanceHistory?.data || [];
+          setBalanceHistory(balanceData);
+
+          const monthlyData = Array.isArray(combined.monthlyPnL)
+            ? combined.monthlyPnL
+            : combined.monthlyPnL?.data || [];
+          setMonthlyPnL(monthlyData);
+
+          // Convert instruments from string[] to Instrument[]
+          const instrumentOptions = combined.instruments.map(
+            (name: string) => ({
+              value: name,
+              label: name,
+            }),
+          );
+          setAvailableInstruments(instrumentOptions);
+
+          // Convert accounts to expected format
+          const accountsData = combined.accounts.map((acc: api.Account) => ({
+            account_id: acc.account_id,
+            account_name: acc.account_name,
+            broker_name: acc.broker_name,
+            currency: acc.currency,
+            initial_balance: acc.initial_balance,
+            notes: acc.notes,
+            include_in_stats: acc.include_in_stats,
+          }));
+          setAvailableAccounts(accountsData);
+
+          setBalanceByAccount({
+            series: combined.balanceByAccount.series.map((s) => ({
+              accountId: s.accountId,
+              accountName: s.accountName,
+              data: s.data,
+            })),
+            total: {
+              accountName: "Total",
+              data: combined.balanceByAccount.total,
+            },
+            currency: combined.balanceByAccount.currency,
+          });
+
+          setLastUpdated(new Date());
+          setInitialized(true);
+          setLoading("dashboard", false);
+          return;
+        } catch (combinedError) {
+          // Fall back to individual requests if combined endpoint fails
+          console.warn(
+            "Combined endpoint failed, falling back to individual requests:",
+            combinedError,
+          );
+        }
+      }
+
+      // Fallback: Fetch all data in parallel using individual endpoints
+      // Used when instrument filter is applied or combined endpoint fails
       const [
         kpisResult,
         balanceResult,
@@ -206,9 +282,23 @@ export default function Home() {
 
       // Process balance by account
       if (balanceByAccResult.status === "fulfilled") {
-        setBalanceByAccount(
-          balanceByAccResult.value as typeof balanceByAccount,
-        );
+        const result = balanceByAccResult.value as {
+          series: Array<{
+            accountId: number;
+            accountName: string;
+            data: Array<{ date: string; balance: number }>;
+          }>;
+          total: Array<{ date: string; balance: number }>;
+          currency?: string;
+        };
+        setBalanceByAccount({
+          series: result.series,
+          total: {
+            accountName: "Total",
+            data: result.total,
+          },
+          currency: result.currency,
+        });
       }
 
       setLastUpdated(new Date());

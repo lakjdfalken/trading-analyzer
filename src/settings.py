@@ -662,29 +662,22 @@ MARKET_SPREADS = {
         ("21:00:00", "23:59:00", 4),
     ],
     # Precious Metals
-    "Gold": [
-        ("00:00:00", "06:59:00", 5),
-        ("07:00:00", "18:59:00", 3),
-        ("19:00:00", "23:59:00", 5),
-    ],
-    "Gold (per 0.1)": [
-        ("00:00:00", "06:59:00", 5),
-        ("07:00:00", "18:59:00", 3),
-        ("19:00:00", "23:59:00", 5),
-    ],
-    "Gold - Rolling Spot (per 0.1)": [
-        ("00:00:00", "06:59:00", 5),
-        ("07:00:00", "18:59:00", 3),
-        ("19:00:00", "23:59:00", 5),
-    ],
-    "Silver": [("00:00:00", "23:59:00", 2)],
-    "Silver - Rolling Spot": [("00:00:00", "23:59:00", 2)],
+    # Note: These are the spreads valid from February 4, 2026
+    # For historical spreads before this date, see HISTORICAL_SPREADS below
+    "Gold": [("00:00:00", "23:59:00", 4)],
+    "Gold (per 0.1)": [("00:00:00", "23:59:00", 4)],
+    "Gold - Rolling Spot (per 0.1)": [("00:00:00", "23:59:00", 4)],
+    "Gold / Silver Diff": [("00:00:00", "23:59:00", 8)],
+    "Silver": [("00:00:00", "23:59:00", 3.5)],
+    "Silver - Rolling Spot": [("00:00:00", "23:59:00", 3.5)],
     "Aluminium": [("00:00:00", "23:59:00", 6)],
     "Copper": [("00:00:00", "23:59:00", 10)],
     "Lead": [("00:00:00", "23:59:00", 6)],
     "Zinc": [("00:00:00", "23:59:00", 6)],
-    "Palladium": [("00:00:00", "23:59:00", 2)],
-    "Platinum": [("00:00:00", "23:59:00", 1.5)],
+    "Palladium": [("00:00:00", "23:59:00", 3)],
+    "Palladium - Future": [("00:00:00", "23:59:00", 3)],
+    "Platinum": [("00:00:00", "23:59:00", 3)],
+    "Platinum - Future": [("00:00:00", "23:59:00", 3)],
     # Commodities - Energy
     "Brent Crude": [("00:00:00", "23:59:00", 2)],
     "UK Crude": [("00:00:00", "23:59:00", 2)],
@@ -711,21 +704,61 @@ MARKET_SPREADS = {
     "UK LONG GILT": [("00:00:00", "23:59:00", 1.8)],
 }
 
+# Historical spreads for instruments that changed
+# Format: { "YYYY-MM-DD": { instrument: [(from_time, to_time, spread), ...] } }
+# Each date key represents when those spreads became INVALID (i.e., spreads valid BEFORE that date)
+HISTORICAL_SPREADS = {
+    # Spreads valid before February 1, 2026
+    "2026-02-01": {
+        "Gold": [
+            ("00:00:00", "06:59:00", 5),
+            ("07:00:00", "18:59:00", 3),
+            ("19:00:00", "23:59:00", 5),
+        ],
+        "Gold (per 0.1)": [
+            ("00:00:00", "06:59:00", 5),
+            ("07:00:00", "18:59:00", 3),
+            ("19:00:00", "23:59:00", 5),
+        ],
+        "Gold - Rolling Spot (per 0.1)": [
+            ("00:00:00", "06:59:00", 5),
+            ("07:00:00", "18:59:00", 3),
+            ("19:00:00", "23:59:00", 5),
+        ],
+        "Silver": [("00:00:00", "23:59:00", 2)],
+        "Silver - Rolling Spot": [("00:00:00", "23:59:00", 2)],
+        "Palladium": [("00:00:00", "23:59:00", 2)],
+        "Platinum": [("00:00:00", "23:59:00", 1.5)],
+    },
+}
 
-def get_spread_for_time(instrument: str, trade_time: str) -> float | None:
-    """Get the spread for an instrument at a specific time.
+
+def get_spread_for_time(
+    instrument: str, trade_time: str, trade_date: str | None = None
+) -> float | None:
+    """Get the spread for an instrument at a specific time and date.
 
     Args:
         instrument: The instrument key in MARKET_SPREADS
         trade_time: Time string in HH:MM:SS format (GMT)
+        trade_date: Optional date string in YYYY-MM-DD format for historical lookups
 
     Returns:
         The spread value or None if not found
     """
-    if instrument not in MARKET_SPREADS:
-        return None
+    # Check if we need to use historical spreads
+    spreads = None
+    if trade_date:
+        for cutoff_date, historical_instruments in sorted(HISTORICAL_SPREADS.items()):
+            if trade_date < cutoff_date and instrument in historical_instruments:
+                spreads = historical_instruments[instrument]
+                break
 
-    spreads = MARKET_SPREADS[instrument]
+    # Fall back to current spreads
+    if spreads is None:
+        if instrument not in MARKET_SPREADS:
+            return None
+        spreads = MARKET_SPREADS[instrument]
 
     for from_time, to_time, spread in spreads:
         if from_time <= trade_time <= to_time:

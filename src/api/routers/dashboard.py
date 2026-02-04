@@ -102,6 +102,87 @@ async def get_dashboard_data(
         )
 
 
+@router.get("/combined")
+async def get_combined_dashboard_data(
+    start_date: Optional[datetime] = Query(None, alias="from"),
+    end_date: Optional[datetime] = Query(None, alias="to"),
+    instruments: Optional[List[str]] = Query(None),
+    account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for P&L conversion (required)"
+    ),
+) -> Dict[str, Any]:
+    """
+    Get all dashboard data in a single optimized request.
+
+    This endpoint combines KPIs, balance history, monthly P&L, instruments,
+    accounts, and balance-by-account data into one response to reduce
+    frontend round trips.
+
+    Currency parameter is required - no auto-detection.
+    """
+    try:
+        # Get KPIs
+        kpis = db.get_kpi_metrics(
+            start_date=start_date,
+            end_date=end_date,
+            instruments=instruments,
+            target_currency=currency,
+            account_id=account_id,
+        )
+
+        # Get balance history
+        balance_history = db.get_balance_history(
+            start_date=start_date,
+            end_date=end_date,
+            account_id=account_id,
+            target_currency=currency,
+        )
+
+        # Get monthly P&L
+        monthly_pnl = db.get_monthly_pnl(
+            start_date=start_date,
+            end_date=end_date,
+            instruments=instruments,
+            target_currency=currency,
+            account_id=account_id,
+        )
+
+        # Get balance by account
+        balance_by_account = db.get_balance_history_by_account(
+            start_date=start_date,
+            end_date=end_date,
+            target_currency=currency,
+            account_id=account_id,
+        )
+
+        # Get instruments
+        instruments_list = db.get_available_instruments(
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        # Get accounts
+        accounts = db.get_accounts()
+
+        return {
+            "kpis": kpis,
+            "balanceHistory": balance_history,
+            "monthlyPnL": monthly_pnl,
+            "balanceByAccount": balance_by_account,
+            "instruments": instruments_list,
+            "accounts": accounts,
+            "currency": currency,
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching combined dashboard data: {str(e)}"
+        )
+
+
 @router.get("/kpis", response_model=KPIMetrics)
 async def get_kpis(
     start_date: Optional[datetime] = Query(None, alias="from"),
@@ -164,8 +245,8 @@ async def get_equity_curve(
         result = db.get_equity_curve(
             start_date=start_date,
             end_date=end_date,
-            account_id=account_id,
             target_currency=currency,
+            account_id=account_id,
         )
         return result
     except Exception as e:
@@ -225,12 +306,16 @@ async def get_points_by_instrument(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
     account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for P&L conversion (required)"
+    ),
 ):
     """Get points/pips statistics grouped by instrument."""
     try:
         points_data = db.get_points_by_instrument(
             start_date=start_date,
             end_date=end_date,
+            target_currency=currency,
             account_id=account_id,
         )
         return points_data

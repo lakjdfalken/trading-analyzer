@@ -726,7 +726,7 @@ export default function SettingsPage() {
                 <p className="text-xs text-muted-foreground">
                   <span className="font-medium">Spread Data Source:</span>{" "}
                   Market spread data and trading hours were last updated on{" "}
-                  <span className="font-medium">January 6, 2026</span>. Data
+                  <span className="font-medium">February 1, 2026</span>. Data
                   sourced from{" "}
                   <a
                     href="https://tradenation.com/en-bs/tntrader-market-information-sheet/"
