@@ -14,6 +14,9 @@ export const metadata: Metadata = {
   title: "Trading Analyzer",
   description:
     "Professional trading analysis and performance tracking dashboard",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
