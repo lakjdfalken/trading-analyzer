@@ -82,6 +82,15 @@ def create_db_schema():
     ON broker_transactions("Action")
     """)
 
+    # Migrate existing databases: add include_in_stats column if missing
+    cursor.execute("PRAGMA table_info(accounts)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "include_in_stats" not in columns:
+        logger.info("Adding include_in_stats column to accounts table...")
+        cursor.execute(
+            "ALTER TABLE accounts ADD COLUMN include_in_stats INTEGER DEFAULT 1"
+        )
+
     # Index on accounts include_in_stats for filtering
     cursor.execute("""
     CREATE INDEX IF NOT EXISTS idx_accounts_include_stats
