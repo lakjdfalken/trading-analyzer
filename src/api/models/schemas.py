@@ -422,3 +422,124 @@ class ErrorResponse(BaseModel):
     code: str
     details: Optional[dict] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ============================================================================
+# Funding Models
+# ============================================================================
+
+
+class FundingChargeByMarket(BaseModel):
+    """Funding charge breakdown by market."""
+
+    market: str
+    total_charges: float
+    count: int
+
+
+class FundingDataPoint(BaseModel):
+    """Funding data point for deposits/withdrawals chart."""
+
+    date: str
+    deposits: float
+    withdrawals: float
+    funding_charges: float
+    net: float
+    cumulative: float
+
+
+class FundingResponse(BaseModel):
+    """Complete funding response with daily data and market breakdown."""
+
+    daily: List[FundingDataPoint]
+    charges_by_market: List[FundingChargeByMarket]
+    total_funding_charges: float
+
+
+# ============================================================================
+# Spread Cost Models
+# ============================================================================
+
+
+class SpreadCostDataPoint(BaseModel):
+    """Spread cost data point for monthly breakdown."""
+
+    month: str
+    month_key: str
+    spread_cost: float
+    trades: int
+    avg_spread_cost: float
+    instruments: dict
+
+
+class SpreadCostByInstrument(BaseModel):
+    """Spread cost breakdown by instrument."""
+
+    instrument: str
+    spread_cost: float
+    trades: int
+    avg_spread_cost: float
+
+
+class SpreadCostResponse(BaseModel):
+    """Complete spread cost analysis response."""
+
+    monthly: List[SpreadCostDataPoint]
+    by_instrument: List[SpreadCostByInstrument]
+    total_spread_cost: float
+    total_trades: int
+    avg_spread_per_trade: float
+    currency: str
+    valid_from: Optional[str] = None
+
+
+# ============================================================================
+# Trade Frequency Models
+# ============================================================================
+
+
+class DailyTradeCount(BaseModel):
+    """Trade count for a single day."""
+
+    date: str = Field(..., description="Date in YYYY-MM-DD format")
+    trades: int = Field(..., description="Number of trades on this day")
+
+
+class MonthlyTradeCount(BaseModel):
+    """Trade count for a single month."""
+
+    month: str = Field(..., description="Month in YYYY-MM format")
+    trades: int = Field(..., description="Number of trades in this month")
+    trading_days: int = Field(..., description="Number of days with trades")
+
+
+class YearlyTradeCount(BaseModel):
+    """Trade count for a single year."""
+
+    year: int = Field(..., description="Year")
+    trades: int = Field(..., description="Number of trades in this year")
+    trading_days: int = Field(..., description="Number of days with trades")
+    trading_months: int = Field(..., description="Number of months with trades")
+
+
+class AccountTradeFrequency(BaseModel):
+    """Trade frequency data for a single account."""
+
+    account_id: int
+    account_name: str
+    daily: List[DailyTradeCount]
+    monthly: List[MonthlyTradeCount]
+    yearly: List[YearlyTradeCount]
+    total_trades: int
+    total_trading_days: int
+    avg_trades_per_day: float
+    avg_trades_per_trading_day: float
+    avg_trades_per_month: float
+
+
+class TradeFrequencyResponse(BaseModel):
+    """Complete trade frequency response."""
+
+    by_account: List[AccountTradeFrequency]
+    aggregated: AccountTradeFrequency
+    date_range_days: int

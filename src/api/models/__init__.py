@@ -7,12 +7,15 @@ Contains Pydantic schemas for request/response validation.
 from .schemas import (
     # Account Models
     AccountInfo,
+    AccountTradeFrequency,
     # API Response Models
     APIResponse,
     # Chart Data Models
     BalanceDataPoint,
     BalanceHistoryResponse,
     DailyPnLDataPoint,
+    # Trade Frequency Models
+    DailyTradeCount,
     # Dashboard Models
     DashboardData,
     DashboardFilters,
@@ -21,6 +24,10 @@ from .schemas import (
     # Analytics Models
     DrawdownPeriod,
     ErrorResponse,
+    # Funding Models
+    FundingChargeByMarket,
+    FundingDataPoint,
+    FundingResponse,
     HourlyPerformance,
     # Instrument Models
     Instrument,
@@ -28,11 +35,16 @@ from .schemas import (
     KPIMetrics,
     MonthlyPnLDataPoint,
     MonthlyPnLResponse,
+    MonthlyTradeCount,
     PaginatedResponse,
     # Pagination Models
     PaginationParams,
     RiskRewardData,
     SortOrder,
+    SpreadCostByInstrument,
+    # Spread Cost Models
+    SpreadCostDataPoint,
+    SpreadCostResponse,
     StreakData,
     # Trade Models
     Trade,
@@ -42,12 +54,14 @@ from .schemas import (
     TradeDirection,
     TradeDurationStats,
     TradeFilters,
+    TradeFrequencyResponse,
     TradeStatus,
     TradeUpdate,
     # Settings Models
     UserPreferences,
     WeekdayPerformance,
     WinRateByInstrument,
+    YearlyTradeCount,
 )
 
 __all__ = [
@@ -94,4 +108,18 @@ __all__ = [
     # API Response Models
     "APIResponse",
     "ErrorResponse",
+    # Funding Models
+    "FundingChargeByMarket",
+    "FundingDataPoint",
+    "FundingResponse",
+    # Spread Cost Models
+    "SpreadCostDataPoint",
+    "SpreadCostByInstrument",
+    "SpreadCostResponse",
+    # Trade Frequency Models
+    "DailyTradeCount",
+    "MonthlyTradeCount",
+    "YearlyTradeCount",
+    "AccountTradeFrequency",
+    "TradeFrequencyResponse",
 ]
