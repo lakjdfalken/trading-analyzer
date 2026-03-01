@@ -340,9 +340,9 @@ class TradingDatabase:
             conditions.append('"Transaction Date" <= ?')
             params.append(format_end_date(end_date))
 
-        if account_id:
-            conditions.append("bt.account_id = ?")
-            params.append(account_id)
+        conditions.append(
+            _build_included_accounts_filter(account_id, params, table_alias="bt")
+        )
 
         where_clause = " AND ".join(conditions)
 
@@ -521,9 +521,9 @@ class TradingDatabase:
             conditions.append('bt."Transaction Date" <= ?')
             params.append(format_end_date(end_date))
 
-        if account_id:
-            conditions.append("bt.account_id = ?")
-            params.append(account_id)
+        conditions.append(
+            _build_included_accounts_filter(account_id, params, table_alias="bt")
+        )
 
         where_clause = " AND ".join(conditions)
 
