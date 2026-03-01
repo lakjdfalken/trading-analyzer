@@ -24,10 +24,4 @@ frontend/out/
 frontend/tsconfig.tsbuildinfo
 tests/
 
-# Documentation drafts
-COMPLETE_REFACTORING_SUMMARY.md
-GUI_REFACTORING_SUMMARY.md
-REFACTORING_BEFORE_AFTER.md
-REFACTORING_SUMMARY.md
-TODO.md
 .rules

@@ -6,9 +6,6 @@ import { useSettingsStore } from "@/store/settings";
 import { useDashboardStore, type DateRangePreset } from "@/store/dashboard";
 import * as api from "@/lib/api";
 import type { PointsData } from "@/components/charts/PointsChart";
-import type { AccountSeries } from "@/components/charts/MultiAccountBalanceChart";
-import type { AccountPnLSeries } from "@/components/charts/MultiAccountMonthlyPnLChart";
-import type { AccountPnLSeries as CumulativePnLAccountSeries } from "@/components/charts/MultiAccountCumulativePnLChart";
 import type {
   AnalyticsDataState,
   BalanceByAccountData,
