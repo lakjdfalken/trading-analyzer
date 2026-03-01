@@ -1019,35 +1019,32 @@ class TradingDatabase:
 
         where_clause = " AND ".join(conditions)
 
-        # Query groups by instrument AND account currency for proper conversion
+        # Query per-trade level data for win/loss breakdown
         query = f"""
             SELECT
                 bt."Description" as instrument,
                 a.currency as account_currency,
-                SUM(CASE
+                CASE
                     WHEN bt."Closing" IS NOT NULL AND bt."Opening" IS NOT NULL AND bt."Opening" != 0
                     THEN bt."Closing" - bt."Opening"
                     ELSE 0
-                END) as totalPoints,
-                SUM(bt."P/L") as totalPnl,
-                COUNT(*) as totalTrades
+                END as points,
+                bt."P/L" as pnl
             FROM broker_transactions bt
             JOIN accounts a ON bt.account_id = a.account_id
             WHERE {where_clause}
-            GROUP BY bt."Description", a.currency
-            ORDER BY totalPnl DESC
+            ORDER BY bt."Description"
         """
 
         raw_data = execute_query(query, tuple(params))
 
-        # Aggregate by instrument with currency conversion
+        # Aggregate by instrument with currency conversion and win/loss breakdown
         instrument_map: Dict[str, Dict[str, Any]] = {}
         for row in raw_data:
             instrument = row["instrument"]
             currency = row["account_currency"] or target_currency
-            points = row["totalPoints"] or 0
-            pnl = row["totalPnl"] or 0
-            trades = row["totalTrades"] or 0
+            points = row["points"] or 0
+            pnl = row["pnl"] or 0
 
             # Convert P&L to target currency if needed
             if target_currency and currency and currency != target_currency:
@@ -1057,17 +1054,51 @@ class TradingDatabase:
 
             if instrument not in instrument_map:
                 instrument_map[instrument] = {
-                    "instrument": instrument,
-                    "totalPoints": 0,
-                    "totalPnl": 0,
-                    "totalTrades": 0,
+                    "name": instrument,
+                    "totalPoints": 0.0,
+                    "winPoints": 0.0,
+                    "lossPoints": 0.0,
+                    "trades": 0,
+                    "wins": 0,
+                    "losses": 0,
+                    "totalPnl": 0.0,
+                    "winPnl": 0.0,
+                    "lossPnl": 0.0,
+                    "multiplier": 0.0,
                 }
 
-            instrument_map[instrument]["totalPoints"] += points
-            instrument_map[instrument]["totalPnl"] += pnl
-            instrument_map[instrument]["totalTrades"] += trades
+            entry = instrument_map[instrument]
+            entry["totalPoints"] += points
+            entry["totalPnl"] += pnl
+            entry["trades"] += 1
 
-        results = list(instrument_map.values())
+            if pnl >= 0:
+                entry["wins"] += 1
+                entry["winPoints"] += points
+                entry["winPnl"] += pnl
+            else:
+                entry["losses"] += 1
+                entry["lossPoints"] += points
+                entry["lossPnl"] += pnl
+
+            # Derive multiplier from P&L / points (how much money per point)
+            if points != 0:
+                entry["multiplier"] = abs(pnl / points)
+
+        # Compute averages
+        results = []
+        for entry in instrument_map.values():
+            trades = entry["trades"]
+            wins = entry["wins"]
+            losses = entry["losses"]
+            entry["avgPointsPerTrade"] = (
+                entry["totalPoints"] / trades if trades > 0 else 0.0
+            )
+            entry["avgWinPoints"] = entry["winPoints"] / wins if wins > 0 else 0.0
+            entry["avgLossPoints"] = entry["lossPoints"] / losses if losses > 0 else 0.0
+            entry["avgPnlPerTrade"] = entry["totalPnl"] / trades if trades > 0 else 0.0
+            results.append(entry)
+
         results.sort(key=lambda x: x["totalPnl"], reverse=True)
         return results
 

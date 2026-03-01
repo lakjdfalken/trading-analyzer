@@ -26,6 +26,10 @@ export interface PointsData {
   avgWinPoints: number;
   avgLossPoints: number;
   multiplier: number;
+  totalPnl: number;
+  winPnl: number;
+  lossPnl: number;
+  avgPnlPerTrade: number;
 }
 
 export interface PointsChartProps {
@@ -35,6 +39,8 @@ export interface PointsChartProps {
   className?: string;
   layout?: "horizontal" | "vertical";
   metric?: "totalPoints" | "avgPointsPerTrade";
+  currency?: string;
+  formatAmount?: (amount: number, currency: string) => string;
 }
 
 interface CustomTooltipProps {
@@ -44,9 +50,28 @@ interface CustomTooltipProps {
     value: number;
     payload: PointsData;
   }>;
+  currency?: string;
+  formatAmount?: (amount: number, currency: string) => string;
 }
 
-function CustomTooltip({ active, payload }: CustomTooltipProps) {
+function formatPnl(
+  value: number,
+  currency?: string,
+  formatAmount?: (amount: number, currency: string) => string,
+): string {
+  if (formatAmount && currency) {
+    return formatAmount(value, currency);
+  }
+  const prefix = currency ? `${currency} ` : "";
+  return `${prefix}${value.toFixed(2)}`;
+}
+
+function CustomTooltip({
+  active,
+  payload,
+  currency,
+  formatAmount,
+}: CustomTooltipProps) {
   if (!active || !payload || payload.length === 0) {
     return null;
   }
@@ -58,11 +83,34 @@ function CustomTooltip({ active, payload }: CustomTooltipProps) {
       <p className="font-medium text-foreground mb-2">{data.name}</p>
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-4">
+          <span className="text-muted-foreground">P&L:</span>
+          <span
+            className={cn(
+              "font-semibold",
+              data.totalPnl >= 0 ? "text-green-500" : "text-red-500",
+            )}
+          >
+            {formatPnl(data.totalPnl, currency, formatAmount)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-muted-foreground">Avg P&L/Trade:</span>
+          <span
+            className={cn(
+              "font-medium",
+              data.avgPnlPerTrade >= 0 ? "text-green-500" : "text-red-500",
+            )}
+          >
+            {formatPnl(data.avgPnlPerTrade, currency, formatAmount)}
+          </span>
+        </div>
+        <div className="h-px bg-border my-1" />
+        <div className="flex items-center justify-between gap-4">
           <span className="text-muted-foreground">Total Points:</span>
           <span
             className={cn(
               "font-medium",
-              data.totalPoints >= 0 ? "text-green-500" : "text-red-500"
+              data.totalPoints >= 0 ? "text-green-500" : "text-red-500",
             )}
           >
             {data.totalPoints.toFixed(1)}
@@ -73,7 +121,7 @@ function CustomTooltip({ active, payload }: CustomTooltipProps) {
           <span
             className={cn(
               "font-medium",
-              data.avgPointsPerTrade >= 0 ? "text-green-500" : "text-red-500"
+              data.avgPointsPerTrade >= 0 ? "text-green-500" : "text-red-500",
             )}
           >
             {data.avgPointsPerTrade.toFixed(2)}
@@ -86,6 +134,19 @@ function CustomTooltip({ active, payload }: CustomTooltipProps) {
         <div className="flex items-center justify-between gap-4">
           <span className="text-red-500">Loss Points:</span>
           <span className="font-medium">{data.lossPoints.toFixed(1)}</span>
+        </div>
+        <div className="h-px bg-border my-1" />
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-green-500">Win P&L:</span>
+          <span className="font-medium">
+            {formatPnl(data.winPnl, currency, formatAmount)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-red-500">Loss P&L:</span>
+          <span className="font-medium">
+            {formatPnl(data.lossPnl, currency, formatAmount)}
+          </span>
         </div>
         <div className="flex items-center justify-between gap-4 pt-1 border-t border-border">
           <span className="text-muted-foreground">Trades:</span>
@@ -185,13 +246,15 @@ export function PointsChart({
   className,
   layout = "horizontal",
   metric = "totalPoints",
+  currency,
+  formatAmount,
 }: PointsChartProps) {
   if (!data || data.length === 0) {
     return (
       <div
         className={cn(
           "flex items-center justify-center text-muted-foreground",
-          className
+          className,
         )}
         style={{ height }}
       >
@@ -269,13 +332,17 @@ export function PointsChart({
           )}
 
           <Tooltip
-            content={<CustomTooltip />}
+            content={
+              <CustomTooltip currency={currency} formatAmount={formatAmount} />
+            }
             cursor={{ fill: "hsl(var(--accent))", opacity: 0.3 }}
           />
 
           <Bar
             dataKey={dataKey}
-            name={metric === "totalPoints" ? "Total Points" : "Avg Points/Trade"}
+            name={
+              metric === "totalPoints" ? "Total Points" : "Avg Points/Trade"
+            }
             radius={[4, 4, 0, 0]}
             maxBarSize={60}
           >

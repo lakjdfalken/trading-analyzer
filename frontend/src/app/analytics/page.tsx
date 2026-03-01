@@ -318,7 +318,11 @@ export default function AnalyticsPage() {
           dateRangeParam,
           selectedAccountId,
         ),
-        api.getPointsByInstrument(dateRangeParam, selectedAccountId),
+        api.getPointsByInstrument(
+          effectiveCurrency,
+          dateRangeParam,
+          selectedAccountId,
+        ),
         api.getSpreadCost(effectiveCurrency, dateRangeParam, selectedAccountId),
         api.getTradeFrequency(dateRangeParam, selectedAccountId),
         api.getAccounts(),
@@ -768,7 +772,14 @@ export default function AnalyticsPage() {
       description: "Total points/pips gained or lost per instrument",
       category: "instruments",
       icon: Target,
-      component: <PointsChart data={pointsByInstrument} height={300} />,
+      component: (
+        <PointsChart
+          data={pointsByInstrument}
+          height={300}
+          currency={displayCurrency}
+          formatAmount={formatAmount}
+        />
+      ),
     },
     {
       id: "spreadCost",

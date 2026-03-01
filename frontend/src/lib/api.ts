@@ -385,10 +385,12 @@ export async function getMonthlyPnLByAccount(
 }
 
 export async function getPointsByInstrument(
+  currency: string,
   dateRange?: DateRange,
   accountId?: number | null,
 ): Promise<unknown> {
   const params = buildQueryString({
+    currency,
     from: formatDate(dateRange?.from),
     to: formatDate(dateRange?.to),
     accountId: accountId?.toString(),
