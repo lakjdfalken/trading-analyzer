@@ -1132,11 +1132,8 @@ class TradingDatabase:
             SELECT
                 bt."Description" as instrument,
                 a.currency as account_currency,
-                CASE
-                    WHEN bt."Closing" IS NOT NULL AND bt."Opening" IS NOT NULL AND bt."Opening" != 0
-                    THEN bt."Closing" - bt."Opening"
-                    ELSE 0
-                END as points,
+                COALESCE(bt."Opening", 0) as opening,
+                COALESCE(bt."Closing", 0) as closing,
                 bt."P/L" as pnl
             FROM broker_transactions bt
             JOIN accounts a ON bt.account_id = a.account_id
@@ -1146,13 +1143,23 @@ class TradingDatabase:
 
         raw_data = execute_query(query, tuple(params))
 
+        # Pre-fetch point factors for batch processing
+        point_factors = CurrencyService.get_instrument_point_factors()
+
         # Aggregate by instrument with currency conversion and win/loss breakdown
         instrument_map: Dict[str, Dict[str, Any]] = {}
         for row in raw_data:
             instrument = row["instrument"]
             currency = row["account_currency"] or target_currency
-            points = row["points"] or 0
+            opening = row["opening"] or 0
+            closing = row["closing"] or 0
             pnl = row["pnl"] or 0
+
+            # Use CurrencyService.calculate_points — single source of truth
+            # Handles direction (long/short) by signing based on P&L
+            points = CurrencyService.calculate_points(
+                opening, closing, pnl, instrument, point_factors
+            )
 
             # Convert P&L to target currency if needed
             if target_currency and currency and currency != target_currency:
