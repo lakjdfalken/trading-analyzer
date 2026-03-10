@@ -85,7 +85,7 @@ function CustomTooltip({
         </div>
         {showPercent && (
           <div className="flex justify-between gap-4">
-            <span className="text-muted-foreground">Return (at open):</span>
+            <span className="text-muted-foreground">Daily Return:</span>
             <span className={isProfit ? "text-green-500" : "text-red-500"}>
               {isProfit ? "+" : ""}
               {dataPoint.pnlPercent!.toFixed(2)}%
@@ -110,7 +110,7 @@ function CustomTooltip({
         {dataPoint.previousBalance != null && dataPoint.previousBalance > 0 && (
           <div className="flex justify-between gap-4 pt-1 border-t border-border mt-1">
             <span className="text-muted-foreground text-xs">
-              Avg Balance at Open:
+              Opening Balance:
             </span>
             <span className="text-xs">
               {formatAmount(dataPoint.previousBalance, currency)}
@@ -236,7 +236,7 @@ export function DailyPnLChart({
     // Calculate average P&L per day
     const avgPnl = totalPnl / totalDays;
 
-    // Calculate average daily return % (based on balance at open)
+    // Calculate average daily return % (based on opening balance of each day)
     const daysWithPercent = chartData.filter((d) => d.pnlPercent != null);
     const avgDailyReturnPercent =
       daysWithPercent.length > 0

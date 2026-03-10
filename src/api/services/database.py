@@ -1800,10 +1800,13 @@ class TradingDatabase:
         target_currency: Optional[str] = None,
         account_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Get daily P&L data with percentage based on balance at trade open time.
+        """Get daily P&L data with percentage based on opening balance of each day.
 
-        The P&L percentage is calculated using the account balance at the moment
-        each trade was opened (Open Period), not when it was closed.
+        The P&L percentage is calculated as:
+            day_pnl / opening_balance_of_that_day * 100
+
+        The opening balance is the aggregate account balance at the end of the
+        previous trading day (last known balance before the close date).
 
         Converts all P&L values to the target currency before aggregating.
         Requires target_currency to be specified - no auto-detection.
@@ -1835,117 +1838,163 @@ class TradingDatabase:
 
         where_clause = " AND ".join(conditions)
 
-        # Build balance history conditions
-        balance_history_params: List[Any] = []
-        balance_account_filter = _build_included_accounts_filter(
-            account_id, balance_history_params, table_alias="bt"
-        )
-
-        # Get all transactions ordered by time to build balance history
-        balance_history_query = f"""
-            SELECT
-                bt."Transaction Date" as txn_date,
-                bt.account_id,
-                a.currency as currency,
-                bt."Balance" as balance
-            FROM broker_transactions bt
-            JOIN accounts a ON bt.account_id = a.account_id
-            WHERE {balance_account_filter}
-            ORDER BY bt."Transaction Date" ASC
-        """
-        balance_history_data = execute_query(
-            balance_history_query, tuple(balance_history_params)
-        )
-
-        # Build a sorted list of (datetime, balance) tuples for binary search
-        # Convert balances to target currency as we build the timeline
-        timeline_data: List[Tuple[str, float]] = []
-        for row in balance_history_data:
-            txn_date = row["txn_date"]
-            currency = row["currency"] or target_currency
-            balance = row["balance"] or 0
-
-            # Convert balance to target currency
-            if currency != target_currency:
-                converted = CurrencyService.convert(balance, currency, target_currency)
-                if converted is not None:
-                    balance = converted
-
-            timeline_data.append((txn_date, balance))
-
-        # Create efficient balance lookup using binary search
-        balance_timeline = BalanceTimeline(timeline_data)
-
-        # Get individual trades with their open period for percentage calculation
-        trades_query = f"""
+        # -----------------------------------------------------------
+        # 1. Get daily P&L per currency
+        # -----------------------------------------------------------
+        pnl_query = f"""
             SELECT
                 DATE(bt."Transaction Date") as close_date,
-                bt."Open Period" as open_period,
-                bt."P/L" as pnl,
-                a.currency as currency
+                a.currency as currency,
+                SUM(bt."P/L") as pnl,
+                COUNT(*) as trades
             FROM broker_transactions bt
             JOIN accounts a ON bt.account_id = a.account_id
             WHERE {where_clause}
-            ORDER BY bt."Transaction Date" ASC
+            GROUP BY DATE(bt."Transaction Date"), a.currency
+            ORDER BY close_date ASC
         """
-        trades_data = execute_query(trades_query, tuple(params))
+        pnl_rows = execute_query(pnl_query, tuple(params))
 
-        # Aggregate by date, calculating weighted percentage based on balance at open
+        # Aggregate daily P&L across currencies
         date_map: Dict[str, Dict[str, Any]] = {}
-        for row in trades_data:
+        for row in pnl_rows:
             close_date = row["close_date"]
-            open_period = row["open_period"]
-            pnl = row["pnl"] or 0
             currency = row["currency"] or target_currency
+            pnl = row["pnl"] or 0
+            trades = row["trades"] or 0
 
-            # Convert P&L to target currency
             if currency != target_currency:
                 converted = CurrencyService.convert(pnl, currency, target_currency)
                 if converted is not None:
                     pnl = converted
 
             if close_date not in date_map:
-                date_map[close_date] = {
-                    "date": close_date,
-                    "pnl": 0,
-                    "trades": 0,
-                    "weighted_pnl_percent": 0,
-                    "total_open_balance": 0,
-                }
+                date_map[close_date] = {"date": close_date, "pnl": 0, "trades": 0}
 
             date_map[close_date]["pnl"] += pnl
-            date_map[close_date]["trades"] += 1
+            date_map[close_date]["trades"] += trades
 
-            # Find balance at the time trade was opened using binary search
-            balance_at_open = balance_timeline.find_balance_at_time(open_period)
-            if balance_at_open and balance_at_open > 0:
-                # Calculate percentage for this trade based on balance when opened
-                trade_percent = (pnl / balance_at_open) * 100
-                date_map[close_date]["weighted_pnl_percent"] += trade_percent
-                date_map[close_date]["total_open_balance"] += balance_at_open
+        # -----------------------------------------------------------
+        # 2. Build per-day opening balance from balance history
+        #
+        #    For each close_date we need the total account balance at
+        #    the START of that day (= last known balance before that day).
+        #    We reuse the same carry-forward logic as get_balance_history.
+        # -----------------------------------------------------------
+        balance_params: List[Any] = []
+        balance_account_filter = _build_included_accounts_filter(
+            account_id, balance_params, table_alias="bt"
+        )
 
-        # Sort by date and calculate cumulative P&L
+        # Get all accounts + currencies
+        if account_id:
+            acct_query = (
+                "SELECT account_id, currency FROM accounts WHERE account_id = ?"
+            )
+            acct_rows = execute_query(acct_query, (account_id,))
+        else:
+            acct_ids = get_included_account_ids()
+            if acct_ids:
+                ph = ",".join("?" * len(acct_ids))
+                acct_query = f"SELECT account_id, currency FROM accounts WHERE account_id IN ({ph})"
+                acct_rows = execute_query(acct_query, tuple(acct_ids))
+            else:
+                acct_rows = []
+
+        account_currencies: Dict[int, str] = {
+            r["account_id"]: r["currency"] for r in acct_rows
+        }
+
+        # Get last balance per account per day (all days, not just trade days)
+        bal_query = f"""
+            SELECT
+                DATE(bt."Transaction Date") as date,
+                bt.account_id,
+                bt."Balance" as balance
+            FROM broker_transactions bt
+            INNER JOIN (
+                SELECT DATE("Transaction Date") as txn_date,
+                       account_id,
+                       MAX("Transaction Date") as last_txn_time
+                FROM broker_transactions
+                GROUP BY DATE("Transaction Date"), account_id
+            ) lt ON bt."Transaction Date" = lt.last_txn_time
+                AND bt.account_id = lt.account_id
+            WHERE {balance_account_filter}
+            ORDER BY date ASC
+        """
+        bal_rows = execute_query(bal_query, tuple(balance_params))
+
+        # Collect per-account end-of-day balances
+        all_bal_dates: set = set()
+        acct_day_bal: Dict[int, Dict[str, float]] = {
+            aid: {} for aid in account_currencies
+        }
+        for row in bal_rows:
+            aid = row["account_id"]
+            if aid in acct_day_bal:
+                acct_day_bal[aid][row["date"]] = row["balance"] or 0
+                all_bal_dates.add(row["date"])
+
+        # We need opening balances for each close_date in date_map.
+        # Opening balance of day D = end-of-day balance of the last day < D
+        # that has any transaction across any account (with carry-forward).
+        #
+        # Build a sorted list of ALL dates (balance + trade dates) so we can
+        # carry-forward and look up the previous day's closing balance.
+        all_dates_sorted = sorted(all_bal_dates | set(date_map.keys()))
+
+        # Carry-forward per-account balances across all dates
+        acct_running: Dict[int, float] = {aid: 0.0 for aid in account_currencies}
+        # end_of_day_balance[date] = total balance across all accounts at end of date
+        end_of_day_balance: Dict[str, float] = {}
+
+        for d in all_dates_sorted:
+            for aid, curr in account_currencies.items():
+                if d in acct_day_bal[aid]:
+                    acct_running[aid] = acct_day_bal[aid][d]
+
+            # Sum across accounts, converting to target currency
+            total = 0.0
+            for aid, curr in account_currencies.items():
+                bal = acct_running[aid]
+                if curr and curr != target_currency:
+                    rate = CurrencyService.get_exchange_rate(curr, target_currency)
+                    if rate:
+                        bal *= rate
+                total += bal
+            end_of_day_balance[d] = total
+
+        # For each trade day, the opening balance is the end-of-day balance
+        # of the PREVIOUS date in all_dates_sorted.
+        opening_balance: Dict[str, float] = {}
+        prev_bal = 0.0
+        prev_date: Optional[str] = None
+        for d in all_dates_sorted:
+            if d in date_map:
+                # Opening balance = last end-of-day balance before this date
+                opening_balance[d] = (
+                    end_of_day_balance[prev_date] if prev_date else prev_bal
+                )
+            prev_date = d
+
+        # -----------------------------------------------------------
+        # 3. Build result with cumulative P&L and daily %
+        # -----------------------------------------------------------
         daily_pnl = sorted(date_map.values(), key=lambda x: x["date"])
-        cumulative = 0
+        cumulative = 0.0
         for entry in daily_pnl:
             cumulative += entry["pnl"]
             entry["cumulativePnl"] = cumulative
             entry["currency"] = target_currency
 
-            # Calculate average percentage for the day
-            # This is the sum of individual trade percentages
-            if entry["trades"] > 0 and entry["total_open_balance"] > 0:
-                # Use the weighted sum of percentages
-                entry["pnlPercent"] = entry["weighted_pnl_percent"]
-                # Store average balance at open for reference
-                entry["previousBalance"] = entry["total_open_balance"] / entry["trades"]
+            ob = opening_balance.get(entry["date"])
+            if ob and ob > 0:
+                entry["pnlPercent"] = (entry["pnl"] / ob) * 100
+                entry["previousBalance"] = ob
             else:
                 entry["pnlPercent"] = None
                 entry["previousBalance"] = None
-
-            # Clean up internal fields
-            del entry["weighted_pnl_percent"]
-            del entry["total_open_balance"]
 
         return daily_pnl
 
