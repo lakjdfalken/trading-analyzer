@@ -173,6 +173,9 @@ class MonthlyPnLDataPoint(BaseModel):
     pnl: float
     trades: int = 0
     win_rate: Optional[float] = Field(default=0.0, alias="winRate")
+    cumulative_pnl: Optional[float] = Field(default=None, alias="cumulativePnl")
+    pnl_percent: Optional[float] = Field(default=None, alias="pnlPercent")
+    opening_balance: Optional[float] = Field(default=None, alias="openingBalance")
 
     class Config:
         populate_by_name = True
