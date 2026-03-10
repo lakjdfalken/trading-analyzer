@@ -112,6 +112,8 @@ export interface MonthlyPnLDataPoint {
   pnl: number;
   trades: number;
   winRate: number;
+  pnlPercent?: number | null;
+  openingBalance?: number | null;
 }
 
 export interface DailyPnLDataPoint {

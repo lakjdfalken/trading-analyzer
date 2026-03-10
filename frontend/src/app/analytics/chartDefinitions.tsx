@@ -137,8 +137,7 @@ export function buildChartDefinitions(
       icon: LineChart,
       component: currencyNotSet ? (
         <CurrencyNotSetPlaceholder />
-      ) : dailyPnLByAccount &&
-        dailyPnLByAccount.series.length > 1 ? (
+      ) : dailyPnLByAccount && dailyPnLByAccount.series.length > 1 ? (
         <MultiAccountCumulativePnLChart
           series={dailyPnLByAccount.series}
           total={dailyPnLByAccount.total}
@@ -166,6 +165,7 @@ export function buildChartDefinitions(
           data={monthlyPnL}
           height={300}
           currency={displayCurrency}
+          formatAmount={formatAmount}
         />
       ),
     },

@@ -845,7 +845,14 @@ class TradingDatabase:
         target_currency: Optional[str] = None,
         account_id: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Get monthly P&L aggregated with currency conversion."""
+        """Get monthly P&L aggregated with currency conversion.
+
+        Includes pnlPercent calculated as:
+            month_pnl / opening_balance_of_that_month * 100
+
+        The opening balance is the aggregate account balance at the end of
+        the last day of the previous month.
+        """
         from api.services.currency import CurrencyService
 
         # Require explicit currency - no auto-detection per .rules
@@ -917,15 +924,114 @@ class TradingDatabase:
             month_map[month]["trades"] += trades
             month_map[month]["wins"] += wins
 
+        # -----------------------------------------------------------------
+        # Build per-month opening balance (same approach as get_daily_pnl)
+        # Opening balance of month M = end-of-day balance on last day < M
+        # -----------------------------------------------------------------
+        balance_params: List[Any] = []
+        balance_account_filter = _build_included_accounts_filter(
+            account_id, balance_params, table_alias="bt"
+        )
+
+        # Get all accounts + currencies
+        if account_id:
+            acct_query = (
+                "SELECT account_id, currency FROM accounts WHERE account_id = ?"
+            )
+            acct_rows = execute_query(acct_query, (account_id,))
+        else:
+            acct_ids = get_included_account_ids()
+            if acct_ids:
+                ph = ",".join("?" * len(acct_ids))
+                acct_query = f"SELECT account_id, currency FROM accounts WHERE account_id IN ({ph})"
+                acct_rows = execute_query(acct_query, tuple(acct_ids))
+            else:
+                acct_rows = []
+
+        account_currencies: Dict[int, str] = {
+            r["account_id"]: r["currency"] for r in acct_rows
+        }
+
+        # Get last balance per account per day
+        bal_query = f"""
+            SELECT
+                DATE(bt."Transaction Date") as date,
+                bt.account_id,
+                bt."Balance" as balance
+            FROM broker_transactions bt
+            INNER JOIN (
+                SELECT DATE("Transaction Date") as txn_date,
+                       account_id,
+                       MAX("Transaction Date") as last_txn_time
+                FROM broker_transactions
+                GROUP BY DATE("Transaction Date"), account_id
+            ) lt ON bt."Transaction Date" = lt.last_txn_time
+                AND bt.account_id = lt.account_id
+            WHERE {balance_account_filter}
+            ORDER BY date ASC
+        """
+        bal_rows = execute_query(bal_query, tuple(balance_params))
+
+        # Collect per-account end-of-day balances
+        acct_day_bal: Dict[int, Dict[str, float]] = {
+            aid: {} for aid in account_currencies
+        }
+        all_bal_dates: set = set()
+        for row in bal_rows:
+            aid = row["account_id"]
+            if aid in acct_day_bal:
+                acct_day_bal[aid][row["date"]] = row["balance"] or 0
+                all_bal_dates.add(row["date"])
+
+        # Build end-of-day total balance per date with carry-forward
+        all_dates_sorted = sorted(all_bal_dates)
+        acct_running: Dict[int, float] = {aid: 0.0 for aid in account_currencies}
+        end_of_day_balance: Dict[str, float] = {}
+
+        for d in all_dates_sorted:
+            for aid, curr in account_currencies.items():
+                if d in acct_day_bal[aid]:
+                    acct_running[aid] = acct_day_bal[aid][d]
+
+            total = 0.0
+            for aid, curr in account_currencies.items():
+                bal = acct_running[aid]
+                if curr and curr != target_currency:
+                    rate = CurrencyService.get_exchange_rate(curr, target_currency)
+                    if rate:
+                        bal *= rate
+                total += bal
+            end_of_day_balance[d] = total
+
+        # For each month, opening balance = end-of-day balance on last day
+        # before the 1st of that month.
+        sorted_months = sorted(month_map.keys())
+        opening_balance_by_month: Dict[str, Optional[float]] = {}
+
+        for month_key in sorted_months:
+            # Find the last date strictly before this month
+            month_start = month_key + "-01"
+            prev_bal: Optional[float] = None
+            for d in all_dates_sorted:
+                if d < month_start:
+                    prev_bal = end_of_day_balance[d]
+                else:
+                    break
+            opening_balance_by_month[month_key] = prev_bal
+
         # Calculate win rates and build final data
         data = []
         cumulative = 0
-        for month in sorted(month_map.keys()):
+        for month in sorted_months:
             entry = month_map[month]
             cumulative += entry["pnl"]
             win_rate = (
                 (entry["wins"] / entry["trades"] * 100) if entry["trades"] > 0 else 0
             )
+
+            ob = opening_balance_by_month.get(month)
+            pnl_percent = (entry["pnl"] / ob) * 100 if ob and ob > 0 else None
+
             data.append(
                 {
                     "month": entry["month"],
@@ -933,6 +1039,8 @@ class TradingDatabase:
                     "cumulativePnl": cumulative,
                     "trades": entry["trades"],
                     "winRate": win_rate,
+                    "pnlPercent": pnl_percent,
+                    "openingBalance": ob,
                 }
             )
 

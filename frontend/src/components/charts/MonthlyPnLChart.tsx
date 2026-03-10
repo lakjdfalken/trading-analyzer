@@ -20,6 +20,8 @@ export interface MonthlyPnLData {
   pnl: number;
   trades?: number;
   winRate?: number;
+  pnlPercent?: number | null;
+  openingBalance?: number | null;
 }
 
 export interface MonthlyPnLChartProps {
@@ -32,6 +34,7 @@ export interface MonthlyPnLChartProps {
   profitColor?: string;
   lossColor?: string;
   currency: string;
+  formatAmount?: (amount: number, currency: string) => string;
 }
 
 interface CustomTooltipProps {
@@ -42,6 +45,7 @@ interface CustomTooltipProps {
   }>;
   label?: string;
   currency: string;
+  formatAmount?: (amount: number, currency: string) => string;
 }
 
 interface YearlyTotal {
@@ -55,6 +59,7 @@ function CustomTooltip({
   payload,
   label,
   currency,
+  formatAmount,
 }: CustomTooltipProps) {
   if (!active || !payload || !payload.length) {
     return null;
@@ -85,6 +90,22 @@ function CustomTooltip({
             <span className="text-sm text-foreground">{data.trades}</span>
           </div>
         )}
+        {data.pnlPercent != null && (
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-xs text-muted-foreground">
+              Monthly Return
+            </span>
+            <span
+              className={cn(
+                "text-sm font-semibold",
+                isProfit ? "text-green-500" : "text-red-500",
+              )}
+            >
+              {isProfit ? "+" : ""}
+              {data.pnlPercent.toFixed(2)}%
+            </span>
+          </div>
+        )}
         {data.winRate !== undefined && (
           <div className="flex items-center justify-between gap-4">
             <span className="text-xs text-muted-foreground">Win Rate</span>
@@ -93,6 +114,18 @@ function CustomTooltip({
             </span>
           </div>
         )}
+        {data.openingBalance != null &&
+          data.openingBalance > 0 &&
+          formatAmount && (
+            <div className="flex items-center justify-between gap-4 pt-1 border-t border-border mt-1">
+              <span className="text-xs text-muted-foreground">
+                Opening Balance
+              </span>
+              <span className="text-xs text-foreground">
+                {formatAmount(data.openingBalance, currency)}
+              </span>
+            </div>
+          )}
       </div>
     </div>
   );
@@ -108,6 +141,7 @@ export function MonthlyPnLChart({
   profitColor = "#10B981",
   lossColor = "#EF4444",
   currency,
+  formatAmount,
 }: MonthlyPnLChartProps) {
   // Calculate yearly totals
   const yearlyTotals = React.useMemo(() => {
@@ -303,7 +337,12 @@ export function MonthlyPnLChart({
             />
             {showTooltip && (
               <Tooltip
-                content={<CustomTooltip currency={currency} />}
+                content={
+                  <CustomTooltip
+                    currency={currency}
+                    formatAmount={formatAmount}
+                  />
+                }
                 cursor={{ fill: "hsl(var(--accent))", opacity: 0.3 }}
               />
             )}
