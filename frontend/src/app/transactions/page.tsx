@@ -35,6 +35,7 @@ import * as api from "@/lib/api";
 // Sort configuration
 type SortField =
   | "entryTime"
+  | "exitTime"
   | "instrument"
   | "direction"
   | "pnl"
@@ -279,6 +280,10 @@ export default function TransactionsPage() {
           aValue = a.pnl;
           bValue = b.pnl;
           break;
+        case "exitTime":
+          aValue = a.exitTime;
+          bValue = b.exitTime;
+          break;
         case "pnlPercent":
           aValue = a.pnlPercent;
           bValue = b.pnlPercent;
@@ -367,8 +372,10 @@ export default function TransactionsPage() {
     const tradesToExport = sortedTrades;
 
     const headers = [
-      "Date",
-      "Time",
+      "Open Date",
+      "Open Time",
+      "Close Date",
+      "Close Time",
       "Instrument",
       "Direction",
       "Entry Price",
@@ -381,9 +388,15 @@ export default function TransactionsPage() {
 
     const csvRows = tradesToExport.map((trade) => {
       const entryDate = new Date(trade.entryTime);
+      const exitDate = new Date(trade.exitTime);
       return [
         entryDate.toLocaleDateString(),
         entryDate.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        exitDate.toLocaleDateString(),
+        exitDate.toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",
         }),
@@ -753,8 +766,17 @@ export default function TransactionsPage() {
                         onClick={() => handleSort("entryTime")}
                       >
                         <div className="flex items-center">
-                          Date/Time
+                          Open Date
                           {getSortIcon("entryTime")}
+                        </div>
+                      </th>
+                      <th
+                        className="text-left p-4 font-medium cursor-pointer hover:bg-muted/50"
+                        onClick={() => handleSort("exitTime")}
+                      >
+                        <div className="flex items-center">
+                          Close Date
+                          {getSortIcon("exitTime")}
                         </div>
                       </th>
                       <th
@@ -816,6 +838,24 @@ export default function TransactionsPage() {
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {new Date(trade.entryTime).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="text-sm">
+                            {new Date(trade.exitTime).toLocaleDateString(
+                              "en-US",
+                              {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              },
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(trade.exitTime).toLocaleTimeString([], {
                               hour: "2-digit",
                               minute: "2-digit",
                             })}
