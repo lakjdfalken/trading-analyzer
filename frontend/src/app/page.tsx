@@ -395,6 +395,22 @@ export default function Home() {
         isCurrency: true,
         currency,
       },
+      ...(kpis.periodPnlPercent != null
+        ? [
+            {
+              title: "Period Return",
+              value: `${kpis.periodPnlPercent >= 0 ? "+" : ""}${kpis.periodPnlPercent.toFixed(2)}%`,
+              subtitle: "vs. opening balance",
+              icon: Percent,
+              variant:
+                kpis.periodPnlPercent >= 0
+                  ? ("success" as const)
+                  : ("danger" as const),
+              tooltip:
+                "Total P&L for the selected period as a percentage of the opening account balance.",
+            },
+          ]
+        : []),
       {
         title: "Win Rate",
         value: `${(kpis.winRate ?? 0).toFixed(1)}%`,

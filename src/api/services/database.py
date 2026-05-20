@@ -1743,6 +1743,150 @@ class TradingDatabase:
                     pnl = converted
             worst_trade = pnl
 
+        # Calculate period return percentage (total P&L / opening balance at start of period)
+        period_pnl_percent: Optional[float] = None
+        ob_params: List[Any] = []
+        ob_account_filter = _build_included_accounts_filter(
+            account_id, ob_params, table_alias="bt"
+        )
+        # Build account filter without table alias for accounts table queries
+        ob_accounts_params: List[Any] = []
+        ob_accounts_filter = _build_included_accounts_filter(
+            account_id, ob_accounts_params, table_alias="a"
+        )
+
+        if start_date:
+            # 1. Last balance before the period starts
+            ob_query = f"""
+                WITH ranked AS (
+                    SELECT
+                        bt.account_id,
+                        bt."Balance" as balance,
+                        a.currency as currency,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY bt.account_id
+                            ORDER BY bt."Transaction Date" DESC, bt.rowid DESC
+                        ) as rn
+                    FROM broker_transactions bt
+                    JOIN accounts a ON bt.account_id = a.account_id
+                    WHERE bt."Transaction Date" < ?
+                    AND {ob_account_filter}
+                )
+                SELECT account_id, balance, currency FROM ranked WHERE rn = 1
+            """
+            ob_results = execute_query(
+                ob_query, tuple([start_date.isoformat()] + ob_params)
+            )
+            found_ids = {row["account_id"] for row in ob_results}
+
+            # 2. For accounts with no prior history: try initial_balance (user-set)
+            fallback_params: List[Any] = []
+            fallback_filter = _build_included_accounts_filter(
+                account_id, fallback_params, table_alias="a"
+            )
+            fallback_query = f"""
+                SELECT account_id, initial_balance as balance, currency
+                FROM accounts a
+                WHERE {fallback_filter}
+                AND initial_balance IS NOT NULL AND initial_balance > 0
+            """
+            fallback_results = execute_query(fallback_query, tuple(fallback_params))
+            for row in fallback_results:
+                if row["account_id"] not in found_ids:
+                    ob_results.append(row)
+                    found_ids.add(row["account_id"])
+
+            # 3. Last resort: use the first balance record in the period (e.g. initial deposit)
+            #    for accounts that started mid-period with no initial_balance configured
+            first_in_period_params: List[Any] = []
+            first_in_period_filter = _build_included_accounts_filter(
+                account_id, first_in_period_params, table_alias="bt"
+            )
+            end_date_str = format_end_date(end_date) if end_date else None
+            end_cond = 'AND bt."Transaction Date" <= ?' if end_date_str else ""
+            first_in_period_params_full = (
+                [start_date.isoformat()]
+                + ([end_date_str] if end_date_str else [])
+                + first_in_period_params
+            )
+            first_in_period_query = f"""
+                WITH ranked AS (
+                    SELECT
+                        bt.account_id,
+                        bt."Balance" as balance,
+                        a.currency as currency,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY bt.account_id
+                            ORDER BY bt."Transaction Date" ASC, bt.rowid ASC
+                        ) as rn
+                    FROM broker_transactions bt
+                    JOIN accounts a ON bt.account_id = a.account_id
+                    WHERE bt."Transaction Date" >= ?
+                    {end_cond}
+                    AND {first_in_period_filter}
+                )
+                SELECT account_id, balance, currency FROM ranked WHERE rn = 1
+            """
+            first_in_period_results = execute_query(
+                first_in_period_query, tuple(first_in_period_params_full)
+            )
+            for row in first_in_period_results:
+                if row["account_id"] not in found_ids:
+                    ob_results.append(row)
+        else:
+            # All-time: use initial_balance if set, otherwise first ever balance record
+            ob_results = []
+            ib_params: List[Any] = []
+            ib_filter = _build_included_accounts_filter(
+                account_id, ib_params, table_alias="a"
+            )
+            ib_query = f"""
+                SELECT account_id, initial_balance as balance, currency
+                FROM accounts a
+                WHERE {ib_filter}
+                AND initial_balance IS NOT NULL AND initial_balance > 0
+            """
+            ob_results = execute_query(ib_query, tuple(ib_params))
+            found_ids = {row["account_id"] for row in ob_results}
+
+            first_ever_params: List[Any] = []
+            first_ever_filter = _build_included_accounts_filter(
+                account_id, first_ever_params, table_alias="bt"
+            )
+            first_ever_query = f"""
+                WITH ranked AS (
+                    SELECT
+                        bt.account_id,
+                        bt."Balance" as balance,
+                        a.currency as currency,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY bt.account_id
+                            ORDER BY bt."Transaction Date" ASC, bt.rowid ASC
+                        ) as rn
+                    FROM broker_transactions bt
+                    JOIN accounts a ON bt.account_id = a.account_id
+                    WHERE {first_ever_filter}
+                )
+                SELECT account_id, balance, currency FROM ranked WHERE rn = 1
+            """
+            first_ever_results = execute_query(first_ever_query, tuple(first_ever_params))
+            for row in first_ever_results:
+                if row["account_id"] not in found_ids:
+                    ob_results.append(row)
+
+        total_opening_balance = 0.0
+        for row in ob_results:
+            ob_currency = row.get("currency") or target_currency
+            balance = row.get("balance") or 0
+            if ob_currency != target_currency:
+                converted = CurrencyService.convert(balance, ob_currency, target_currency)
+                if converted is not None:
+                    balance = converted
+            total_opening_balance += balance
+
+        if total_opening_balance > 0:
+            period_pnl_percent = (total_pnl / total_opening_balance) * 100
+
         return {
             "totalPnl": total_pnl,
             "totalTrades": total_trades,
@@ -1789,6 +1933,8 @@ class TradingDatabase:
             "currentYearPnl": current_year_pnl,
             "currentYearPoints": current_year_points,
             "avgYearlyPnl": avg_yearly_pnl,
+            # Period return percentage
+            "periodPnlPercent": period_pnl_percent,
             # Legacy fields for backward compatibility
             "openPositions": 0,
             "totalExposure": 0,

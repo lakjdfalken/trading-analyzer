@@ -66,6 +66,7 @@ export interface KPIMetrics {
   currentYearPnl?: number;
   currentYearPoints?: number;
   avgYearlyPnl?: number;
+  periodPnlPercent?: number | null;
 }
 
 export interface CombinedDashboardResponse {

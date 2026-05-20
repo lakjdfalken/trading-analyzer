@@ -144,6 +144,7 @@ class KPIMetrics(BaseModel):
     current_year_pnl: Optional[float] = Field(default=0.0, alias="currentYearPnl")
     current_year_points: Optional[float] = Field(default=0.0, alias="currentYearPoints")
     avg_yearly_pnl: Optional[float] = Field(default=0.0, alias="avgYearlyPnl")
+    period_pnl_percent: Optional[float] = Field(default=None, alias="periodPnlPercent")
 
     class Config:
         populate_by_name = True
