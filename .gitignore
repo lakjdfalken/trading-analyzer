@@ -6,6 +6,10 @@ __pycache__/
 pyvenv.cfg
 pyproject.toml
 
+# K4 tax declaration output (contain personal data)
+BLANKETTER.SRU
+INFO.SRU
+
 # Build artifacts
 dist/
 build/
