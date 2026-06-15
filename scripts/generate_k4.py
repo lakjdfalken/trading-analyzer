@@ -180,15 +180,11 @@ def build_blanketter(
         f"#NAMN {name}",
     ]
 
-    if section_a:
-        lines.append(f"#UPPGIFT 7011 {len(section_a)}")
-        for i, (instrument, pl) in enumerate(section_a.items(), start=1):
-            lines.extend(_sru_entry_lines(i, 31, instrument, pl))
+    for i, (instrument, pl) in enumerate(section_a.items(), start=1):
+        lines.extend(_sru_entry_lines(i, 31, instrument, pl))
 
-    if section_d:
-        lines.append(f"#UPPGIFT 7014 {len(section_d)}")
-        for i, (instrument, pl) in enumerate(section_d.items(), start=1):
-            lines.extend(_sru_entry_lines(i, 34, instrument, pl))
+    for i, (instrument, pl) in enumerate(section_d.items(), start=1):
+        lines.extend(_sru_entry_lines(i, 34, instrument, pl))
 
     lines += ["#BLANKETTSLUT", "#FIL_SLUT"]
     return "\n".join(lines) + "\n"
