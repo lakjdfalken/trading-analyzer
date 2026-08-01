@@ -292,23 +292,29 @@ async def get_drawdown_periods(
     start_date: Optional[datetime] = Query(None, alias="from"),
     end_date: Optional[datetime] = Query(None, alias="to"),
     account_id: Optional[int] = Query(None, alias="accountId"),
+    currency: str = Query(
+        ..., description="Target currency for balance conversion (required)"
+    ),
 ):
     """
-    Get drawdown periods and analysis.
+    Get drawdown periods and analysis. Currency parameter is required.
 
     Args:
         start_date: Start of date range
         end_date: End of date range
+        currency: Target currency to convert balances to (required)
 
     Returns:
         List of drawdown periods with recovery information
     """
     try:
+        # get_balance_history returns {"data": [...], "currency": ...}
         balance_history = db.get_balance_history(
             start_date=start_date,
             end_date=end_date,
+            target_currency=currency,
             account_id=account_id,
-        )
+        ).get("data", [])
 
         if not balance_history:
             return []

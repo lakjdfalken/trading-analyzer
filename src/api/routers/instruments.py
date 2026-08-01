@@ -13,6 +13,46 @@ from api.services.database import db
 
 router = APIRouter()
 
+# Name patterns used to bucket an instrument into a display category.
+INSTRUMENT_TYPE_PATTERNS = [
+    (
+        "index",
+        [
+            "us30",
+            "wall street",
+            "dow",
+            "nasdaq",
+            "s&p",
+            "spx",
+            "dax",
+            "ftse",
+            "uk 100",
+            "germany",
+        ],
+    ),
+    ("forex", ["eur/", "gbp/", "usd/", "jpy", "aud/", "nzd/", "cad/", "chf/"]),
+    ("commodity", ["gold", "silver", "oil", "xau", "xag", "wti", "brent"]),
+    ("crypto", ["btc", "eth", "bitcoin", "ethereum", "crypto"]),
+]
+
+
+def classify_instrument(name: str) -> str:
+    """Classify an instrument name into a display category."""
+    lowered = (name or "").lower()
+    for instrument_type, patterns in INSTRUMENT_TYPE_PATTERNS:
+        if any(p in lowered for p in patterns):
+            return instrument_type
+    return "stock"
+
+
+def to_instrument_option(name: str) -> dict:
+    """Build the option shape the frontend expects from an instrument name.
+
+    db.get_available_instruments() returns plain names (List[str]); the API
+    exposes them as {value, label, type} to match the Instrument model.
+    """
+    return {"value": name, "label": name, "type": classify_instrument(name)}
+
 
 @router.get("", response_model=List[Instrument])
 async def get_all_instruments():
@@ -27,45 +67,7 @@ async def get_all_instruments():
     """
     try:
         instruments = db.get_available_instruments()
-
-        # Add instrument type classification based on name patterns
-        for instrument in instruments:
-            name = instrument.get("value", "").lower()
-
-            if any(
-                x in name
-                for x in [
-                    "us30",
-                    "wall street",
-                    "dow",
-                    "nasdaq",
-                    "s&p",
-                    "spx",
-                    "dax",
-                    "ftse",
-                    "uk 100",
-                    "germany",
-                ]
-            ):
-                instrument["type"] = "index"
-            elif any(
-                x in name
-                for x in ["eur/", "gbp/", "usd/", "jpy", "aud/", "nzd/", "cad/", "chf/"]
-            ):
-                instrument["type"] = "forex"
-            elif any(
-                x in name
-                for x in ["gold", "silver", "oil", "xau", "xag", "wti", "brent"]
-            ):
-                instrument["type"] = "commodity"
-            elif any(
-                x in name for x in ["btc", "eth", "bitcoin", "ethereum", "crypto"]
-            ):
-                instrument["type"] = "crypto"
-            else:
-                instrument["type"] = "stock"
-
-        return instruments
+        return [to_instrument_option(name) for name in instruments]
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error fetching instruments: {str(e)}"
@@ -94,41 +96,8 @@ async def get_instrument_types():
             "stock": 0,
         }
 
-        for instrument in instruments:
-            name = instrument.get("value", "").lower()
-
-            if any(
-                x in name
-                for x in [
-                    "us30",
-                    "wall street",
-                    "dow",
-                    "nasdaq",
-                    "s&p",
-                    "spx",
-                    "dax",
-                    "ftse",
-                    "uk 100",
-                    "germany",
-                ]
-            ):
-                type_counts["index"] += 1
-            elif any(
-                x in name
-                for x in ["eur/", "gbp/", "usd/", "jpy", "aud/", "nzd/", "cad/", "chf/"]
-            ):
-                type_counts["forex"] += 1
-            elif any(
-                x in name
-                for x in ["gold", "silver", "oil", "xau", "xag", "wti", "brent"]
-            ):
-                type_counts["commodity"] += 1
-            elif any(
-                x in name for x in ["btc", "eth", "bitcoin", "ethereum", "crypto"]
-            ):
-                type_counts["crypto"] += 1
-            else:
-                type_counts["stock"] += 1
+        for name in instruments:
+            type_counts[classify_instrument(name)] += 1
 
         return [
             {"type": "index", "label": "Indices", "count": type_counts["index"]},
@@ -166,14 +135,9 @@ async def search_instruments(q: str = ""):
 
         # Filter instruments by search query
         query_lower = q.lower()
-        matching = [
-            inst
-            for inst in instruments
-            if query_lower in inst.get("value", "").lower()
-            or query_lower in inst.get("label", "").lower()
-        ]
+        matching = [name for name in instruments if query_lower in (name or "").lower()]
 
-        return matching[:20]  # Limit to 20 results
+        return [to_instrument_option(name) for name in matching[:20]]
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error searching instruments: {str(e)}"
