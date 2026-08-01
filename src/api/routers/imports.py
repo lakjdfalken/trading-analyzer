@@ -9,6 +9,7 @@ Provides endpoints for:
 """
 
 import io
+import logging
 import os
 
 # Add parent paths for imports
@@ -30,6 +31,8 @@ from api.services.database import execute_query, get_db_connection
 from create_database import create_db_schema
 from db_path import DATABASE_PATH
 from import_data import import_transaction_data
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -439,15 +442,25 @@ async def upload_csv(
         # Detect file encoding
         detection = chardet.detect(content)
         encoding = detection.get("encoding")
-        confidence = detection.get("confidence", 0)
+        confidence = detection.get("confidence") or 0
 
-        # Supported encodings with common aliases
-        supported_encodings = [
+        # Encodings this importer is willing to accept.
+        #
+        # The detected encoding MUST be checked against this set before it is
+        # used. Decoding only raises on genuinely invalid byte sequences, and
+        # many codecs accept arbitrary bytes happily - so an out-of-set guess
+        # does not fail loudly, it silently produces mojibake and writes it to
+        # the database. chardet 7.4.x reporting latin-1 CSVs as Big5 is exactly
+        # this failure: Big5 decodes the bytes without error, turning
+        # "Umlaut Test" into unrelated CJK characters.
+        supported_encodings = {
             "utf-8",
             "utf-8-sig",
             "utf-16",
             "utf-16le",
             "utf-16be",
+            "utf-16-le",
+            "utf-16-be",
             "ascii",
             "us-ascii",
             "iso-8859-1",
@@ -458,7 +471,7 @@ async def upload_csv(
             "cp1252",
             "mac-roman",
             "macroman",
-        ]
+        }
 
         # Normalize encoding name
         encoding_lower = (encoding or "").lower().replace("_", "-").replace(" ", "-")
@@ -474,16 +487,23 @@ async def upload_csv(
 
         # Try to decode with detected encoding, then fallback chain
         decoded_content = None
-        used_encoding = None
 
         # Build list of encodings to try
         encodings_to_try = []
-        if encoding_lower:
+        if encoding_lower in supported_encodings:
             # Add detected encoding first
             encodings_to_try.append(encoding_lower)
             # Add alias if exists
             if encoding_lower in encoding_aliases:
                 encodings_to_try.append(encoding_aliases[encoding_lower])
+        elif encoding_lower:
+            logger.warning(
+                "Ignoring unsupported detected encoding %r (confidence %.0f%%) "
+                "for %s; falling back to the standard encoding chain.",
+                encoding,
+                confidence * 100,
+                file.filename,
+            )
 
         # Add fallback encodings (most common first)
         fallbacks = [
@@ -502,7 +522,6 @@ async def upload_csv(
         for try_encoding in encodings_to_try:
             try:
                 decoded_content = content.decode(try_encoding)
-                used_encoding = try_encoding
                 break
             except (UnicodeDecodeError, LookupError):
                 continue
