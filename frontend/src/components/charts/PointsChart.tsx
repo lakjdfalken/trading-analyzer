@@ -29,6 +29,7 @@ export interface PointsData {
   totalPnl: number;
   winPnl: number;
   lossPnl: number;
+  financingPnl: number;
   avgPnlPerTrade: number;
 }
 
@@ -148,6 +149,14 @@ function CustomTooltip({
             {formatPnl(data.lossPnl, currency, formatAmount)}
           </span>
         </div>
+        {data.financingPnl !== 0 && (
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-muted-foreground">Financing:</span>
+            <span className="font-medium">
+              {formatPnl(data.financingPnl, currency, formatAmount)}
+            </span>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-4 pt-1 border-t border-border">
           <span className="text-muted-foreground">Trades:</span>
           <span className="font-medium">

@@ -240,7 +240,7 @@ async def get_equity_curve(
         ..., description="Target currency for equity curve conversion (required)"
     ),
 ):
-    """Get equity curve based on cumulative P/L excluding funding transactions."""
+    """Get equity curve based on cumulative net P/L (after financing), excluding deposits/withdrawals."""
     try:
         result = db.get_equity_curve(
             start_date=start_date,

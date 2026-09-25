@@ -137,6 +137,79 @@ def _build_included_accounts_filter(
         return "1=0"  # No accounts included
 
 
+# Overnight financing rows. These are excluded from trade statistics by the
+# '%Fund%' filter, but their P/L must still be counted in net P/L.
+FINANCING_ACTIONS = ("Funding Charges", "Funding Refund")
+
+
+def _get_financing_by_period(
+    period_expr: str,
+    target_currency: str,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    instruments: Optional[List[str]] = None,
+    account_id: Optional[int] = None,
+    by_account: bool = False,
+) -> Dict[Any, float]:
+    """Sum financing P/L per period, converted to target_currency.
+
+    Args:
+        period_expr: SQL expression for the period key, using alias "bt"
+            (e.g. 'DATE(bt."Transaction Date")' or "'all'").
+        by_account: Key results by (period, account_id) instead of period.
+
+    Returns:
+        Dict mapping period (or (period, account_id)) to financing P/L.
+        Charges are negative, refunds positive.
+    """
+    from api.services.currency import CurrencyService
+
+    placeholders = ",".join("?" * len(FINANCING_ACTIONS))
+    conditions = [f'bt."Action" IN ({placeholders})']
+    params: List[Any] = list(FINANCING_ACTIONS)
+
+    if start_date:
+        conditions.append('bt."Transaction Date" >= ?')
+        params.append(start_date.isoformat())
+
+    if end_date:
+        conditions.append('bt."Transaction Date" <= ?')
+        params.append(format_end_date(end_date))
+
+    if instruments:
+        placeholders = ",".join("?" * len(instruments))
+        conditions.append(f'bt."Description" IN ({placeholders})')
+        params.extend(instruments)
+
+    conditions.append(
+        _build_included_accounts_filter(account_id, params, table_alias="bt")
+    )
+
+    query = f"""
+        SELECT
+            {period_expr} as period,
+            bt.account_id as account_id,
+            a.currency as currency,
+            SUM(COALESCE(bt."P/L", 0)) as pnl
+        FROM broker_transactions bt
+        JOIN accounts a ON bt.account_id = a.account_id
+        WHERE {" AND ".join(conditions)}
+        GROUP BY period, bt.account_id, a.currency
+    """
+
+    result: Dict[Any, float] = {}
+    for row in execute_query(query, tuple(params)):
+        currency = row["currency"] or target_currency
+        pnl = row["pnl"] or 0
+        if currency != target_currency:
+            converted = CurrencyService.convert(pnl, currency, target_currency)
+            if converted is not None:
+                pnl = converted
+        key = (row["period"], row["account_id"]) if by_account else row["period"]
+        result[key] = result.get(key, 0.0) + pnl
+    return result
+
+
 class BalanceTimeline:
     """Efficient balance lookup using binary search."""
 
@@ -782,6 +855,24 @@ class TradingDatabase:
                     "wins": row["wins"],
                 }
 
+        # Deduct financing from net P&L (not counted as trades)
+        financing = _get_financing_by_period(
+            "strftime('%Y-%m', bt.\"Transaction Date\")",
+            target_currency,
+            start_date,
+            end_date,
+            instruments,
+            account_id,
+            by_account=True,
+        )
+        for (month, acct_id), amount in financing.items():
+            if acct_id in account_info:
+                all_months.add(month)
+                entry = account_month_data[acct_id].setdefault(
+                    month, {"pnl": 0, "trades": 0, "wins": 0}
+                )
+                entry["pnl"] += amount
+
         sorted_months = sorted(all_months)
 
         # Build series and totals
@@ -923,6 +1014,20 @@ class TradingDatabase:
             month_map[month]["pnl"] += pnl
             month_map[month]["trades"] += trades
             month_map[month]["wins"] += wins
+
+        # Deduct financing from net P&L (not counted as trades)
+        financing = _get_financing_by_period(
+            "strftime('%Y-%m', bt.\"Transaction Date\")",
+            target_currency,
+            start_date,
+            end_date,
+            instruments,
+            account_id,
+        )
+        for month, amount in financing.items():
+            if month not in month_map:
+                month_map[month] = {"month": month, "pnl": 0, "trades": 0, "wins": 0}
+            month_map[month]["pnl"] += amount
 
         # -----------------------------------------------------------------
         # Build per-month opening balance (same approach as get_daily_pnl)
@@ -1146,6 +1251,22 @@ class TradingDatabase:
         # Pre-fetch point factors for batch processing
         point_factors = CurrencyService.get_instrument_point_factors()
 
+        def new_entry(name: str) -> Dict[str, Any]:
+            return {
+                "name": name,
+                "totalPoints": 0.0,
+                "winPoints": 0.0,
+                "lossPoints": 0.0,
+                "trades": 0,
+                "wins": 0,
+                "losses": 0,
+                "totalPnl": 0.0,
+                "winPnl": 0.0,
+                "lossPnl": 0.0,
+                "financingPnl": 0.0,
+                "multiplier": 0.0,
+            }
+
         # Aggregate by instrument with currency conversion and win/loss breakdown
         instrument_map: Dict[str, Dict[str, Any]] = {}
         for row in raw_data:
@@ -1167,22 +1288,7 @@ class TradingDatabase:
                 if converted is not None:
                     pnl = converted
 
-            if instrument not in instrument_map:
-                instrument_map[instrument] = {
-                    "name": instrument,
-                    "totalPoints": 0.0,
-                    "winPoints": 0.0,
-                    "lossPoints": 0.0,
-                    "trades": 0,
-                    "wins": 0,
-                    "losses": 0,
-                    "totalPnl": 0.0,
-                    "winPnl": 0.0,
-                    "lossPnl": 0.0,
-                    "multiplier": 0.0,
-                }
-
-            entry = instrument_map[instrument]
+            entry = instrument_map.setdefault(instrument, new_entry(instrument))
             entry["totalPoints"] += points
             entry["totalPnl"] += pnl
             entry["trades"] += 1
@@ -1199,6 +1305,20 @@ class TradingDatabase:
             # Derive multiplier from P&L / points (how much money per point)
             if points != 0:
                 entry["multiplier"] = abs(pnl / points)
+
+        # Deduct financing from each market's net P&L (not counted as trades).
+        # winPnl/lossPnl stay trade-only, so totalPnl = winPnl + lossPnl + financingPnl.
+        financing = _get_financing_by_period(
+            'bt."Description"',
+            target_currency,
+            start_date,
+            end_date,
+            account_id=account_id,
+        )
+        for instrument, amount in financing.items():
+            entry = instrument_map.setdefault(instrument, new_entry(instrument))
+            entry["financingPnl"] += amount
+            entry["totalPnl"] += amount
 
         # Compute averages
         results = []
@@ -1375,6 +1495,18 @@ class TradingDatabase:
             total_wins_amount += wins_amt
             total_losses_amount += losses_amt
 
+        # Deduct financing from net P&L. It is not a trade, so it does not
+        # affect trade counts, win rate, avg win/loss or profit factor.
+        daily_financing = _get_financing_by_period(
+            'DATE(bt."Transaction Date")',
+            target_currency,
+            start_date,
+            end_date,
+            instruments,
+            account_id,
+        )
+        total_pnl += sum(daily_financing.values())
+
         # Calculate averages
         avg_win = total_wins_amount / winning_trades if winning_trades > 0 else 0
         avg_loss = total_losses_amount / losing_trades if losing_trades > 0 else 0
@@ -1435,6 +1567,8 @@ class TradingDatabase:
             today_pnl += pnl
             today_trades += trades
 
+        today_pnl += daily_financing.get(today, 0.0)
+
         # Get this week's stats (Monday to Sunday)
         today_dt = datetime.now(timezone.utc).date()
         week_start = today_dt - timedelta(days=today_dt.weekday())
@@ -1464,6 +1598,10 @@ class TradingDatabase:
 
             week_pnl += pnl
             week_trades += trades
+
+        week_pnl += sum(
+            v for d, v in daily_financing.items() if d >= week_start_str
+        )
 
         # Get this month's stats
         month_start = today_dt.replace(day=1).isoformat()
@@ -1497,6 +1635,8 @@ class TradingDatabase:
             month_trades += trades
             month_wins += wins
 
+        month_pnl += sum(v for d, v in daily_financing.items() if d >= month_start)
+
         # Get this year's stats
         year_start = today_dt.replace(month=1, day=1).isoformat()
 
@@ -1528,6 +1668,8 @@ class TradingDatabase:
             year_pnl += pnl
             year_trades += trades
             year_wins += wins
+
+        year_pnl += sum(v for d, v in daily_financing.items() if d >= year_start)
 
         # Calculate average P&L per trade
         avg_pnl = total_pnl / total_trades if total_trades > 0 else 0
@@ -1587,10 +1729,14 @@ class TradingDatabase:
             daily_points_map[date] = daily_points_map.get(date, 0) + points
             daily_trades_map[date] = daily_trades_map.get(date, 0) + 1
 
+        for date, amount in daily_financing.items():
+            daily_pnl_map[date] = daily_pnl_map.get(date, 0) + amount
+
         daily_pnl_values = list(daily_pnl_map.values())
         daily_points_values = list(daily_points_map.values())
         daily_trades_values = list(daily_trades_map.values())
-        num_days = len(daily_pnl_values)
+        # Averages are per trading day; financing-only days add P&L but not days
+        num_days = len(daily_trades_values)
 
         avg_daily_pnl = sum(daily_pnl_values) / num_days if num_days > 0 else 0
         avg_daily_points = sum(daily_points_values) / num_days if num_days > 0 else 0
@@ -1640,10 +1786,13 @@ class TradingDatabase:
             monthly_points_map[month] = monthly_points_map.get(month, 0) + points
             monthly_trades_map[month] = monthly_trades_map.get(month, 0) + 1
 
+        for date, amount in daily_financing.items():
+            monthly_pnl_map[date[:7]] = monthly_pnl_map.get(date[:7], 0) + amount
+
         monthly_pnl_values = list(monthly_pnl_map.values())
         monthly_points_values = list(monthly_points_map.values())
         monthly_trades_values = list(monthly_trades_map.values())
-        num_months = len(monthly_pnl_values)
+        num_months = len(monthly_trades_values)
 
         avg_monthly_pnl = sum(monthly_pnl_values) / num_months if num_months > 0 else 0
         avg_monthly_points = (
@@ -1694,6 +1843,9 @@ class TradingDatabase:
 
             yearly_pnl_map[year] = yearly_pnl_map.get(year, 0) + pnl
             yearly_points_map[year] = yearly_points_map.get(year, 0) + points
+
+        for date, amount in daily_financing.items():
+            yearly_pnl_map[date[:4]] = yearly_pnl_map.get(date[:4], 0) + amount
 
         yearly_pnl_values = list(yearly_pnl_map.values())
         yearly_points_values = list(yearly_points_map.values())
@@ -2042,6 +2194,17 @@ class TradingDatabase:
 
             date_pnl[date_str] = date_pnl.get(date_str, 0) + pnl
 
+        # Deduct financing from net P&L
+        financing = _get_financing_by_period(
+            'DATE(bt."Transaction Date")',
+            target_currency,
+            start_date,
+            end_date,
+            account_id=account_id,
+        )
+        for date_str, amount in financing.items():
+            date_pnl[date_str] = date_pnl.get(date_str, 0) + amount
+
         # Build cumulative equity curve
         data = []
         cumulative = 0
@@ -2134,6 +2297,19 @@ class TradingDatabase:
 
             date_map[close_date]["pnl"] += pnl
             date_map[close_date]["trades"] += trades
+
+        # Deduct financing from net P&L (not counted as trades)
+        financing = _get_financing_by_period(
+            'DATE(bt."Transaction Date")',
+            target_currency,
+            start_date,
+            end_date,
+            account_id=account_id,
+        )
+        for close_date, amount in financing.items():
+            if close_date not in date_map:
+                date_map[close_date] = {"date": close_date, "pnl": 0, "trades": 0}
+            date_map[close_date]["pnl"] += amount
 
         # -----------------------------------------------------------
         # 2. Build per-day opening balance from balance history
@@ -2363,6 +2539,23 @@ class TradingDatabase:
                     "pnl": pnl,
                     "trades": row["trades"],
                 }
+
+        # Deduct financing from net P&L (not counted as trades)
+        financing = _get_financing_by_period(
+            'DATE(bt."Transaction Date")',
+            target_currency,
+            start_date,
+            end_date,
+            account_id=account_id,
+            by_account=True,
+        )
+        for (date_str, acct_id), amount in financing.items():
+            if acct_id in account_info:
+                all_dates.add(date_str)
+                entry = account_date_pnl[acct_id].setdefault(
+                    date_str, {"pnl": 0, "trades": 0}
+                )
+                entry["pnl"] += amount
 
         sorted_dates = sorted(all_dates)
 
