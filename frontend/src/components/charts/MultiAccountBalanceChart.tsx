@@ -88,15 +88,14 @@ function CustomTooltip({
   }
 
   // Format the date label to include year
-  const formattedLabel = React.useMemo(() => {
-    if (!label) return "";
+  let formattedLabel = "";
+  if (label) {
     try {
-      const date = new Date(label);
-      return format(date, "MMM d, yyyy");
+      formattedLabel = format(new Date(label), "MMM d, yyyy");
     } catch {
-      return label;
+      formattedLabel = label;
     }
-  }, [label]);
+  }
 
   return (
     <div className="bg-popover border border-border rounded-lg shadow-lg p-3 text-sm">
