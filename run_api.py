@@ -44,7 +44,7 @@ def main():
         import uvicorn
     except ImportError:
         print("Error: uvicorn is not installed.")
-        print("Please install it with: pip install uvicorn[standard]")
+        print("Please install it with: pip install -r requirements.txt")
         sys.exit(1)
 
     print(f"Starting Trading Analyzer API server...")

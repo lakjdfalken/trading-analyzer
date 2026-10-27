@@ -66,8 +66,6 @@ hiddenimports = [
     "anyio._backends",
     "anyio._backends._asyncio",
     "sqlite3",
-    "pandas",
-    "numpy",
     # API modules
     "api",
     "api.main",
@@ -94,6 +92,9 @@ hiddenimports = [
 
 # Binary exclusions (reduce size)
 excludes = [
+    "pandas",
+    "numpy",
+    "watchfiles",
     "tkinter",
     "test",
     "unittest",

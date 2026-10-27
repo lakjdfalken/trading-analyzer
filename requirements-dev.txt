@@ -1,0 +1,6 @@
+# Development extras on top of the app requirements.
+-r requirements.txt
+
+# Faster file watching for `python run_api.py --reload`
+# (uvicorn falls back to polling without it)
+watchfiles>=1.1.0

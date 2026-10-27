@@ -11,8 +11,6 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-import pandas as pd
-
 from db_path import DATABASE_PATH
 
 
@@ -42,14 +40,6 @@ def get_db_connection():
         yield conn
     finally:
         conn.close()
-
-
-def get_dataframe(query: str, params: Optional[List[Any]] = None) -> pd.DataFrame:
-    """Execute a query and return results as a DataFrame."""
-    with get_db_connection() as conn:
-        if params:
-            return pd.read_sql_query(query, conn, params=params)
-        return pd.read_sql_query(query, conn)
 
 
 def execute_query(query: str, params: Optional[Tuple] = None) -> List[Dict[str, Any]]:
