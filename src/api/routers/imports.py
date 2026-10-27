@@ -553,7 +553,7 @@ async def upload_csv(
             count_before = cursor.fetchone()[0]
 
         # Import the data
-        result_df = import_transaction_data(
+        total_rows = import_transaction_data(
             file_path=temp_path,
             broker_name=broker,
             account_id=account_id,
@@ -569,7 +569,7 @@ async def upload_csv(
             count_after = cursor.fetchone()[0]
 
         records_imported = count_after - count_before
-        total_in_file = len(result_df) if result_df is not None else 0
+        total_in_file = total_rows
 
         # Clean up temp file
         os.unlink(temp_path)
